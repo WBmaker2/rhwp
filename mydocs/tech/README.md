@@ -26,7 +26,8 @@
 - 현재 분리된 이슈별 조사는 `investigations/issue-####/`에서 관리한다. 각 디렉터리의 README가 해당
   스냅샷과 진단의 당시 범위, 최신성 제한, 관련 문서를 설명한다.
 - `webhwp/` 하위 문서는 웹 편집기 기능별 reference 묶음이다.
-- `dev_roadmap_v1_backup.md`처럼 대체된 계획은 historical 자료로 취급하며, 새 작업의 근거로 직접 사용하지 않는다.
+- [archive/](archive/README.md)의 v1 roadmap처럼 대체된 계획은 historical 자료로 취급하며, 새 작업의
+  근거로 직접 사용하지 않는다.
 
 ## 조사와 트러블슈팅 경계
 

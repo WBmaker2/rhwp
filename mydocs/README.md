@@ -36,7 +36,7 @@
 | [폰트 fallback 전략](tech/font_fallback_strategy.md) | canonical | active | `tech/font_fallback_strategy.md` | 2026-07-16 |
 | [편집 action undo/redo 아키텍처](tech/edit_action_undo_redo_architecture.md) | canonical | active | `tech/edit_action_undo_redo_architecture.md` | 2026-07-16 |
 | [ThorVG 결정 기록](tech/thorvg_decision.md) | decision | active | `tech/thorvg_decision.md` | 2026-07-16 |
-| [이전 개발 로드맵](tech/dev_roadmap_v1_backup.md) | snapshot | historical | `tech/dev_roadmap.md` | 2026-07-16 |
+| [이전 개발 로드맵](tech/archive/dev_roadmap_v1_backup.md) | snapshot | historical | `tech/dev_roadmap.md` | 2026-07-16 |
 | [이슈별 기술 조사 지도](tech/investigations/README.md) | guide | active | `tech/investigations/README.md` | 2026-07-16 |
 | [트러블슈팅 문서 지도](troubleshootings/README.md) | guide | active | `troubleshootings/README.md` | 2026-07-16 |
 
