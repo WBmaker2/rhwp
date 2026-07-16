@@ -98,4 +98,5 @@ jobs:
             --forbid-path mydocs/tech/return_cat.md \
             --forbid-path mydocs/tech/text_align_2_svg_pdf_compare.md \
             --forbid-path mydocs/tech/topandbottom_table_inline_picture_layout.md \
-            --forbid-path mydocs/tech/trailing_model_render_vs_pagination_1248.md
+            --forbid-path mydocs/tech/trailing_model_render_vs_pagination_1248.md \
+            --forbid-path mydocs/tech/brainstorm_ipad_app.md
