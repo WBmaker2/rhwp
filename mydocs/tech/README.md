@@ -69,5 +69,5 @@ python3 scripts/check_markdown_links.py
 ```
 
 내부 참조는 이동 커밋에서 새 경로로 직접 바꾼다. redirect stub은 외부 이력 호환이 필요한 문서만
-allowlist로 제한한다. 이동·폐기한 경로는 `mydocs/retired_markdown_paths.txt`에서 관리하며, 문서 CI가
-이전 경로로의 새 내부 참조를 거부한다. 새 문서를 추가할 때는 workflow YAML을 수정하지 않는다.
+allowlist로 제한한다. 이동 stage에서는 `--forbid-path`로 이전 경로의 재참조가 없는지 일회성 검증한다.
+고정 migration 목록은 영구 CI에 두지 않으며, 새 문서를 추가할 때 workflow YAML을 수정하지 않는다.

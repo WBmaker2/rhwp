@@ -37,6 +37,3 @@ jobs:
         run: |
           python3 scripts/check_markdown_links.py
           python3 scripts/check_document_metadata.py
-          python3 scripts/check_markdown_links.py \
-            --forbid-scan-path mydocs \
-            --forbid-path-file mydocs/retired_markdown_paths.txt

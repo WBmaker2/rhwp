@@ -73,5 +73,5 @@ python3 scripts/check_markdown_links.py
 
 이 검사는 외부 URL과 같은 문서 안의 앵커를 검사하지 않는다. 저장소 내부 링크는 이동 PR에서 모두 새 경로로
 갱신하며, redirect stub은 GitHub 이슈·PR 같은 외부 이력에서 자주 참조되는 문서만 별도 allowlist로 유지한다.
-이동·폐기한 경로는 `mydocs/retired_markdown_paths.txt`에 추가한다. 문서 CI가 이 manifest를 읽으므로 새
-문서 추가나 이전 경로 추가 때문에 workflow YAML을 수정하지 않는다.
+이동 stage에서는 `--forbid-path <이전-경로>`로 재참조가 없는지 일회성 검증한다. 새 문서 추가나 이전
+경로 검증 때문에 workflow YAML을 수정하지 않는다.

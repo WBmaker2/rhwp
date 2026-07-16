@@ -60,16 +60,16 @@ front matter는 이번 감사에서 직접 역할을 확인한 canonical manifes
 ## 이동 규칙
 
 문서 이동은 역할·현행성·참조 빈도를 검토한 독립 commit에서만 수행한다. 모든 내부 참조를 새 경로로
-갱신하고, 외부 이력 호환이 필요한 옛 경로만 같은 commit의 redirect allowlist에 기록한다. 이동·폐기한
-경로는 [`retired_markdown_paths.txt`](retired_markdown_paths.txt)에 추가해 새 문서와 코드의 재참조를
-막는다. 새 문서를 추가할 때는 workflow나 이 manifest를 수정하지 않는다.
+갱신하고, 외부 이력 호환이 필요한 옛 경로만 같은 commit의 redirect allowlist에 기록한다. 이동 stage에서
+`--forbid-path`로 새 문서와 코드의 이전 경로 재참조가 없는지 확인하되, 해당 migration 목록은 영구 CI
+설정으로 유지하지 않는다. 새 문서를 추가할 때는 workflow를 수정하지 않는다.
 
 ```bash
 python3 scripts/check_markdown_links.py
 python3 scripts/check_document_metadata.py
 python3 scripts/check_markdown_links.py \
   --forbid-scan-path mydocs \
-  --forbid-path-file mydocs/retired_markdown_paths.txt
+  --forbid-path mydocs/manual/<이전-경로>.md
 ```
 
 이슈별 조사 문서는 `tech/investigations/issue-####/`에 두며, 이슈별 기준선이나 진단이 장기 기술
