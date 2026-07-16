@@ -7,11 +7,11 @@
 - 기준 커밋: `3077f96d1f9931c50d6d62be77b389d4f66470a9`
 - 관련 산출물:
   - `mydocs/metrics/frontend/2026-07-11/metrics.json`
-  - `mydocs/tech/task_m100_2124_baseline_manifest.md`
-  - `mydocs/tech/task_m100_2124_public_contract_snapshot.md`
-  - `mydocs/tech/task_m100_2124_wasm_json_schema_snapshot.md`
-  - `mydocs/tech/task_m100_2124_font_inventory.md`
-  - `mydocs/tech/task_m100_2124_extension_security_snapshot.md`
+  - `mydocs/tech/investigations/issue-2124/task_m100_2124_baseline_manifest.md`
+  - `mydocs/tech/investigations/issue-2124/task_m100_2124_public_contract_snapshot.md`
+  - `mydocs/tech/investigations/issue-2124/task_m100_2124_wasm_json_schema_snapshot.md`
+  - `mydocs/tech/investigations/issue-2124/task_m100_2124_font_inventory.md`
+  - `mydocs/tech/investigations/issue-2124/task_m100_2124_extension_security_snapshot.md`
 
 ## 1. 목적
 

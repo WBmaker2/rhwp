@@ -15,6 +15,7 @@
 | 폰트 대체와 충실도 | [폰트 fallback 전략](font_fallback_strategy.md) | [한컴 폰트 시스템 분석](hancom_font_system_analysis.md), [폰트 메트릭 크기 비교](font_metrics_size_comparison.md) |
 | 편집 undo/redo | [편집 action undo/redo 아키텍처](edit_action_undo_redo_architecture.md) | 이슈별 실동작 조사 문서 |
 | 기술 채택·비채택 | [ThorVG 결정 기록](thorvg_decision.md) | [ThorVG POC 인사이트](thorvg_poc_insights.md) |
+| 이슈별 기술 조사 | [이슈별 기술 조사 지도](investigations/README.md) | [Issue #2023 프론트엔드 조사](investigations/issue-2023/README.md), [Issue #2124 프론트엔드 기준선 조사](investigations/issue-2124/README.md) |
 
 ## 현재 구조를 읽는 법
 
@@ -22,6 +23,8 @@
   파일명만으로 권위 문서라고 가정하지 않는다. 위 표 또는 각 문서의 명시적 링크를 우선한다.
 - `task_m100_*`, `*_root_cause`, `*_diagnosis`, `*_investigation`은 이슈별 조사일 가능성이 높다. 다만
   장기 계약·기준선·설계 결론을 담은 문서는 `investigations/`로 자동 이동하지 않고 현행성 감사를 거쳐 분류한다.
+- 현재 분리된 이슈별 조사는 `investigations/issue-####/`에서 관리한다. 각 디렉터리의 README가 해당
+  스냅샷과 진단의 당시 범위, 최신성 제한, 관련 문서를 설명한다.
 - `webhwp/` 하위 문서는 웹 편집기 기능별 reference 묶음이다.
 - `dev_roadmap_v1_backup.md`처럼 대체된 계획은 historical 자료로 취급하며, 새 작업의 근거로 직접 사용하지 않는다.
 

@@ -43,4 +43,14 @@ jobs:
             --forbid-path mydocs/manual/visual_clipping_detector.md \
             --forbid-path mydocs/manual/hangul_pdf_baseline.md \
             --forbid-path mydocs/manual/hangul_page_oracle.md \
-            --forbid-path mydocs/manual/verify_pi_page_vs_hangul.md
+            --forbid-path mydocs/manual/verify_pi_page_vs_hangul.md \
+            --forbid-path mydocs/tech/task_m100_2023_frontend_contract_guardrails.md \
+            --forbid-path mydocs/tech/task_m100_2023_frontend_diagnosis.md \
+            --forbid-path mydocs/tech/task_m100_2124_baseline_manifest.md \
+            --forbid-path mydocs/tech/task_m100_2124_extension_security_snapshot.md \
+            --forbid-path mydocs/tech/task_m100_2124_font_inventory.md \
+            --forbid-path mydocs/tech/task_m100_2124_frontend_metrics_scope.md \
+            --forbid-path mydocs/tech/task_m100_2124_frontend_solid_anchors.md \
+            --forbid-path mydocs/tech/task_m100_2124_public_contract_snapshot.md \
+            --forbid-path mydocs/tech/task_m100_2124_smoke_manifest.md \
+            --forbid-path mydocs/tech/task_m100_2124_wasm_json_schema_snapshot.md

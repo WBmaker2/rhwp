@@ -37,6 +37,7 @@
 | [편집 action undo/redo 아키텍처](tech/edit_action_undo_redo_architecture.md) | canonical | active | `tech/edit_action_undo_redo_architecture.md` | 2026-07-16 |
 | [ThorVG 결정 기록](tech/thorvg_decision.md) | decision | active | `tech/thorvg_decision.md` | 2026-07-16 |
 | [이전 개발 로드맵](tech/dev_roadmap_v1_backup.md) | snapshot | historical | `tech/dev_roadmap.md` | 2026-07-16 |
+| [이슈별 기술 조사 지도](tech/investigations/README.md) | guide | active | `tech/investigations/README.md` | 2026-07-16 |
 
 ## Reference 자산
 
@@ -54,3 +55,6 @@
 python3 scripts/check_markdown_links.py
 python3 scripts/check_markdown_links.py --forbid-path mydocs/manual/<이전-경로>.md
 ```
+
+이슈별 조사 문서는 `tech/investigations/issue-####/`에 두며, 이슈별 기준선이나 진단이 장기 기술
+계약으로 확정되면 해당 canonical 문서에 결론을 반영한다.

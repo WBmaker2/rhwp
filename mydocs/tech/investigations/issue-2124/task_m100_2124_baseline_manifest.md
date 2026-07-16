@@ -10,7 +10,7 @@
 - 공식 snapshot:
   - `mydocs/metrics/frontend/2026-07-11/metrics.json`
   - `mydocs/metrics/frontend/2026-07-11/summary.md`
-- metrics scope: `mydocs/tech/task_m100_2124_frontend_metrics_scope.md`
+- metrics scope: `mydocs/tech/investigations/issue-2124/task_m100_2124_frontend_metrics_scope.md`
 
 ## 1. 목적
 
@@ -64,7 +64,7 @@ commit, dirty 상태, 플랫폼, 도구 버전과 입력 파일 해시는 `metri
 | Safari build | `21623.2.7.111.2` |
 
 이 버전은 수동 smoke 후보 환경 기록이다. 자동 build·dist 계약과 수동 브라우저 smoke 결과는
-`mydocs/tech/task_m100_2124_smoke_manifest.md`에서 별도로 추적한다.
+`mydocs/tech/investigations/issue-2124/task_m100_2124_smoke_manifest.md`에서 별도로 추적한다.
 
 ## 5. 폰트 경로
 
@@ -81,7 +81,7 @@ Phase A #2125에서 canonical 위치 이전을 검토하며, #2124에서는 경�
 
 ## 6. 공식 모집단과 제외군
 
-공식 모집단과 제외군은 `mydocs/tech/task_m100_2124_frontend_metrics_scope.md`를 기준으로 한다.
+공식 모집단과 제외군은 `mydocs/tech/investigations/issue-2124/task_m100_2124_frontend_metrics_scope.md`를 기준으로 한다.
 
 포함 group:
 

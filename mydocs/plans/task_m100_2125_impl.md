@@ -286,7 +286,7 @@ source reference 검사에서 허용되는 `web/fonts`는 compatibility symlink�
 git diff --check
 git diff --name-only
 git grep -n 'web/fonts' -- THIRD_PARTY_LICENSES.md npm/editor/README.md mydocs/manual mydocs/tech/font_fallback_strategy.md mydocs/tech/equation_font_selection.md ttfs/opensource/README.md
-git diff -- mydocs/metrics/frontend/2026-07-11 mydocs/tech/task_m100_2124_font_inventory.md mydocs/report/task_m100_2190_report.md
+git diff -- mydocs/metrics/frontend/2026-07-11 mydocs/tech/investigations/issue-2124/task_m100_2124_font_inventory.md mydocs/report/task_m100_2190_report.md
 ```
 
 마지막 명령의 diff는 비어 있어야 한다.
