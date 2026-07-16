@@ -25,7 +25,8 @@
 | [PR 리뷰·통합 워크플로](manual/pr_review_workflow.md) | canonical | active | `manual/pr_review_workflow.md` | 2026-07-16 |
 | [개발 환경 가이드](manual/dev_environment_guide.md) | guide | active | `manual/dev_environment_guide.md` | 2026-07-16 |
 | [CLI 명령어 매뉴얼](manual/cli_commands.md) | canonical | active | `manual/cli_commands.md` | 2026-07-16 |
-| [시각 검증 거버넌스](manual/visual_verification_governance.md) | canonical | active | `manual/visual_verification_governance.md` | 2026-07-16 |
+| [시각 검증 문서 지도](manual/verification/README.md) | guide | active | `manual/verification/README.md` | 2026-07-16 |
+| [시각 검증 거버넌스](manual/verification/visual_verification_governance.md) | canonical | active | `manual/verification/visual_verification_governance.md` | 2026-07-16 |
 | [HWP 2020 MCP 사용법](manual/mcp_hwp2020Convert_usage.md) | guide | active | `manual/mcp_hwp2020Convert_usage.md` | 2026-07-16 |
 | [HWP 5.0 스펙 문서 정오표](tech/hwp_spec_errata.md) | canonical | active | `tech/hwp_spec_errata.md` | 2026-07-16 |
 | [한글 문서 파일 형식 5.0 개정 1.3](tech/한글문서파일형식_5.0_revision1.3.md) | reference | active | `tech/hwp_spec_errata.md` | 2026-07-16 |

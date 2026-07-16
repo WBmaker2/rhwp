@@ -11,7 +11,7 @@
 5. PR 검토·merge·후속 처리는 `mydocs/manual/pr_review_workflow.md`
 6. 로컬 빌드·WASM 검증은 `mydocs/manual/dev_environment_guide.md`
 7. CLI 작업은 `mydocs/manual/cli_commands.md`
-8. 시각 검증은 `mydocs/manual/visual_verification_governance.md`와 `mydocs/manual/visual_sweep_guide.md`
+8. 시각 검증은 `mydocs/manual/verification/visual_verification_governance.md`와 `mydocs/manual/verification/visual_sweep_guide.md`
 
 더 구체적인 문서가 이 요약과 다르면 그 문서를 따른다.
 

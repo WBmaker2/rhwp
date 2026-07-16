@@ -1,0 +1,30 @@
+# 시각 검증 문서 지도
+
+`mydocs/manual/verification/`은 PDF, SVG, 페이지네이션, 개체 geometry의 시각 검증을 반복 수행하기 위한
+문서 묶음이다. 최종 판정 권위는 한컴 편집기와 기준 PDF를 확인하는 작업지시자에게 있으며, 자동 도구는
+후보 검출과 무회귀 확인을 보조한다.
+
+| 목적 | 우선 문서 | 보조 문서 |
+| --- | --- | --- |
+| 시각 검증 적용 판단과 증적 규약 | [시각 검증 거버넌스](visual_verification_governance.md) | [PR 리뷰·통합 워크플로우](../pr_review_workflow.md) |
+| PDF/SVG overlay·drift 후보 탐색 | [PDF/SVG visual sweep 가이드](visual_sweep_guide.md) | [SVG 회귀 diff](svg_regression_diff.md) |
+| 표·그림 geometry 무회귀 | [개체 시각 회귀 하니스](object_visual_regression.md) | [페이지·PI 매칭 오라클](verify_pi_page_vs_hangul.md) |
+| HWPX→HWP 페이지네이션 정합 | [roundtrip fidelity 하니스](roundtrip_fidelity_harness.md) | [한글 페이지 충실도 오라클](hangul_page_oracle.md) |
+| 한글 PDF 줄 baseline 대조 | [한글 PDF baseline](hangul_pdf_baseline.md) | [시각 클리핑 검출기](visual_clipping_detector.md) |
+
+## 이전 경로
+
+아래 기존 경로는 GitHub issue/PR 외부 이력 참조를 보존하기 위해 redirect stub으로만 남긴다. 저장소 내부
+새 링크는 이 목록을 사용하지 않으며, CI가 이전 경로에 대한 새 Markdown 링크를 금지한다.
+
+```text
+mydocs/manual/visual_verification_governance.md
+mydocs/manual/visual_sweep_guide.md
+mydocs/manual/object_visual_regression.md
+mydocs/manual/roundtrip_fidelity_harness.md
+mydocs/manual/svg_regression_diff.md
+mydocs/manual/visual_clipping_detector.md
+mydocs/manual/hangul_pdf_baseline.md
+mydocs/manual/hangul_page_oracle.md
+mydocs/manual/verify_pi_page_vs_hangul.md
+```

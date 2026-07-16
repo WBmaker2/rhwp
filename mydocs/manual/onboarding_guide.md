@@ -42,7 +42,7 @@ sudo apt install fonts-noto-cjk fonts-nanum
 폰트 차이 후보를 줄이기 위한 권장 설치 항목이다.
 한컴/HY 계열 전용 폰트는 저장소에 포함하지 않고, 라이선스가 있는 로컬 경로를
 `--font-path`로 지정해서 사용한다.
-자세한 절차는 [PDF/SVG visual sweep 가이드](visual_sweep_guide.md)를 참고한다.
+자세한 절차는 [PDF/SVG visual sweep 가이드](verification/visual_sweep_guide.md)를 참고한다.
 
 ### 2.2 빌드 확인
 

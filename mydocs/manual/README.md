@@ -12,7 +12,7 @@
 | 로컬 빌드, 테스트, WASM 검증 | [개발 환경 가이드](dev_environment_guide.md) | [CLI 명령어 매뉴얼](cli_commands.md) |
 | `rhwp` CLI 전체 옵션과 동작 | [CLI 명령어 매뉴얼](cli_commands.md) | [rhwp-cli Skill 사용 가이드](rhwp_cli_skill_guide.md), [dump 명령 가이드](dump_command.md), [PNG 내보내기 가이드](export_png_command.md) |
 | 로컬 OWPML XML 스키마 자산 | [OWPML XML 스키마 reference](owpml_schema_reference.md) | [한컴 공식 OWPML 모델 참조 가이드](../tech/hwpx_hancom_reference.md) |
-| PDF/SVG 기준 비교의 정책 | [시각 검증 거버넌스](visual_verification_governance.md) | [PDF/SVG visual sweep 가이드](visual_sweep_guide.md) |
+| PDF/SVG 기준 비교의 정책 | [시각 검증 문서 지도](verification/README.md) | [시각 검증 거버넌스](verification/visual_verification_governance.md), [PDF/SVG visual sweep 가이드](verification/visual_sweep_guide.md) |
 | 한컴 기준 PDF 산출을 위한 MCP 사용 | [HWP 2020 MCP 사용법](mcp_hwp2020Convert_usage.md) | [PR 리뷰·통합 워크플로우](pr_review_workflow.md)의 기준 PDF 절 |
 | 브라우저 확장 개발·배포 | [브라우저 확장 개발 가이드](browser_extension_dev_guide.md) | [Chrome/Edge 확장 빌드·배포](chrome_edge_extension_build_deploy.md) |
 
@@ -21,8 +21,14 @@
 - `manual/`: 사람이 반복 수행하는 절차, 명령, 검증, 배포, 운영 규칙
 - `manual/codex/`: Codex 부트스트랩과 Codex 전용 작업 규칙. 일반 절차의 권위 출처를 대체하지 않는다.
 - `manual/memory/`: 장기 작업 규칙의 색인과 기억 단위. 현재 세션의 임시 상태나 이슈별 분석을 넣지 않는다.
-- `tech/`: 포맷 사실, 아키텍처, 설계 결정, 조사 근거
-- `troubleshootings/`: 재발 방지 목적의 증상·원인·대응 기록
+- `tech/`: 포맷 사실, 아키텍처, 설계 결정, 이슈 조사 근거
+- `tech/investigations/`: 특정 이슈의 가설·실험·관찰을 보존한다. 미확정 또는 기각 결론을 포함할 수 있으며
+  반복 작업의 지침이나 장기 계약의 권위 문서는 아니다.
+- `troubleshootings/`: 재현 가능한 증상, 확정 원인, 적용 가능한 대응과 검증 방법을 보존한다. 이후 작업의
+  사전 점검 자료로 사용한다.
+
+조사 또는 트러블슈팅에서 장기 계약·스펙 정정·운영 절차가 확정되면 각각의 canonical 문서에 반영하고,
+원 문서는 근거 링크로 남긴다.
 
 ## 문서 역할과 생명주기
 

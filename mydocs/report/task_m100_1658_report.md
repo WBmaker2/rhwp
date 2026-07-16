@@ -26,7 +26,7 @@ tolerance 초과면 그 reset break 를 흡수. #1488(가시 문단 reset 3유�
 | `tools/build_page_oracle.py` + `tests/fixtures/render_page_oracle_1658.tsv` | 한글 PageCount 정답지(랜덤 452) | 92건 과적합 방지 |
 | `tools/detect_table_clipping.py` | 본문 클리핑(시각 손실) 검출 (SVG body-clip 초과) | 페이지수 게이트가 못 잡는 시각 회귀 |
 | `tools/hangul_pdf_baseline.py` | 한글 줄 baseline/pitch 권위 기준(PDF+fitz) | PageCount 가드 |
-가이드: `mydocs/manual/visual_clipping_detector.md`, `hangul_pdf_baseline.md`.
+가이드: `mydocs/manual/verification/visual_clipping_detector.md`, `hangul_pdf_baseline.md`.
 
 ## 3. 규명·정정한 것
 - **줄높이 fidelity 정상**: byeolpyo1(권위 PDF 4=4) 한글 줄 pitch **28.80 = rhwp 28.80** → drift 없음.

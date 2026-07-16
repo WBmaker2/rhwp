@@ -32,4 +32,15 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - name: Check internal Markdown links
-        run: python3 scripts/check_markdown_links.py
+        run: |
+          python3 scripts/check_markdown_links.py
+          python3 scripts/check_markdown_links.py \
+            --forbid-path mydocs/manual/visual_verification_governance.md \
+            --forbid-path mydocs/manual/visual_sweep_guide.md \
+            --forbid-path mydocs/manual/object_visual_regression.md \
+            --forbid-path mydocs/manual/roundtrip_fidelity_harness.md \
+            --forbid-path mydocs/manual/svg_regression_diff.md \
+            --forbid-path mydocs/manual/visual_clipping_detector.md \
+            --forbid-path mydocs/manual/hangul_pdf_baseline.md \
+            --forbid-path mydocs/manual/hangul_page_oracle.md \
+            --forbid-path mydocs/manual/verify_pi_page_vs_hangul.md
