@@ -7,3 +7,6 @@
 
 - [v1 개발 로드맵 백업](dev_roadmap_v1_backup.md): 2026-02-10 기준. 현재 계획은
   [개발 로드맵](../dev_roadmap.md)을 따른다.
+- [all-in-one-parser 시각 정합화 사전 전략](all_in_one_parser_fidelity_strategy.md): 이슈 채번 전 작성된
+  전략 스냅샷이다.
+- [문단 부호 표시 구현 계획](return_cat.md): 당시 구현 상태와 계획을 기록한 보존본이다.

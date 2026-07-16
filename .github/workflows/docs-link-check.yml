@@ -75,4 +75,27 @@ jobs:
             --forbid-path mydocs/tech/task1637_pagination_hidefirstemptyline.md \
             --forbid-path mydocs/tech/task_m100_1860_split_budget.md \
             --forbid-path mydocs/tech/task_m100_1904_baseline_manifest.md \
-            --forbid-path mydocs/tech/task_m100_2125_font_ownership.md
+            --forbid-path mydocs/tech/task_m100_2125_font_ownership.md \
+            --forbid-path mydocs/tech/all_in_one_parser_fidelity_strategy.md \
+            --forbid-path mydocs/tech/between_notes_multiline_1238.md \
+            --forbid-path mydocs/tech/document_ir_audit_1414.md \
+            --forbid-path mydocs/tech/document_ir_parser_relationship_analysis.md \
+            --forbid-path mydocs/tech/document_ir_wrap_zone_standard_review.md \
+            --forbid-path mydocs/tech/endnote_inline_eq_line_1239.md \
+            --forbid-path mydocs/tech/endnote_line_spacing_1236.md \
+            --forbid-path mydocs/tech/endnote_vpos_anchor_1246.md \
+            --forbid-path mydocs/tech/floating_object_family_rca.md \
+            --forbid-path mydocs/tech/font_fidelity_measurement_1224.md \
+            --forbid-path mydocs/tech/hancom_picture_tac_toggle.md \
+            --forbid-path mydocs/tech/hancom_picture_tac_toggle_verification.md \
+            --forbid-path mydocs/tech/hwp5_wrap_precomputed_analysis.md \
+            --forbid-path mydocs/tech/hwp_ole_chart_visual_diff_against_hancom_pdf_1251.md \
+            --forbid-path mydocs/tech/hwpx_page_collapse_cluster.md \
+            --forbid-path mydocs/tech/line_seg_vpos_analysis.md \
+            --forbid-path mydocs/tech/multi_layer_rendering_strategy.md \
+            --forbid-path mydocs/tech/pdf_font_numbering_nondeterminism.md \
+            --forbid-path mydocs/tech/render_minus1_page_gap.md \
+            --forbid-path mydocs/tech/return_cat.md \
+            --forbid-path mydocs/tech/text_align_2_svg_pdf_compare.md \
+            --forbid-path mydocs/tech/topandbottom_table_inline_picture_layout.md \
+            --forbid-path mydocs/tech/trailing_model_render_vs_pagination_1248.md

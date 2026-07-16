@@ -1,6 +1,6 @@
 # 한컴 picture "글자처럼 취급" 토글 — 가설 검증 protocol
 
-대상 task: [Task #1151 v2](../plans/archives/task_m100_1151_v2.md) · 1차 분석: [hancom_picture_tac_toggle.md](hancom_picture_tac_toggle.md) · 1차 산출물: `samples/pic-in-table-with-toggle.hwp`
+대상 task: [Task #1151 v2](../../../plans/archives/task_m100_1151_v2.md) · 1차 분석: [hancom_picture_tac_toggle.md](hancom_picture_tac_toggle.md) · 1차 산출물: `samples/pic-in-table-with-toggle.hwp`
 
 ## 1. 목적
 

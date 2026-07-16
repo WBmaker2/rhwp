@@ -11,5 +11,6 @@
 - [micro-grid 셀 여백의 HWPX/HWP5 왕복 불일치](microgrid_cell_margin_roundtrip.md)
 - [HWPX visibility와 표 flowWithText 직렬화 보존](hwpx_visibility_and_flow_with_text_serialization.md)
 - [deferred RowBreak 표의 분할 예산](deferred_rowbreak_table_split_budget.md)
+- [PDF 폰트 리소스 채번 비결정](pdf_font_numbering_nondeterminism.md)
 
 미확정 가설, 잔여 유형 분류, 당시 기준선은 `mydocs/tech/investigations/`에 보존한다.
