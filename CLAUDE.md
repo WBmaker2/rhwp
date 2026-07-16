@@ -2,6 +2,9 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+> 작업 절차의 우선순위는 저장소 루트 `AGENTS.md`, [문서 지도](mydocs/README.md), 그리고 작업별
+> manual/tech 문서다. 이 파일의 과거 작업 예시나 도구 설명이 현재 절차와 다르면 위 문서를 따른다.
+
 ## 프로젝트 개요
 
 **목표**: Rust 언어로 HWP 파일 뷰어/에디터 개발
@@ -57,6 +60,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ### 필수 참조 문서
 
+- `mydocs/README.md` — 문서 진입점과 canonical manifest
+- `mydocs/manual/README.md` — 반복 작업·검증·운영 절차 지도
+- `mydocs/tech/README.md` — 기술 사실·설계·조사 문서 지도
 - `mydocs/manual/browser_extension_dev_guide.md` — 브라우저 확장 개발 가이드 (Safari/Chrome/Edge 보안, UX, 빌드 규칙)
 - `mydocs/tech/font_fallback_strategy.md` — 폰트 폴백 전략 (오픈소스 대체, 라이선스)
 - `mydocs/report/browser_extension_security_audit.md` — 보안 감사 보고서

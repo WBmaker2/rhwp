@@ -305,36 +305,6 @@ record 를 축별로 비교한다.
 
 ---
 
-## 4. HWP5 조사 프로브 (HWPX→HWP contract 분석용)
-
-일회성 조사·역공학 도구 묶음. 온보딩·활용법: [hwpx2hwp_probe_onboarding.md](hwpx2hwp_probe_onboarding.md)
-
-### `hwp5-inventory <파일.hwp> [--format jsonl|md] [--section N] [--out <path>]`
-HWP5 DocInfo/BodyText record inventory 생성.
-
-### `hwp5-inventory-diff <oracle.hwp> <generated.hwp> [옵션]`
-두 inventory 비교 + contract 후보 힌트/bundle 생성.
-옵션: `--align index|lcs` `--report diff|hints|bundles|table-fields|table-probe-plan`
-`--focus all|table|shape|ctrl|missing|docinfo` `--window N` `--format jsonl|md` `--out <path>`
-
-### 개별 프로브/트레이스 (한 줄 요약)
-- `hwp5-anchor-trace` — 앵커(배치 기준) 레코드 추적
-- `hwp5-ctrl-data-trace` — CTRL_DATA 레코드 추적
-- `hwp5-contract-probe` / `hwp5-contract-analyze` — 직렬화 contract 후보 탐침/분석
-- `hwp5-table-probe` — 표 레코드 구조 탐침
-- `hwp5-cell-header-probe` — 셀 헤더(ListHeader) 탐침
-- `hwp5-borderfill-diagonal-probe` — 테두리/대각선 속성 탐침
-- `hwp5-first-para-control-probe` — 첫 문단 컨트롤 탐침
-- `hwp5-mel-personnel-probe` — 특정 실문서(인사 양식) 케이스 탐침
-
-## 5. 내부 개발·회귀 도구 (일반 사용자 대상 아님)
-
-- `test-caption <파일.hwp>` — 캡션 라운드트립 검증
-- `test-field <파일.hwp>` — 필드 라운드트립 검증
-- `test-shape <입력.hwp> <출력.hwp>` — 도형 라운드트립 검증
-- `gen-table` — 표 테스트 HWP 생성
-- `gen-pua` — PUA 문자 테스트 HWP 생성
-
 ## 단위 환산
 - 1인치 = 7200 HWPUNIT = 25.4mm = 96px(DPI 96)
 - 1mm ≈ 283.46 HWPUNIT, 1px = 75 HWPUNIT

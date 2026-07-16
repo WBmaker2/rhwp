@@ -11,6 +11,7 @@
 | 외부 PR 검토, collaborator 처리, merge 후속 | [PR 리뷰·통합 워크플로우](pr_review_workflow.md) | [개발 환경 가이드](dev_environment_guide.md) |
 | 로컬 빌드, 테스트, WASM 검증 | [개발 환경 가이드](dev_environment_guide.md) | [CLI 명령어 매뉴얼](cli_commands.md) |
 | `rhwp` CLI 전체 옵션과 동작 | [CLI 명령어 매뉴얼](cli_commands.md) | [rhwp-cli Skill 사용 가이드](rhwp_cli_skill_guide.md), [dump 명령 가이드](dump_command.md), [PNG 내보내기 가이드](export_png_command.md) |
+| 로컬 OWPML XML 스키마 자산 | [OWPML XML 스키마 reference](owpml_schema_reference.md) | [한컴 공식 OWPML 모델 참조 가이드](../tech/hwpx_hancom_reference.md) |
 | PDF/SVG 기준 비교의 정책 | [시각 검증 거버넌스](visual_verification_governance.md) | [PDF/SVG visual sweep 가이드](visual_sweep_guide.md) |
 | 한컴 기준 PDF 산출을 위한 MCP 사용 | [HWP 2020 MCP 사용법](mcp_hwp2020Convert_usage.md) | [PR 리뷰·통합 워크플로우](pr_review_workflow.md)의 기준 PDF 절 |
 | 브라우저 확장 개발·배포 | [브라우저 확장 개발 가이드](browser_extension_dev_guide.md) | [Chrome/Edge 확장 빌드·배포](chrome_edge_extension_build_deploy.md) |
@@ -37,9 +38,19 @@
 기존 문서에 이 메타를 한꺼번에 붙이지 않는다. 클러스터별 현행성 감사에서 실제 내용과 참조 관계를
 확인한 뒤 추가한다.
 
+## CLI 문서 역할
+
+- [CLI 명령어 매뉴얼](cli_commands.md)은 명령·옵션의 canonical reference다. 옵션 추가·변경 시
+  `rhwp --help`와 함께 현행화한다.
+- [rhwp-cli Skill 사용 가이드](rhwp_cli_skill_guide.md)는 자연어 요청, Skill 호출, 대표 예제와
+  디버깅 순서를 설명한다. 전체 옵션을 다시 열거하지 않는다.
+- [dump](dump_command.md), [export-png](export_png_command.md), [ir-diff](ir_diff_command.md) 매뉴얼은
+  각 명령의 출력 형식·환경·트러블슈팅을 상세화한다.
+
 ## 링크와 이동 규칙
 
-파일 이동 전과 후에 다음 명령으로 `manual`·`tech` 내부의 상대 Markdown 링크를 점검한다.
+파일 이동 전과 후에 다음 명령으로 루트 안내 문서와 `mydocs/manual`·`mydocs/tech`의 상대 Markdown·이미지
+링크를 점검한다.
 
 ```bash
 python3 scripts/check_markdown_links.py
@@ -47,3 +58,4 @@ python3 scripts/check_markdown_links.py
 
 이 검사는 외부 URL과 같은 문서 안의 앵커를 검사하지 않는다. 저장소 내부 링크는 이동 PR에서 모두 새 경로로
 갱신하며, redirect stub은 GitHub 이슈·PR 같은 외부 이력에서 자주 참조되는 문서만 별도 allowlist로 유지한다.
+이동 뒤에는 `--forbid-path <이전-경로>`도 실행해 새 문서가 옛 경로를 계속 가리키지 않는지 확인한다.

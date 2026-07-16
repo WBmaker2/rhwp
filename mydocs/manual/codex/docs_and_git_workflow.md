@@ -1,5 +1,9 @@
 # Documentation And Git Workflow
 
+> 이 문서는 문서·Git 작업의 공통 절차를 다룬다. PR 검토·merge·후속 처리의 역할별 규칙은
+> [PR 리뷰·통합 워크플로우](../pr_review_workflow.md)를 우선한다. 현재 세션이나 종료된 작업의 상태는
+> 이 문서에 기록하지 않는다.
+
 ## Document Language
 
 모든 프로젝트 문서는 한국어로 작성한다.
@@ -51,7 +55,7 @@ mydocs/orders/YYYYMMDD.md
 2. 열린 PR 확인
 3. 이슈 assignee 지정
 4. 작업 브랜치 생성 또는 전환
-5. 오늘할일 문서 갱신
+5. 역할별 절차에 따라 오늘할일 또는 PR review 문서 갱신
 6. 계획서 작성
 7. 작업지시자 승인
 8. 구현과 테스트
@@ -117,26 +121,10 @@ PR 댓글 톤은 과장하지 않는다. "정말 감사합니다", "정성스러
 - 이슈 close 전에는 정정 commit이 `devel` 또는 대상 브랜치에 실제 포함되어 있는지 확인한다.
 - 사용자가 만들었을 수 있는 변경은 임의로 되돌리지 않는다.
 
-## Devel Push Rule
+## Branch And PR Rule
 
-`local/devel`은 원격 push 대상이 아니다. 작업 완료 후 원격 `devel`에 반영할 때는 다음 순서를 지킨다.
-
-1. `local/devel`을 로컬 `devel`에 merge한다.
-2. 로컬 `devel`에서 compile/test/wasm build 등 필요한 검증을 통과시킨다.
-3. 검증 통과 후 `git push origin devel`을 실행한다.
-
-금지:
-
-```bash
-git push origin local/devel:devel
-```
-
-## Current Branch Memory
-
-2026-05-22 현재 작업 브랜치는 `local/task_m100_1053` 이다.
-
-Task #1053은 미지원 파일(HWPML 2.1 등)에 대해 적절한 오류코드와 사용자용
-메시지를 반환하도록 포맷 감지/오류 경로를 정정하는 작업이다.
-계획서와 구현 계획서는 작성되었고, GitHub assignee는 이미 `edwardkim`으로
-지정되어 있었다. Stage 1 구현/검증/보고서 작성과 작업지시자 시각 판정까지
-완료했다. `origin/devel` push와 GitHub Issue #1053 close까지 완료했다.
+- 로컬 작업과 검증의 기준은 최신 `upstream/devel`이다.
+- 일반 변경은 작업 브랜치에서 검증한 뒤 `devel` 대상 PR로 통합한다. `upstream/devel`에 직접 push하지 않는다.
+- collaborator·maintainer가 원 PR에 보정하거나 merge 후 운영 기록을 반영하는 경우에도
+  [PR 리뷰·통합 워크플로우](../pr_review_workflow.md)의 역할별 경로를 따른다.
+- `local/*`은 로컬 작업 이름일 뿐 원격 `devel`을 갱신하는 명령의 근거가 아니다.
