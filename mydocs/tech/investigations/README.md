@@ -12,11 +12,13 @@
 
 ## 현재 이슈 묶음
 
+- [Issue #1472 HWP3 variant indent 조사](issue-1472/README.md)
 - [Issue #1584 이후 HWPX 잔여 IR 차이 조사](issue-1584/README.md)
 - [Issue #1658 페이지네이션 조사](issue-1658/README.md)
 - [Issue #1370 A3 발산 조사](issue-1370/README.md)
 - [Issue #1772 잔여 OVER 조사](issue-1772/README.md)
 - [Issue #1773 record-only 인코딩 조사](issue-1773/README.md)
 - [Issue #1883 코드 품질 재진단](issue-1883/README.md)
+- [Issue #1904 리팩터링 baseline 조사](issue-1904/README.md)
 - [Issue #2023 프론트엔드 조사](issue-2023/README.md)
 - [Issue #2124 프론트엔드 기준선 조사](issue-2124/README.md)

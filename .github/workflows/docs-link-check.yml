@@ -69,4 +69,8 @@ jobs:
             --forbid-path mydocs/tech/task_m100_1658_giantcell_residual.md \
             --forbid-path mydocs/tech/task_m100_1658_rca_rowsplit.md \
             --forbid-path mydocs/tech/task_m100_1658_reset_discriminator.md \
-            --forbid-path mydocs/tech/dev_roadmap_v1_backup.md
+            --forbid-path mydocs/tech/dev_roadmap_v1_backup.md \
+            --forbid-path mydocs/tech/task_m100_1472_rootcause.md \
+            --forbid-path mydocs/tech/task1637_pagination_hidefirstemptyline.md \
+            --forbid-path mydocs/tech/task_m100_1860_split_budget.md \
+            --forbid-path mydocs/tech/task_m100_1904_baseline_manifest.md

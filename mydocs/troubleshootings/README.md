@@ -9,5 +9,7 @@
 - [하단 앵커의 선언 높이와 실측 높이 불일치](bottom_anchor_declared_vs_rendered_height.md)
 - [HWPX 표 outMargin과 common.margin 동기화](hwpx_table_out_margin_common_margin_sync.md)
 - [micro-grid 셀 여백의 HWPX/HWP5 왕복 불일치](microgrid_cell_margin_roundtrip.md)
+- [HWPX visibility와 표 flowWithText 직렬화 보존](hwpx_visibility_and_flow_with_text_serialization.md)
+- [deferred RowBreak 표의 분할 예산](deferred_rowbreak_table_split_budget.md)
 
 미확정 가설, 잔여 유형 분류, 당시 기준선은 `mydocs/tech/investigations/`에 보존한다.
