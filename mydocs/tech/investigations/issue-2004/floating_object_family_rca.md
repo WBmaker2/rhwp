@@ -1,3 +1,10 @@
+---
+kind: investigation
+status: historical
+canonical: mydocs/tech/investigations/issue-2004/README.md
+last_verified: 2026-07-16
+---
+
 # 부동개체(자리차지) 계열 공통 근본원인 조사
 
 대상 잔여: **#2004**(셀-내 부동 이미지 스택 156714340), **#1921**(부동 표 밀도/2단 59043).

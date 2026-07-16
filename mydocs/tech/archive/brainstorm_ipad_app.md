@@ -1,3 +1,10 @@
+---
+kind: snapshot
+status: historical
+canonical: mydocs/tech/archive/README.md
+last_verified: 2026-07-16
+---
+
 # 브레인스토밍: iPad 네이티브 앱 "알한글"
 
 > 2026-04-09 사고 실험 결과 정리

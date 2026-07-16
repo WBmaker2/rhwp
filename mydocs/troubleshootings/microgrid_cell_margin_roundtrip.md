@@ -1,3 +1,10 @@
+---
+kind: reference
+status: historical
+canonical: mydocs/troubleshootings/README.md
+last_verified: 2026-07-16
+---
+
 # Issue #1785 조사 보고서 — cell.apply_inner_margin 파스 불일치의 근본 원인
 
 ## 요약

@@ -1,3 +1,10 @@
+---
+kind: investigation
+status: historical
+canonical: mydocs/tech/investigations/issue-1883/README.md
+last_verified: 2026-07-16
+---
+
 # Task #1883 1단계 — 현황 재진단 (마지막 리팩토링 이후, 거버넌스 2축 정량)
 
 - 이슈: #1883 (umbrella #1582) / 측정일: 2026-07-04 / 기준 커밋: devel `4edaa23d`

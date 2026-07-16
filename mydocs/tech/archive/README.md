@@ -1,3 +1,10 @@
+---
+kind: guide
+status: active
+canonical: mydocs/tech/archive/README.md
+last_verified: 2026-07-16
+---
+
 # Historical 기술 문서
 
 이 디렉터리는 현재 구현·계획의 권위 문서가 아닌 이전 roadmap, 대체된 설계, 당시 기준선의 보존본을 둔다.

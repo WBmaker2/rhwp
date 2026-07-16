@@ -1,3 +1,10 @@
+---
+kind: guide
+status: active
+canonical: mydocs/manual/verification/README.md
+last_verified: 2026-07-16
+---
+
 # 시각 검증 문서 지도
 
 `mydocs/manual/verification/`은 PDF, SVG, 페이지네이션, 개체 geometry의 시각 검증을 반복 수행하기 위한

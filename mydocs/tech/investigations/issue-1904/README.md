@@ -1,3 +1,10 @@
+---
+kind: guide
+status: active
+canonical: mydocs/tech/investigations/README.md
+last_verified: 2026-07-16
+---
+
 # Issue #1904 리팩터링 baseline 조사
 
 이 디렉터리는 종료된 #1904의 Phase 0 freeze에서 사용한 특정 commit·환경·오라클 기준선을 보관한다.

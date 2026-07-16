@@ -1,3 +1,10 @@
+---
+kind: investigation
+status: historical
+canonical: mydocs/tech/investigations/issue-1584/README.md
+last_verified: 2026-07-16
+---
+
 # HWPX 잔존 IR_DIFF 10건 분석 (fidelity10, #1584 이후)
 
 - 일자: 2026-06-27

@@ -1,3 +1,10 @@
+---
+kind: investigation
+status: historical
+canonical: mydocs/tech/investigations/issue-1472/README.md
+last_verified: 2026-07-16
+---
+
 # 기술 분석 — #1472 ParaShape indent 2배 어긋남 근본 원인
 
 **이슈**: upstream #1472 / 브랜치 `local/task1472` / 2026-06-25

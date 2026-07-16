@@ -1,3 +1,10 @@
+---
+kind: canonical
+status: active
+canonical: mydocs/tech/document_ir_lineseg_standard.md
+last_verified: 2026-07-16
+---
+
 # Document IR — LineSeg 필드 표준
 
 ## 본 문서의 본질

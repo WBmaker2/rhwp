@@ -1,3 +1,10 @@
+---
+kind: canonical
+status: active
+canonical: mydocs/manual/codex/docs_and_git_workflow.md
+last_verified: 2026-07-16
+---
+
 # Documentation And Git Workflow
 
 > 이 문서는 문서·Git 작업의 공통 절차를 다룬다. PR 검토·merge·후속 처리의 역할별 규칙은

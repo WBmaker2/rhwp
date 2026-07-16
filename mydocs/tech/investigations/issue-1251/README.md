@@ -1,3 +1,10 @@
+---
+kind: guide
+status: active
+canonical: mydocs/tech/investigations/README.md
+last_verified: 2026-07-16
+---
+
 # Issue #1251 OLE chart 시각 차이 조사
 
 OLE chart renderer의 한컴 PDF 대비 잔여 시각 차이를 기록한다. renderer 선택의 장기 결정은

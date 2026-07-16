@@ -1,3 +1,10 @@
+---
+kind: guide
+status: active
+canonical: mydocs/README.md
+last_verified: 2026-07-16
+---
+
 # rhwp 문서 지도와 canonical manifest
 
 이 문서는 저장소 문서의 진입점과 권위 관계를 기록한다. 상세 절차는
@@ -14,8 +21,12 @@
 - `kind`: 문서의 역할. `canonical`, `guide`, `reference`, `investigation`, `decision`, `snapshot`, `memory` 중 하나다.
 - `status`: 생명주기. `active`, `historical`, `superseded` 중 하나다.
 - `canonical`: 상세 문서가 따르는 권위 문서의 저장소 상대 경로다.
-- `last_verified`: 이 manifest의 관계와 진입점이 마지막으로 확인된 날짜다. 문서 안의 모든 기술 사실을
-  재검증했다는 뜻은 아니다.
+- `last_verified`: 문서의 역할, canonical 관계, 현재 진입점과 해당 감사에서 명시한 사실을 마지막으로
+  확인한 날짜다. historical snapshot에서는 당시 사실을 현재 구현으로 다시 보증한다는 뜻이 아니다.
+
+front matter는 이번 감사에서 직접 역할을 확인한 canonical manifest 문서, CLI·시각 검증 클러스터,
+`investigations`·`archive`·`troubleshootings`, redirect에 필수다. 아직 독립 감사를 하지 않은 legacy 상세
+문서에는 날짜를 일괄 주입하지 않는다.
 
 ## Canonical manifest
 
@@ -54,7 +65,10 @@
 
 ```bash
 python3 scripts/check_markdown_links.py
-python3 scripts/check_markdown_links.py --forbid-path mydocs/manual/<이전-경로>.md
+python3 scripts/check_document_metadata.py
+python3 scripts/check_markdown_links.py \
+  --forbid-scan-path mydocs \
+  --forbid-path mydocs/manual/<이전-경로>.md
 ```
 
 이슈별 조사 문서는 `tech/investigations/issue-####/`에 두며, 이슈별 기준선이나 진단이 장기 기술

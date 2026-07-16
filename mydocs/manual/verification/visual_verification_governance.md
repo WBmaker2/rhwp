@@ -1,3 +1,10 @@
+---
+kind: canonical
+status: active
+canonical: mydocs/manual/verification/visual_verification_governance.md
+last_verified: 2026-07-16
+---
+
 # PR 시각 검증 거버넌스 (OVL-step)
 
 > 근거: `mydocs/feedback/ovl-step.md` (2026-07-04 작업지시자 피드백).

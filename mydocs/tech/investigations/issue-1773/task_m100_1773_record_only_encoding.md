@@ -1,3 +1,10 @@
+---
+kind: investigation
+status: historical
+canonical: mydocs/tech/investigations/issue-1773/README.md
+last_verified: 2026-07-16
+---
+
 # #1773 원 인코딩 보존 설계 — 레코드 전용(무 컨트롤문자) 구역 컨트롤 왕복 계약
 
 ## ⚠ 재판별 (2026-07-03) — 관측 케이스의 실체는 HWP3

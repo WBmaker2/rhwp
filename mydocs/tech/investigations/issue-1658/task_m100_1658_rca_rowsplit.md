@@ -1,3 +1,10 @@
+---
+kind: investigation
+status: historical
+canonical: mydocs/tech/investigations/issue-1658/README.md
+last_verified: 2026-07-16
+---
+
 # RCA — #1658 법령 별표 표 행분할 over-pagination (낭비 페이지)
 
 - 일자: 2026-06-29 / 브랜치: local/task1658 / 도구: dump-pages, RHWP_TABLE_DRIFT

@@ -1,3 +1,10 @@
+---
+kind: guide
+status: active
+canonical: mydocs/tech/investigations/README.md
+last_verified: 2026-07-16
+---
+
 # Issue #1772 잔여 OVER 조사
 
 이 디렉터리는 #1772·#1785 수정 뒤에도 남은 OVER 유형의 당시 분류와 미조사 항목을 보관한다.

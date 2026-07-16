@@ -1,3 +1,10 @@
+---
+kind: guide
+status: active
+canonical: mydocs/manual/verification/visual_verification_governance.md
+last_verified: 2026-07-16
+---
+
 # 시각 검증 인프라 — 본문 클리핑 검출기 (`tools/detect_table_clipping.py`)
 
 - 도입: #1658 라운드1 / 목적: 페이지네이션 용량 정합 작업의 **클리핑 회귀**를 페이지수 게이트와

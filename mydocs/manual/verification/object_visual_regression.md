@@ -1,3 +1,10 @@
+---
+kind: guide
+status: active
+canonical: mydocs/manual/verification/visual_verification_governance.md
+last_verified: 2026-07-16
+---
+
 # 개체 단위 시각/geometry 회귀 하니스 (`object_visual_regression.py`)
 
 page/PI 레벨(`verify_pi_page_vs_hangul.py`)로는 잡히지 않는 **개체(중첩표·그림) 단위** 배치 차이를

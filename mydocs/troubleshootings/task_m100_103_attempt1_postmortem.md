@@ -1,3 +1,10 @@
+---
+kind: reference
+status: historical
+canonical: mydocs/troubleshootings/README.md
+last_verified: 2026-07-16
+---
+
 # Task #103 (#157) 1차 시도 폐기 — 포스트모템
 
 **시도 기간**: 2026-04-22 ~ 2026-04-23

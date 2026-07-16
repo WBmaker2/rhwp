@@ -1,3 +1,10 @@
+---
+kind: snapshot
+status: historical
+canonical: mydocs/tech/archive/README.md
+last_verified: 2026-07-16
+---
+
 # 타스크: 문단 부호 표시 기능 구현
 
 ## Context

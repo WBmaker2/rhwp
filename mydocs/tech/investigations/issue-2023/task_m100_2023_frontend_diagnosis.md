@@ -1,3 +1,10 @@
+---
+kind: investigation
+status: historical
+canonical: mydocs/tech/investigations/issue-2023/README.md
+last_verified: 2026-07-16
+---
+
 # Task M100 #2023 2단계 — 프론트 현황 재진단 (SOLID + 복잡도)
 
 - 이슈: #2023 (umbrella: #2022)

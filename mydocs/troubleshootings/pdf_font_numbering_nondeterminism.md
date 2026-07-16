@@ -1,3 +1,10 @@
+---
+kind: reference
+status: active
+canonical: mydocs/troubleshootings/README.md
+last_verified: 2026-07-16
+---
+
 # PDF 폰트 리소스 채번 비결정 (#2269) — 원인·해법
 
 ## 증상

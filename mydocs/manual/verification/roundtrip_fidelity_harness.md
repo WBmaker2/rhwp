@@ -1,3 +1,10 @@
+---
+kind: guide
+status: active
+canonical: mydocs/manual/verification/visual_verification_governance.md
+last_verified: 2026-07-16
+---
+
 # HWPX→HWP roundtrip 페이지네이션 fidelity 하니스
 
 `tools/roundtrip_fidelity_harness.py` + `tools/roundtrip_fidelity_diff.py`.

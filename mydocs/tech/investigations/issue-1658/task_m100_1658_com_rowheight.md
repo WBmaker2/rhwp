@@ -1,3 +1,10 @@
+---
+kind: investigation
+status: historical
+canonical: mydocs/tech/investigations/issue-1658/README.md
+last_verified: 2026-07-16
+---
+
 # 해결 — #1658 한글 행높이 COM 추출 (블로커 해소) + 3 PDF 질문 정리
 
 - 일자: 2026-06-30 / 대상: 한글 표 행높이 레퍼런스 차단 해소.

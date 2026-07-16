@@ -1,3 +1,10 @@
+---
+kind: investigation
+status: historical
+canonical: mydocs/tech/investigations/issue-257/README.md
+last_verified: 2026-07-16
+---
+
 # text-align-2.hwp SVG ↔ 한컴 PDF 비교 보고
 
 - **작성일**: 2026-04-23

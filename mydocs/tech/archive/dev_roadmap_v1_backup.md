@@ -1,3 +1,10 @@
+---
+kind: snapshot
+status: historical
+canonical: mydocs/tech/dev_roadmap.md
+last_verified: 2026-07-16
+---
+
 # rhwp 개발 로드맵
 
 ## 현황 요약 (2026년 2월 10일 기준)

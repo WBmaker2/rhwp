@@ -1,3 +1,10 @@
+---
+kind: guide
+status: active
+canonical: mydocs/tech/investigations/README.md
+last_verified: 2026-07-16
+---
+
 # Issue #2124 프론트엔드 기준선 조사
 
 이 디렉터리는 특정 기준 커밋과 실행 환경에서 기록한 프론트엔드 baseline, inventory, snapshot,

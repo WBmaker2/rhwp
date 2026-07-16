@@ -1,3 +1,10 @@
+---
+kind: investigation
+status: historical
+canonical: mydocs/tech/investigations/issue-1904/README.md
+last_verified: 2026-07-16
+---
+
 # 1차 리팩토링 Baseline Manifest (Phase 0 freeze) — #1904
 
 - 작성일: 2026-07-04 / **기준 commit: `00014ecf` (devel)**

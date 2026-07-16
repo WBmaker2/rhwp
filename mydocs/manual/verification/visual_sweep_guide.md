@@ -1,3 +1,10 @@
+---
+kind: guide
+status: active
+canonical: mydocs/manual/verification/visual_verification_governance.md
+last_verified: 2026-07-16
+---
+
 # PDF/SVG visual sweep 가이드
 
 ## 목적

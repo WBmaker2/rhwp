@@ -1,3 +1,10 @@
+---
+kind: investigation
+status: historical
+canonical: mydocs/tech/investigations/issue-511/README.md
+last_verified: 2026-07-16
+---
+
 # HWP5/HWPX wrap_precomputed 미적용 결함 분석
 
 ## 발견 일시

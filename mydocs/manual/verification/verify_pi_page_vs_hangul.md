@@ -1,3 +1,10 @@
+---
+kind: guide
+status: active
+canonical: mydocs/manual/verification/visual_verification_governance.md
+last_verified: 2026-07-16
+---
+
 # 페이지·PI 매칭 오라클 가이드 (`verify_pi_page_vs_hangul.py`)
 
 rhwp 렌더링 레이아웃(페이지네이션)의 문단(PI)별 배치 쪽을 한글(OLE 자동화) 캐럿 쪽과

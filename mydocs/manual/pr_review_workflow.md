@@ -1,3 +1,10 @@
+---
+kind: canonical
+status: active
+canonical: mydocs/manual/pr_review_workflow.md
+last_verified: 2026-07-16
+---
+
 # PR 리뷰 · 통합 워크플로우 매뉴얼
 
 **작성일**: 2026-04-23

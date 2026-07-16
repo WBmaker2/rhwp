@@ -1,3 +1,10 @@
+---
+kind: investigation
+status: historical
+canonical: mydocs/tech/investigations/issue-511/README.md
+last_verified: 2026-07-16
+---
+
 # Document IR ↔ 각 파서 관계 분석 보고서
 
 ## 분석 일시

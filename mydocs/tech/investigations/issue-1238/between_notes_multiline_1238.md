@@ -1,3 +1,10 @@
+---
+kind: investigation
+status: historical
+canonical: mydocs/tech/investigations/issue-1238/README.md
+last_verified: 2026-07-16
+---
+
 # 조사 보고서 — Task #1238 Stage 1: 미주 between-notes margin 누락 원인
 
 작성일: 2026-06-02

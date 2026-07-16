@@ -1,3 +1,10 @@
+---
+kind: reference
+status: active
+canonical: mydocs/tech/hwpx_hancom_reference.md
+last_verified: 2026-07-16
+---
+
 # OWPML XML 스키마 reference 자산
 
 `OWPML SCHEMA/`는 HWPX/OWPML 요소와 속성을 확인할 때 사용하는 로컬 XML Schema와 검증

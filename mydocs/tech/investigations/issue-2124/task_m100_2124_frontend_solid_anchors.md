@@ -1,3 +1,10 @@
+---
+kind: investigation
+status: historical
+canonical: mydocs/tech/investigations/issue-2124/README.md
+last_verified: 2026-07-16
+---
+
 # Task M100 #2124 - frontend SOLID evidence anchors
 
 - 이슈: #2124

@@ -1,3 +1,10 @@
+---
+kind: reference
+status: historical
+canonical: mydocs/troubleshootings/README.md
+last_verified: 2026-07-16
+---
+
 # 표 셀 렌더링의 암묵지 — 한컴 `letter_spacing` 보정, narrow glyph 역진, 자연폭 가드
 
 ## 문서 성격

@@ -1,3 +1,10 @@
+---
+kind: reference
+status: historical
+canonical: mydocs/troubleshootings/README.md
+last_verified: 2026-07-16
+---
+
 # #1858 발현 2 조사 — vert=쪽 valign=Bottom 하단 블록 세로 오프셋 (36389312)
 
 > **후속 결과 (2026-07-04)**: 아래 권고대로 하단앵커 회귀코퍼스(opengov 결재문서 18건 +

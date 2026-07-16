@@ -1,3 +1,10 @@
+---
+kind: investigation
+status: historical
+canonical: mydocs/tech/investigations/issue-1658/README.md
+last_verified: 2026-07-16
+---
+
 # 조사 — #1658 구조적 reset 판별자 (음성 결과 + 진짜 원인 재규명)
 
 - 일자: 2026-06-29 / 브랜치: local/task1658 / 목적: 별표4 잔여 Δ+3 의 3~4유닛 낭비를

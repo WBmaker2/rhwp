@@ -1,3 +1,10 @@
+---
+kind: investigation
+status: historical
+canonical: mydocs/tech/investigations/issue-1251/README.md
+last_verified: 2026-07-16
+---
+
 # Task M100-1251 정답 PDF 대비 시각 차이 분석
 
 - **이슈**: [#1251](https://github.com/edwardkim/rhwp/issues/1251)

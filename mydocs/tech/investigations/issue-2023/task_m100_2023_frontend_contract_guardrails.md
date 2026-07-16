@@ -1,3 +1,10 @@
+---
+kind: investigation
+status: historical
+canonical: mydocs/tech/investigations/issue-2023/README.md
+last_verified: 2026-07-16
+---
+
 # Task M100 #2023 — 프론트 공개 계약·리팩터링 금지 목록 인벤토리
 
 - 이슈: #2023 (umbrella: #2022)

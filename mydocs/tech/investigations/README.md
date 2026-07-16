@@ -1,3 +1,10 @@
+---
+kind: guide
+status: active
+canonical: mydocs/tech/investigations/README.md
+last_verified: 2026-07-16
+---
+
 # 이슈별 기술 조사
 
 이 디렉터리는 특정 GitHub 이슈에서 나온 가설, 진단, 기준선, 관찰, 실험 결과를 보존한다.

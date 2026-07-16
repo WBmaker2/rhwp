@@ -1,3 +1,10 @@
+---
+kind: guide
+status: active
+canonical: mydocs/tech/investigations/README.md
+last_verified: 2026-07-16
+---
+
 # Issue #1658 페이지네이션 조사
 
 이 디렉터리는 법령 별표 표의 over-pagination, 클리핑, 거대 셀 분할을 분석할 때 남긴 가설·계측·실험

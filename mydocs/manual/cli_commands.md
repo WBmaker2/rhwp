@@ -1,3 +1,10 @@
+---
+kind: canonical
+status: active
+canonical: mydocs/manual/cli_commands.md
+last_verified: 2026-07-16
+---
+
 # rhwp CLI 명령어 매뉴얼
 
 `rhwp` 바이너리의 전체 명령을 정리한다. 권위 출처는 `src/main.rs` 의 명령 디스패치이며,
@@ -167,6 +174,12 @@ HWP 문서를 HWPX(ZIP+XML)로 변환 저장. `convert`(배포용 해제)와 별
 - `--verify-pages` — 변환 전/후 렌더 페이지 수를 비교한다.
   불일치하면 산출물은 남기고 종료 코드 4로 실패한다.
 - 더 넓은 시각 정합은 `tools/roundtrip_fidelity_harness.py` 또는 `render-diff`로 별도 대조한다.
+
+### `export-hml <입력.hml> -o <출력.hml>`
+HML 원본 문서를 의미 보존 HWPML 2.91 XML로 저장한다.
+- `-o`, `--output <파일>`은 필수다.
+- 입력과 출력이 같은 경로이면 원본 보호를 위해 거부한다.
+- 이 명령은 HWP/HWPX 변환 명령이 아니며 입력은 `.hml`만 받는다.
 
 ### `ir-diff <파일A.hwpx> <파일B.hwp> [-s <구역>] [-p <문단>] [--summary] [--max-lines N]`
 두 파일의 IR 비교(HWPX↔HWP 불일치 검출). 상세: [ir_diff_command.md](ir_diff_command.md)

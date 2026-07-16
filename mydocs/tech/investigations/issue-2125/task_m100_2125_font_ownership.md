@@ -1,3 +1,10 @@
+---
+kind: investigation
+status: historical
+canonical: mydocs/tech/investigations/issue-2125/README.md
+last_verified: 2026-07-16
+---
+
 # Task M100 #2125 — frontend font canonical ownership
 
 - 이슈: #2125

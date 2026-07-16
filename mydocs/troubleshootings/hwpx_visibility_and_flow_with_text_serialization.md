@@ -1,3 +1,10 @@
+---
+kind: reference
+status: historical
+canonical: mydocs/troubleshootings/README.md
+last_verified: 2026-07-16
+---
+
 # #1637 근본원인 조사 — HWPX roundtrip IR-invisible 페이지네이션 변동
 
 - 일자: 2026-06-29 / 브랜치: local/task1637 (devel d3627f55)

@@ -1,3 +1,10 @@
+---
+kind: reference
+status: historical
+canonical: mydocs/troubleshootings/README.md
+last_verified: 2026-07-16
+---
+
 # 트러블슈팅: HWP 확장 제어 문자 바이트 구조
 
 ## 문제 상황

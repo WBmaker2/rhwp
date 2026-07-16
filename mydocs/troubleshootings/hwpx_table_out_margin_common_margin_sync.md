@@ -1,3 +1,10 @@
+---
+kind: reference
+status: historical
+canonical: mydocs/troubleshootings/README.md
+last_verified: 2026-07-16
+---
+
 # Issue #1772 조사 보고서 — HWPX/HWP5 파스 경로별 saved-vpos 신뢰 차이의 근본 원인
 
 ## 요약

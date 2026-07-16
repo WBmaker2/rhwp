@@ -1,3 +1,10 @@
+---
+kind: canonical
+status: active
+canonical: mydocs/tech/hwp_spec_errata.md
+last_verified: 2026-07-16
+---
+
 # HWP 5.0 스펙 문서 정오표
 
 프로젝트가 보존한 [한글 문서 파일 형식 5.0 개정 1.3](한글문서파일형식_5.0_revision1.3.md)와 실제 바이너리 구현 간 불일치 사항을 기록한다.

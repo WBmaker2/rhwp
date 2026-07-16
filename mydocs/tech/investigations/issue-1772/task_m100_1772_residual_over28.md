@@ -1,3 +1,10 @@
+---
+kind: investigation
+status: historical
+canonical: mydocs/tech/investigations/issue-1772/README.md
+last_verified: 2026-07-16
+---
+
 # Issue #1772 잔여 OVER 28건 조사 보고서 — 유형 분류 + 본문 줄 군집 근본 원인
 
 ## 요약

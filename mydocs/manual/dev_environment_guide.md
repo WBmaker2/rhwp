@@ -1,3 +1,10 @@
+---
+kind: guide
+status: active
+canonical: mydocs/manual/dev_environment_guide.md
+last_verified: 2026-07-16
+---
+
 # 개발 환경 가이드: 사무실 PC vs 홈 PC
 
 ## 1. 환경 비교

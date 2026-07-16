@@ -1,3 +1,10 @@
+---
+kind: reference
+status: historical
+canonical: mydocs/troubleshootings/README.md
+last_verified: 2026-07-16
+---
+
 # `samples/2010-01-06.hwp` 페이지 1 각주 1) 줄 간격 좁음
 
 | 항목 | 내용 |

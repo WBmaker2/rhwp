@@ -1,3 +1,10 @@
+---
+kind: investigation
+status: historical
+canonical: mydocs/tech/investigations/issue-1239/README.md
+last_verified: 2026-07-16
+---
+
 # 조사 보고서 — Task #1239 Stage 1: 미주 인라인 수식 줄 병합 원인
 
 작성일: 2026-06-02

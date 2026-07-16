@@ -1,3 +1,10 @@
+---
+kind: snapshot
+status: historical
+canonical: mydocs/tech/archive/README.md
+last_verified: 2026-07-16
+---
+
 # all-in-one-parser 샘플 1:1 시각 정합화 전략
 
 작성일: 2026-05-01

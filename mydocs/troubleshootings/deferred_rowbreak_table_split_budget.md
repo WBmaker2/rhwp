@@ -1,3 +1,10 @@
+---
+kind: reference
+status: historical
+canonical: mydocs/troubleshootings/README.md
+last_verified: 2026-07-16
+---
+
 # Task #1860 — 분할 예산 계측·근본원인 (Stage 1)
 
 **대상**: #1860 RowBreak valign=Center 라벨 세로 위치 −23/+42pt

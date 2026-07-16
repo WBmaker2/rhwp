@@ -1,3 +1,10 @@
+---
+kind: investigation
+status: historical
+canonical: mydocs/tech/investigations/issue-1236/README.md
+last_verified: 2026-07-16
+---
+
 # 조사 보고서 — Task #1236 Stage 1: 미주 줄간격 압축 원인
 
 작성일: 2026-06-02

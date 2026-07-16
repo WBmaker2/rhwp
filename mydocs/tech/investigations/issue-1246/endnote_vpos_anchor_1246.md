@@ -1,3 +1,10 @@
+---
+kind: investigation
+status: historical
+canonical: mydocs/tech/investigations/issue-1246/README.md
+last_verified: 2026-07-16
+---
+
 # 조사 보고서 — Task #1246 Stage 1: render/pagination 미주 vpos 좌표 정합
 
 작성일: 2026-06-02

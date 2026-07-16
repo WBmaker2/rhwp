@@ -1,3 +1,10 @@
+---
+kind: investigation
+status: historical
+canonical: mydocs/tech/investigations/issue-1248/README.md
+last_verified: 2026-07-16
+---
+
 # 조사: render/pagination trailing(line_spacing) 모델 — 현황과 통일 가능성
 
 - **이슈**: edwardkim/rhwp#1248

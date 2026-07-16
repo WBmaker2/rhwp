@@ -1,3 +1,10 @@
+---
+kind: investigation
+status: historical
+canonical: mydocs/tech/investigations/issue-1589/README.md
+last_verified: 2026-07-16
+---
+
 # HWPX 페이지 붕괴 군집 조사 (#1589)
 
 - 일자: 2026-06-27

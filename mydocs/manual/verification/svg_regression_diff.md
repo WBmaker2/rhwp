@@ -1,3 +1,10 @@
+---
+kind: guide
+status: active
+canonical: mydocs/manual/verification/visual_verification_governance.md
+last_verified: 2026-07-16
+---
+
 # SVG 회귀 검증 도구 — `scripts/svg_regression_diff.sh`
 
 Layout 본질 변경 (#496 / #500 등) 시 광범위 SVG 회귀 검증을 자동화한다. Phase 1 (#517) 산출물.
@@ -14,11 +21,11 @@ scripts/svg_regression_diff.sh build <BEFORE_REF> <AFTER_REF> [SAMPLES...]
 
 예:
 ```bash
-# devel 과 local/task500 비교 (모든 기본 샘플)
-scripts/svg_regression_diff.sh build devel local/task500
+# 기준 ref와 검토 ref 비교 (모든 기본 샘플)
+scripts/svg_regression_diff.sh build upstream/devel HEAD
 
 # 특정 샘플만 비교
-scripts/svg_regression_diff.sh build devel HEAD exam_science exam_kor
+scripts/svg_regression_diff.sh build upstream/devel HEAD exam_science exam_kor
 ```
 
 작업 트리 보존: 시작 시 자동 stash, 종료 시 pop.

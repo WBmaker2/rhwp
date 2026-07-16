@@ -1,3 +1,10 @@
+---
+kind: investigation
+status: historical
+canonical: mydocs/tech/investigations/issue-1224/README.md
+last_verified: 2026-07-16
+---
+
 # 폰트 충실도 실측 보고서 — Task #1224 Stage 1
 
 작성일: 2026-06-01

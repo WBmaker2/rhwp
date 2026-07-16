@@ -1,3 +1,10 @@
+---
+kind: investigation
+status: historical
+canonical: mydocs/tech/investigations/issue-1658/README.md
+last_verified: 2026-07-16
+---
+
 # 설계 문서 — #1658 페이지네이션 엔진 개선 (다세션 연구·설계)
 
 - 마일스톤: M100 / 브랜치: local/task1658 / 착수: 2026-06-29

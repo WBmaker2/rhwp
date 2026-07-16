@@ -10,6 +10,7 @@ on:
       - 'CONTRIBUTING.md'
       - 'mydocs/**'
       - 'scripts/check_markdown_links.py'
+      - 'scripts/check_document_metadata.py'
       - '.github/workflows/docs-link-check.yml'
   pull_request:
     branches: [main, devel]
@@ -20,6 +21,7 @@ on:
       - 'CONTRIBUTING.md'
       - 'mydocs/**'
       - 'scripts/check_markdown_links.py'
+      - 'scripts/check_document_metadata.py'
       - '.github/workflows/docs-link-check.yml'
   workflow_dispatch:
 
@@ -34,6 +36,7 @@ jobs:
       - name: Check internal Markdown links
         run: |
           python3 scripts/check_markdown_links.py
+          python3 scripts/check_document_metadata.py
           python3 scripts/check_markdown_links.py \
             --forbid-scan-path mydocs \
             --forbid-path mydocs/manual/visual_verification_governance.md \

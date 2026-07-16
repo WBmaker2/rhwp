@@ -1,3 +1,10 @@
+---
+kind: investigation
+status: historical
+canonical: mydocs/tech/investigations/issue-1414/README.md
+last_verified: 2026-07-16
+---
+
 # Document IR 구조 감사 — Task #1414 Stage 1 필드 인벤토리
 
 - 이슈: https://github.com/edwardkim/rhwp/issues/1414

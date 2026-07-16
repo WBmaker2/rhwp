@@ -1,3 +1,10 @@
+---
+kind: investigation
+status: historical
+canonical: mydocs/tech/investigations/issue-1600/README.md
+last_verified: 2026-07-16
+---
+
 # 렌더링 −1쪽 갭 근본원인 조사 (Task #1600 Stage 1)
 
 ## 결론 (확정)

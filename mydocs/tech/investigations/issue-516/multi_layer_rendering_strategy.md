@@ -1,3 +1,10 @@
+---
+kind: investigation
+status: historical
+canonical: mydocs/tech/investigations/issue-516/README.md
+last_verified: 2026-07-16
+---
+
 # 다층 레이어 렌더링 아키텍처 — 기술 조사 보고서
 
 **작성**: 2026-05-02 (Task #516 Stage 5+ 영역 확장 검토)

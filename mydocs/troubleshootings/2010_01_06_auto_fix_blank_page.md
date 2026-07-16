@@ -1,3 +1,10 @@
+---
+kind: reference
+status: historical
+canonical: mydocs/troubleshootings/README.md
+last_verified: 2026-07-16
+---
+
 # `samples/2010-01-06.hwp` 자동 보정(reflow) 후 빈 페이지 4 삽입
 
 | 항목 | 내용 |

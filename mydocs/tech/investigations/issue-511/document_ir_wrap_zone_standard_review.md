@@ -1,3 +1,10 @@
+---
+kind: investigation
+status: historical
+canonical: mydocs/tech/investigations/issue-511/README.md
+last_verified: 2026-07-16
+---
+
 # Document IR wrap zone 표현 표준 부재 — 본질 재검토
 
 ## 발견 일시

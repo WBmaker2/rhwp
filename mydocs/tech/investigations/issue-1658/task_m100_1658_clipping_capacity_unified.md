@@ -1,3 +1,10 @@
+---
+kind: investigation
+status: historical
+canonical: mydocs/tech/investigations/issue-1658/README.md
+last_verified: 2026-07-16
+---
+
 # 통합 진단 — #1658 별표4 클리핑 ≡ capacity 결손 (cut↔render↔한글 줄높이 fidelity)
 
 - 일자: 2026-06-30 / 대상: 산업통상부 별표4 / 도구: detect_table_clipping, export-svg SVG 분석, RHWP_TABLE_DRIFT.

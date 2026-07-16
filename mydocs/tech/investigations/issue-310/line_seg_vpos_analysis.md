@@ -1,3 +1,10 @@
+---
+kind: investigation
+status: historical
+canonical: mydocs/tech/investigations/issue-310/README.md
+last_verified: 2026-07-16
+---
+
 # LINE_SEG vpos 패턴 분석 — 4개 샘플 비교
 
 상위: Task #310 (Epic #309 1단계 산출)

@@ -1,3 +1,10 @@
+---
+kind: guide
+status: active
+canonical: mydocs/tech/investigations/README.md
+last_verified: 2026-07-16
+---
+
 # Issue #1472 HWP3 variant indent 조사
 
 이 디렉터리는 HWP3 variant indent 절반화가 IR 정확성과 한컴 PDF 페이지네이션 parity에서 충돌한

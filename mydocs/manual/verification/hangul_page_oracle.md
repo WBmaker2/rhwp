@@ -1,3 +1,10 @@
+---
+kind: reference
+status: active
+canonical: mydocs/manual/verification/visual_verification_governance.md
+last_verified: 2026-07-16
+---
+
 # 한글 페이지 충실도 오라클 가이드 (Task #1560)
 
 `tools/verify_hangul_pages.py` — 원본 ↔ 저장본(rt)을 한컴오피스로 열어 **PageCount** 를

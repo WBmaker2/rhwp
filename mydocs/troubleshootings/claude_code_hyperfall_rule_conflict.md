@@ -1,3 +1,10 @@
+---
+kind: reference
+status: historical
+canonical: mydocs/troubleshootings/README.md
+last_verified: 2026-07-16
+---
+
 # 트러블슈팅: 클로드 코드 기본 동작과 하이퍼-워터폴 규칙 충돌
 
 > **작성일**: 2026-04-10

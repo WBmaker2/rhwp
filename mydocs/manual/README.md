@@ -1,3 +1,10 @@
+---
+kind: guide
+status: active
+canonical: mydocs/manual/README.md
+last_verified: 2026-07-16
+---
+
 # manual 문서 지도
 
 `mydocs/manual/`은 rhwp를 **어떻게 수행하고 운영하는지**를 설명하는 문서 공간이다.

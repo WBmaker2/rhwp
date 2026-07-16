@@ -1,3 +1,10 @@
+---
+kind: investigation
+status: historical
+canonical: mydocs/tech/investigations/issue-1658/README.md
+last_verified: 2026-07-16
+---
+
 # 조사 — #1658 별표4 Δ+3 per-page 용량 정합 (clean lever 없음)
 
 - 일자: 2026-06-29 / 대상: 산업통상부 별표4(80×15 표, 한글 25 / rhwp 28쪽, Δ+3).

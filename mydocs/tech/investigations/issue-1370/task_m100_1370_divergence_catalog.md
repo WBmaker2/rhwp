@@ -1,3 +1,10 @@
+---
+kind: investigation
+status: historical
+canonical: mydocs/tech/investigations/issue-1370/README.md
+last_verified: 2026-07-16
+---
+
 # Task #1370 Stage 1 — A3 발산 카탈로그 (회귀 13건)
 
 > 검증 경로: `dump_page_items` / `build_page_render_tree` / `RHWP_EN_SSOT_DEBUG` (통합테스트 경로).
