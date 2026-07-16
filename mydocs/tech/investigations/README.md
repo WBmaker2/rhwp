@@ -22,3 +22,4 @@
 - [Issue #1904 리팩터링 baseline 조사](issue-1904/README.md)
 - [Issue #2023 프론트엔드 조사](issue-2023/README.md)
 - [Issue #2124 프론트엔드 기준선 조사](issue-2124/README.md)
+- [Issue #2125 font ownership 조사](issue-2125/README.md)

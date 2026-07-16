@@ -143,7 +143,7 @@ Render Diff의 `web/fonts/**`는 `assets/fonts/**`로 바꾼다. 역사 문서�
 | `mydocs/manual/publish_guide.md` | AMO source archive 입력을 `assets/fonts`로 변경 |
 | `mydocs/tech/font_fallback_strategy.md` | 현재 canonical 경로·36개 inventory로 factual section 현행화, fallback 정책 불변 |
 | `mydocs/tech/equation_font_selection.md` | Latin Modern Math source 경로를 canonical로 갱신 |
-| `mydocs/tech/task_m100_2125_font_ownership.md` | current manifest, #2190 provenance, target copy matrix 신설 |
+| `mydocs/tech/investigations/issue-2125/task_m100_2125_font_ownership.md` | current manifest, #2190 provenance, target copy matrix 신설 |
 
 다음 문서는 당시 경로와 작업 결과를 설명하는 역사 자료이므로 일괄 치환하지 않는다.
 
@@ -184,7 +184,7 @@ source archive를 재현하는 기록으로 보존한다.
 ### 5.1 작업
 
 1. base commit `e750e02f`의 `web/fonts` 36개 basename, bytes, SHA-256을 수집한다.
-2. `mydocs/tech/task_m100_2125_font_ownership.md`에 전체 manifest와 소비자 copy matrix를 기록한다.
+2. `mydocs/tech/investigations/issue-2125/task_m100_2125_font_ownership.md`에 전체 manifest와 소비자 copy matrix를 기록한다.
 3. #2124 snapshot과 비교해 #2190 한 파일 외 mismatch가 0임을 기록한다.
 4. source path, runtime URL, history-only reference를 분류한다.
 
@@ -203,7 +203,7 @@ git diff --check
 
 ### 5.3 산출물
 
-- `mydocs/tech/task_m100_2125_font_ownership.md`
+- `mydocs/tech/investigations/issue-2125/task_m100_2125_font_ownership.md`
 - `mydocs/working/task_m100_2125_stage1.md`
 
 ## 6. Stage 2 — canonical move와 source consumer 갱신

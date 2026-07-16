@@ -73,4 +73,5 @@ jobs:
             --forbid-path mydocs/tech/task_m100_1472_rootcause.md \
             --forbid-path mydocs/tech/task1637_pagination_hidefirstemptyline.md \
             --forbid-path mydocs/tech/task_m100_1860_split_budget.md \
-            --forbid-path mydocs/tech/task_m100_1904_baseline_manifest.md
+            --forbid-path mydocs/tech/task_m100_1904_baseline_manifest.md \
+            --forbid-path mydocs/tech/task_m100_2125_font_ownership.md
