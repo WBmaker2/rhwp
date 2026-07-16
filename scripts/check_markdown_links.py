@@ -66,6 +66,16 @@ def parse_args() -> argparse.Namespace:
         metavar="PATH",
         help="새 참조를 금지할 저장소 상대 경로. 문서 이동 뒤 이전 경로를 검사할 때 반복 지정한다.",
     )
+    parser.add_argument(
+        "--forbid-scan-path",
+        action="append",
+        default=[],
+        metavar="PATH",
+        help=(
+            "금지 경로 참조만 검사할 저장소 상대 파일 또는 디렉터리. "
+            "지정하지 않으면 기본 링크 검사 문서와 같은 범위를 사용한다."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -181,12 +191,19 @@ def display_path(path: Path) -> str:
 def main() -> int:
     args = parse_args()
     markdown_files = iter_markdown_files(args.paths)
+    forbidden_scan_files = (
+        iter_markdown_files(args.forbid_scan_path)
+        if args.forbid_scan_path
+        else markdown_files
+    )
     broken_links = collect_broken_links(markdown_files)
     forbidden_links = collect_forbidden_links(
-        markdown_files, normalize_forbidden_paths(args.forbid_path)
+        forbidden_scan_files, normalize_forbidden_paths(args.forbid_path)
     )
 
     print(f"검사 문서: {len(markdown_files)}개")
+    if forbidden_scan_files != markdown_files:
+        print(f"금지 경로 검사 문서: {len(forbidden_scan_files)}개")
     if not broken_links and not forbidden_links:
         print("내부 Markdown 상대 링크: 이상 없음")
         return 0

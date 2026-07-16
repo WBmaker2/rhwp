@@ -35,6 +35,7 @@ jobs:
         run: |
           python3 scripts/check_markdown_links.py
           python3 scripts/check_markdown_links.py \
+            --forbid-scan-path mydocs \
             --forbid-path mydocs/manual/visual_verification_governance.md \
             --forbid-path mydocs/manual/visual_sweep_guide.md \
             --forbid-path mydocs/manual/object_visual_regression.md \
