@@ -2,7 +2,7 @@
 
 - 이슈: #1883 (umbrella #1582) / 측정일: 2026-07-04 / 기준 커밋: devel `4edaa23d`
 - 거버넌스: SOLID + 복잡도 — 복잡도 임계값은 **코드 품질 대시보드**
-  (`scripts/metrics.sh` → `output/dashboard.html`, [manual/dashboard.md](../manual/dashboard.md)) 기준:
+  (`scripts/metrics.sh` → `output/dashboard.html`, [manual/dashboard.md](../../../manual/dashboard.md)) 기준:
   **파일 1,200줄 상한 / CC 목표 ≤15·경고 >25 / clippy 0 / 테스트 실패 0**.
 
 ## 1. 복잡도 축 — 4차 리뷰(2026-03-23) 대비 재축적

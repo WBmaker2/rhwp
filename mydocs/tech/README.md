@@ -15,7 +15,7 @@
 | 폰트 대체와 충실도 | [폰트 fallback 전략](font_fallback_strategy.md) | [한컴 폰트 시스템 분석](hancom_font_system_analysis.md), [폰트 메트릭 크기 비교](font_metrics_size_comparison.md) |
 | 편집 undo/redo | [편집 action undo/redo 아키텍처](edit_action_undo_redo_architecture.md) | 이슈별 실동작 조사 문서 |
 | 기술 채택·비채택 | [ThorVG 결정 기록](thorvg_decision.md) | [ThorVG POC 인사이트](thorvg_poc_insights.md) |
-| 이슈별 기술 조사 | [이슈별 기술 조사 지도](investigations/README.md) | [Issue #2023 프론트엔드 조사](investigations/issue-2023/README.md), [Issue #2124 프론트엔드 기준선 조사](investigations/issue-2124/README.md) |
+| 이슈별 기술 조사 | [이슈별 기술 조사 지도](investigations/README.md) | [Issue #1370 A3 발산 조사](investigations/issue-1370/README.md), [Issue #1772 잔여 OVER 조사](investigations/issue-1772/README.md), [Issue #2023 프론트엔드 조사](investigations/issue-2023/README.md), [Issue #2124 프론트엔드 기준선 조사](investigations/issue-2124/README.md) |
 
 ## 현재 구조를 읽는 법
 
@@ -32,7 +32,7 @@
 
 - `tech/investigations/`는 특정 이슈의 가설·실험·관찰과 미확정 또는 기각 결론을 보존한다. 반복 작업의
   지침이나 장기 계약의 권위 문서는 아니다.
-- `mydocs/troubleshootings/`는 재현 가능한 증상, 확정 원인, 적용 가능한 대응과 검증 방법을 보존한다.
+- [mydocs/troubleshootings/](../troubleshootings/README.md)는 재현 가능한 증상, 확정 원인, 적용 가능한 대응과 검증 방법을 보존한다.
   이후 작업의 사전 점검 자료로 사용한다.
 - 조사 또는 트러블슈팅에서 장기 계약·스펙 정정·운영 절차가 확정되면 canonical 문서에 반영하고, 원 문서는
   근거 링크로 남긴다.

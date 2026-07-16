@@ -53,4 +53,11 @@ jobs:
             --forbid-path mydocs/tech/task_m100_2124_frontend_solid_anchors.md \
             --forbid-path mydocs/tech/task_m100_2124_public_contract_snapshot.md \
             --forbid-path mydocs/tech/task_m100_2124_smoke_manifest.md \
-            --forbid-path mydocs/tech/task_m100_2124_wasm_json_schema_snapshot.md
+            --forbid-path mydocs/tech/task_m100_2124_wasm_json_schema_snapshot.md \
+            --forbid-path mydocs/tech/task_1858_manifestation2_investigation.md \
+            --forbid-path mydocs/tech/task_m100_1370_divergence_catalog.md \
+            --forbid-path mydocs/tech/task_m100_1772_root_cause.md \
+            --forbid-path mydocs/tech/task_m100_1772_residual_over28.md \
+            --forbid-path mydocs/tech/task_m100_1773_record_only_encoding.md \
+            --forbid-path mydocs/tech/task_m100_1785_root_cause.md \
+            --forbid-path mydocs/tech/task_m100_1883_diagnosis.md

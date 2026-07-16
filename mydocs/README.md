@@ -38,6 +38,7 @@
 | [ThorVG 결정 기록](tech/thorvg_decision.md) | decision | active | `tech/thorvg_decision.md` | 2026-07-16 |
 | [이전 개발 로드맵](tech/dev_roadmap_v1_backup.md) | snapshot | historical | `tech/dev_roadmap.md` | 2026-07-16 |
 | [이슈별 기술 조사 지도](tech/investigations/README.md) | guide | active | `tech/investigations/README.md` | 2026-07-16 |
+| [트러블슈팅 문서 지도](troubleshootings/README.md) | guide | active | `troubleshootings/README.md` | 2026-07-16 |
 
 ## Reference 자산
 
