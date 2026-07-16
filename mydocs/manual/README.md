@@ -1,0 +1,49 @@
+# manual 문서 지도
+
+`mydocs/manual/`은 rhwp를 **어떻게 수행하고 운영하는지**를 설명하는 문서 공간이다.
+기술 사실, 설계 결정, 이슈별 원인 분석은 [tech 문서 지도](../tech/README.md)에서 찾는다.
+
+## 먼저 읽을 문서
+
+| 상황 | 권위 문서 | 보조 문서 |
+| --- | --- | --- |
+| 이슈 작업의 문서·브랜치·커밋 흐름 | [문서와 Git 워크플로우](codex/docs_and_git_workflow.md) | [하이퍼 워터폴 문서 가이드](hyper_waterfall_docs_guide.md) |
+| 외부 PR 검토, collaborator 처리, merge 후속 | [PR 리뷰·통합 워크플로우](pr_review_workflow.md) | [개발 환경 가이드](dev_environment_guide.md) |
+| 로컬 빌드, 테스트, WASM 검증 | [개발 환경 가이드](dev_environment_guide.md) | [CLI 명령어 매뉴얼](cli_commands.md) |
+| `rhwp` CLI 전체 옵션과 동작 | [CLI 명령어 매뉴얼](cli_commands.md) | [rhwp-cli Skill 사용 가이드](rhwp_cli_skill_guide.md), [dump 명령 가이드](dump_command.md), [PNG 내보내기 가이드](export_png_command.md) |
+| PDF/SVG 기준 비교의 정책 | [시각 검증 거버넌스](visual_verification_governance.md) | [PDF/SVG visual sweep 가이드](visual_sweep_guide.md) |
+| 한컴 기준 PDF 산출을 위한 MCP 사용 | [HWP 2020 MCP 사용법](mcp_hwp2020Convert_usage.md) | [PR 리뷰·통합 워크플로우](pr_review_workflow.md)의 기준 PDF 절 |
+| 브라우저 확장 개발·배포 | [브라우저 확장 개발 가이드](browser_extension_dev_guide.md) | [Chrome/Edge 확장 빌드·배포](chrome_edge_extension_build_deploy.md) |
+
+## 문서 경계
+
+- `manual/`: 사람이 반복 수행하는 절차, 명령, 검증, 배포, 운영 규칙
+- `manual/codex/`: Codex 부트스트랩과 Codex 전용 작업 규칙. 일반 절차의 권위 출처를 대체하지 않는다.
+- `manual/memory/`: 장기 작업 규칙의 색인과 기억 단위. 현재 세션의 임시 상태나 이슈별 분석을 넣지 않는다.
+- `tech/`: 포맷 사실, 아키텍처, 설계 결정, 조사 근거
+- `troubleshootings/`: 재발 방지 목적의 증상·원인·대응 기록
+
+## 문서 역할과 생명주기
+
+문서의 역할과 생명주기를 한 `상태` 값으로 섞지 않는다. 새 메타 블록을 추가할 때는 아래 값을 사용한다.
+
+| 필드 | 허용 값 | 의미 |
+| --- | --- | --- |
+| `kind` | `canonical`, `guide`, `reference`, `investigation`, `decision`, `snapshot`, `memory` | 문서가 수행하는 역할 |
+| `status` | `active`, `historical`, `superseded` | 현재 사용 가능성 |
+| `canonical` | 저장소 상대 경로 | 더 상세한 문서가 따르는 권위 문서 |
+| `last_verified` | `YYYY-MM-DD` | 사실 또는 절차를 마지막으로 확인한 날짜 |
+
+기존 문서에 이 메타를 한꺼번에 붙이지 않는다. 클러스터별 현행성 감사에서 실제 내용과 참조 관계를
+확인한 뒤 추가한다.
+
+## 링크와 이동 규칙
+
+파일 이동 전과 후에 다음 명령으로 `manual`·`tech` 내부의 상대 Markdown 링크를 점검한다.
+
+```bash
+python3 scripts/check_markdown_links.py
+```
+
+이 검사는 외부 URL과 같은 문서 안의 앵커를 검사하지 않는다. 저장소 내부 링크는 이동 PR에서 모두 새 경로로
+갱신하며, redirect stub은 GitHub 이슈·PR 같은 외부 이력에서 자주 참조되는 문서만 별도 allowlist로 유지한다.

@@ -1,0 +1,50 @@
+# tech 문서 지도
+
+`mydocs/tech/`은 rhwp의 **기술 사실, 설계, 결정, 조사 근거**를 보존하는 문서 공간이다.
+반복 작업 절차와 도구 사용법은 [manual 문서 지도](../manual/README.md)에서 찾는다.
+
+## 권위 문서와 진입점
+
+| 주제 | 권위 또는 우선 진입점 | 관련 상세 문서 |
+| --- | --- | --- |
+| HWP 5.0 구현 차이 | [HWP 5.0 스펙 문서 정오표](hwp_spec_errata.md) | [한글 문서 파일 형식 5.0 개정 1.3](한글문서파일형식_5.0_revision1.3.md), [HWP 제어 데이터](hwp_ctrl_data.md) |
+| HWPX와 HWP IR 차이 | [HWP/HWPX IR 차이](hwp_hwpx_ir_differences.md) | [HWPX 한컴 참조](hwpx_hancom_reference.md), [HWPX DVC 참조](hwpx_dvc_reference.md) |
+| Document IR와 LineSeg 계약 | [Document IR LineSeg 표준](document_ir_lineseg_standard.md) | [LineSeg vpos 분석](line_seg_vpos_analysis.md), [HWPX LineSeg 검증](hwpx_lineseg_validation.md) |
+| 렌더링 엔진 | [렌더링 엔진 설계](rendering_engine_design.md) | [다층 렌더링 전략](multi_layer_rendering_strategy.md), [Canvas 렌더링 분석](canvas_rendering_analysis.md) |
+| 표 레이아웃 | [표 레이아웃 규칙](table_layout_rules.md) | [HWP 표 렌더링](hwp_table_rendering.md), [부분 표 흐름](partial_table_flow.md) |
+| 폰트 대체와 충실도 | [폰트 fallback 전략](font_fallback_strategy.md) | [한컴 폰트 시스템 분석](hancom_font_system_analysis.md), [폰트 메트릭 크기 비교](font_metrics_size_comparison.md) |
+| 편집 undo/redo | [편집 action undo/redo 아키텍처](edit_action_undo_redo_architecture.md) | 이슈별 실동작 조사 문서 |
+| 기술 채택·비채택 | [ThorVG 결정 기록](thorvg_decision.md) | [ThorVG POC 인사이트](thorvg_poc_insights.md) |
+
+## 현재 구조를 읽는 법
+
+- `hwp_*`, `hwpx_*`, `document_ir_*`, `rendering_*`, `table_*`, `font_*` 문서는 장기 참조 후보이지만,
+  파일명만으로 권위 문서라고 가정하지 않는다. 위 표 또는 각 문서의 명시적 링크를 우선한다.
+- `task_m100_*`, `*_root_cause`, `*_diagnosis`, `*_investigation`은 이슈별 조사일 가능성이 높다. 다만
+  장기 계약·기준선·설계 결론을 담은 문서는 `investigations/`로 자동 이동하지 않고 현행성 감사를 거쳐 분류한다.
+- `webhwp/` 하위 문서는 웹 편집기 기능별 reference 묶음이다.
+- `dev_roadmap_v1_backup.md`처럼 대체된 계획은 historical 자료로 취급하며, 새 작업의 근거로 직접 사용하지 않는다.
+
+## 문서 역할과 생명주기
+
+문서 역할(`kind`)과 생명주기(`status`)는 독립이다. 새 메타 블록을 도입할 때는 다음 스키마를 쓴다.
+
+| 필드 | 허용 값 | 의미 |
+| --- | --- | --- |
+| `kind` | `canonical`, `guide`, `reference`, `investigation`, `decision`, `snapshot`, `memory` | 문서가 수행하는 역할 |
+| `status` | `active`, `historical`, `superseded` | 현재 사용 가능성 |
+| `canonical` | 저장소 상대 경로 | 해당 상세 문서가 따르는 권위 문서 |
+| `last_verified` | `YYYY-MM-DD` | 기술 사실을 마지막으로 확인한 날짜 |
+
+이 스키마는 향후 이동과 메타 추가의 기준이다. Stage 1에서는 기존 문서를 이동하거나 일괄 수정하지 않는다.
+
+## 링크와 이동 규칙
+
+파일 이동 전과 후에 다음 명령을 실행한다.
+
+```bash
+python3 scripts/check_markdown_links.py
+```
+
+내부 참조는 이동 커밋에서 새 경로로 직접 바꾼다. redirect stub은 외부 이력 호환이 필요한 문서만
+allowlist로 제한하며, 이전 경로로의 새 내부 참조는 허용하지 않는다.
