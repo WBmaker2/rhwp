@@ -49,7 +49,7 @@
 - **우리가 확인한 범위 안에서 공개된 WebAssembly 기반 클라이언트 전용(서버 불필요) HWP 저장 구현은 본 제품이 처음** — 한컴은 서버 의존, 일부 상용 웹오피스는 WASM 편집이 가능하나 AI 에이전트용 프로그래매틱 생성 API는 확인되지 않음
 - **공개된 범위에서 AI Agent 대상 HWP 생성 도구는 드물다** (상용/오픈소스 모두) — 차별화된 포지션
 - 이는 높은 기술 진입 장벽이자 동시에 경쟁 우위의 원천
-- 상세 비전 및 로드맵은 [project_vision.md](mydocs/tech/project_vision.md) 참조
+- 상세 비전 및 로드맵은 [project_vision.md](project_vision.md) 참조
 
 ### 1.4 비즈니스 모델
 - **라이선스 형태**: 연 단위 구독 방식 (SaaS/On-premise)

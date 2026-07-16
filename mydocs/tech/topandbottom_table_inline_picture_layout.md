@@ -1,6 +1,6 @@
 # Paragraph 안의 TopAndBottom 표 + sibling inline picture 의 layout 정합 — v3 root cause 분석
 
-대상 task: [Task #1151 v3](../plans/task_m100_1151_v3.md) · v2 model 정합: [hancom_picture_tac_toggle.md](hancom_picture_tac_toggle.md) · 관련 규칙: [table_layout_rules.md](table_layout_rules.md)
+대상 task: [Task #1151 v3](../plans/archives/task_m100_1151_v3.md) · v2 model 정합: [hancom_picture_tac_toggle.md](hancom_picture_tac_toggle.md) · 관련 규칙: [table_layout_rules.md](table_layout_rules.md)
 
 ## 1. 문제 정의
 

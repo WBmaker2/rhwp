@@ -404,8 +404,8 @@ impl LineSeg {
 ## 참조
 
 ### 선행 분석 문서
-- [mydocs/tech/hwp5_wrap_precomputed_analysis.md](mydocs/tech/hwp5_wrap_precomputed_analysis.md) — HWP5/HWPX wrap_precomputed 미적용 결함
-- [mydocs/tech/document_ir_wrap_zone_standard_review.md](mydocs/tech/document_ir_wrap_zone_standard_review.md) — IR 표준 부재 본질
+- [HWP5/HWPX wrap_precomputed 분석](hwp5_wrap_precomputed_analysis.md) — HWP5/HWPX wrap_precomputed 미적용 결함
+- [IR wrap zone 표준 검토](document_ir_wrap_zone_standard_review.md) — IR 표준 부재 본질
 
 ### 주요 파일 (본 분석 영역)
 

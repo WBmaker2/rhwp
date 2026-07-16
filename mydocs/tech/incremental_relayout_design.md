@@ -218,5 +218,5 @@ segment_width: 34200        segment_width: 34180    ✗ 차이 20 (폰트 메트
 ## 4. 참고
 
 - [증분 레이아웃 아키텍처 조사](incremental_layout_research.md) — LibreOffice, Typst, Google Docs, xi-editor 패턴 비교
-- [표 객체 처리 아키텍처 현황](../report/table_architecture_review.md)
+- [표 객체 처리 아키텍처 현황](../report/archives/table_architecture_review.md)
 - [텍스트 레이아웃 기술 리뷰](text_layout_review.md)

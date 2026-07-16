@@ -190,7 +190,7 @@ pub struct LineSeg {
 ## 참조
 
 ### 관련 문서
-- [mydocs/tech/hwp5_wrap_precomputed_analysis.md](mydocs/tech/hwp5_wrap_precomputed_analysis.md) — HWP5/HWPX wrap_precomputed 미적용 결함 분석 (선행 문서)
+- [HWP5/HWPX wrap_precomputed 분석](hwp5_wrap_precomputed_analysis.md) — HWP5/HWPX wrap_precomputed 미적용 결함 분석 (선행 문서)
 - `CLAUDE.md` § 파일 포맷별 파서 구조 (Document IR 본질)
 - `mydocs/troubleshootings/square_wrap_pic_bottom_double_advance.md`
 

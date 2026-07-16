@@ -1,6 +1,6 @@
 # 한컴 picture "글자처럼 취급" 토글 동작 — 산출물 분석
 
-대상 task: [Task #1151 v2 후속](../plans/task_m100_1151_v2.md) · 정합 산출물: `samples/pic-in-table-with-toggle.hwp` (사용자 추가 2026-05-29)
+대상 task: [Task #1151 v2 후속](../plans/archives/task_m100_1151_v2.md) · 정합 산출물: `samples/pic-in-table-with-toggle.hwp` (사용자 추가 2026-05-29)
 
 ## 1. 사용자 직접 검증 (2026-05-29)
 
