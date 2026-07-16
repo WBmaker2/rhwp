@@ -67,6 +67,16 @@ def parse_args() -> argparse.Namespace:
         help="새 참조를 금지할 저장소 상대 경로. 문서 이동 뒤 이전 경로를 검사할 때 반복 지정한다.",
     )
     parser.add_argument(
+        "--forbid-path-file",
+        action="append",
+        default=[],
+        metavar="FILE",
+        help=(
+            "금지할 저장소 상대 경로를 한 줄에 하나씩 기록한 파일. "
+            "빈 줄과 # 주석을 허용하며 반복 지정할 수 있다."
+        ),
+    )
+    parser.add_argument(
         "--forbid-scan-path",
         action="append",
         default=[],
@@ -151,6 +161,27 @@ def normalize_forbidden_paths(raw_paths: list[str]) -> set[Path]:
     return normalized
 
 
+def load_forbidden_path_files(raw_files: list[str]) -> list[str]:
+    raw_paths: list[str] = []
+    for raw_file in raw_files:
+        manifest = (REPOSITORY_ROOT / raw_file).resolve()
+        try:
+            manifest.relative_to(REPOSITORY_ROOT)
+        except ValueError as error:
+            raise SystemExit(
+                f"저장소 밖 금지 경로 manifest는 읽을 수 없습니다: {raw_file}"
+            ) from error
+        if not manifest.is_file():
+            raise SystemExit(f"금지 경로 manifest가 없습니다: {raw_file}")
+
+        for line in manifest.read_text(encoding="utf-8").splitlines():
+            value = line.split("#", 1)[0].strip()
+            if not value:
+                continue
+            raw_paths.append(value)
+    return raw_paths
+
+
 def collect_broken_links(markdown_files: list[Path]) -> list[BrokenLink]:
     broken: list[BrokenLink] = []
     for source in markdown_files:
@@ -197,8 +228,11 @@ def main() -> int:
         else markdown_files
     )
     broken_links = collect_broken_links(markdown_files)
+    forbidden_paths = args.forbid_path + load_forbidden_path_files(
+        args.forbid_path_file
+    )
     forbidden_links = collect_forbidden_links(
-        forbidden_scan_files, normalize_forbidden_paths(args.forbid_path)
+        forbidden_scan_files, normalize_forbidden_paths(forbidden_paths)
     )
 
     print(f"검사 문서: {len(markdown_files)}개")
