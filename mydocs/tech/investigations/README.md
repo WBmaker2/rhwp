@@ -12,6 +12,8 @@
 
 ## 현재 이슈 묶음
 
+- [Issue #1584 이후 HWPX 잔여 IR 차이 조사](issue-1584/README.md)
+- [Issue #1658 페이지네이션 조사](issue-1658/README.md)
 - [Issue #1370 A3 발산 조사](issue-1370/README.md)
 - [Issue #1772 잔여 OVER 조사](issue-1772/README.md)
 - [Issue #1773 record-only 인코딩 조사](issue-1773/README.md)

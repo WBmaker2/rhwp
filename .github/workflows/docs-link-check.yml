@@ -60,4 +60,12 @@ jobs:
             --forbid-path mydocs/tech/task_m100_1772_residual_over28.md \
             --forbid-path mydocs/tech/task_m100_1773_record_only_encoding.md \
             --forbid-path mydocs/tech/task_m100_1785_root_cause.md \
-            --forbid-path mydocs/tech/task_m100_1883_diagnosis.md
+            --forbid-path mydocs/tech/task_m100_1883_diagnosis.md \
+            --forbid-path mydocs/tech/hwpx_residual_ir_diff_10.md \
+            --forbid-path mydocs/tech/task_m100_1658_capacity.md \
+            --forbid-path mydocs/tech/task_m100_1658_clipping_capacity_unified.md \
+            --forbid-path mydocs/tech/task_m100_1658_com_rowheight.md \
+            --forbid-path mydocs/tech/task_m100_1658_design.md \
+            --forbid-path mydocs/tech/task_m100_1658_giantcell_residual.md \
+            --forbid-path mydocs/tech/task_m100_1658_rca_rowsplit.md \
+            --forbid-path mydocs/tech/task_m100_1658_reset_discriminator.md

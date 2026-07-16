@@ -57,5 +57,5 @@ tolerance 초과면 그 reset break 를 흡수. #1488(가시 문단 reset 3유�
 - 소스: `src/renderer/layout/table_layout.rs`(+11)
 - 도구/오라클: `tools/{build_page_oracle,detect_table_clipping,hangul_pdf_baseline}.py`,
   `tests/fixtures/render_page_oracle_1658.tsv`
-- 분석: `mydocs/tech/task_m100_1658_*.md`, `working/task_m100_1658_phase1/2/3.md`,
+- 분석: `mydocs/tech/investigations/issue-1658/task_m100_1658_*.md`, `working/task_m100_1658_phase1/2/3.md`,
   `manual/{visual_clipping_detector,hangul_pdf_baseline}.md`
