@@ -61,18 +61,11 @@ last_verified: 2026-07-17
 | `last_verified` | `YYYY-MM-DD` | 기술 사실을 마지막으로 확인한 날짜 |
 
 `mydocs/tech`의 모든 Markdown 문서는 이 스키마로 분류한다. 장기 계약은 `active`, 이슈별 비교·실험과
-대체된 설계는 `historical`, 이동 안내 문서는 `superseded`로 구분하며 CI가 누락과 잘못된 canonical
-경로를 검사한다.
+대체된 설계는 `historical`, 이동 안내 문서는 `superseded`로 구분한다. 대규모 이동이나 정보구조 변경에서는
+로컬 검사기로 누락과 잘못된 canonical 경로를 확인한다.
 
 ## 링크와 이동 규칙
 
-파일 이동 전과 후에 다음 명령을 실행한다.
-
-```bash
-python3 scripts/check_markdown_links.py
-```
-
 내부 참조는 이동 커밋에서 새 경로로 직접 바꾼다. redirect stub은 외부 이력 호환이 필요한 문서만
-allowlist로 제한한다. PR에서는 `--changed-from <base> --forbid-redirect-references`가 변경 Markdown 링크와
-변경 파일의 이전 경로 재참조를 검사한다. allowlist는 redirect stub에서 동적으로 읽으며 고정 migration
-목록은 두지 않는다. 새 문서를 추가할 때 workflow YAML을 수정하지 않는다.
+allowlist로 제한한다. 검사 시점과 명령은 [문서 링크와 메타데이터 로컬 검사 가이드](../manual/markdown_link_check_guide.md)를
+따른다. 일반 Markdown 추가나 본문 수정은 자동 CI를 실행하지 않으며 고정 migration 목록도 두지 않는다.

@@ -18,6 +18,7 @@ last_verified: 2026-07-17
 | Codex 저장소 부트스트랩 | [Codex 문서 지도](codex/README.md) | [문서와 Git 워크플로우](codex/docs_and_git_workflow.md) |
 | 외부 PR 검토, collaborator 처리, merge 후속 | [PR 리뷰·통합 워크플로우](pr_review_workflow.md) | [개발 환경 가이드](dev_environment_guide.md) |
 | 로컬 빌드, 테스트, WASM 검증 | [개발 환경 가이드](dev_environment_guide.md) | [CLI 명령어 매뉴얼](cli_commands.md) |
+| 문서 이동·정보구조의 링크 검사 | [문서 링크와 메타데이터 로컬 검사](markdown_link_check_guide.md) | [문서와 Git 워크플로우](codex/docs_and_git_workflow.md) |
 | 신규 기여자 시작 | [온보딩 가이드](onboarding_guide.md) | [문서와 Git 워크플로우](codex/docs_and_git_workflow.md) |
 | `rhwp` CLI 전체 옵션과 동작 | [CLI 명령어 매뉴얼](cli_commands.md) | [rhwp-cli Skill 사용 가이드](rhwp_cli_skill_guide.md), [dump 명령 가이드](dump_command.md), [PNG 내보내기 가이드](export_png_command.md) |
 | 로컬 OWPML XML 스키마 자산 | [OWPML XML 스키마 reference](owpml_schema_reference.md) | [한컴 공식 OWPML 모델 참조 가이드](../tech/hwpx_hancom_reference.md) |
@@ -61,8 +62,8 @@ last_verified: 2026-07-17
 | `last_verified` | `YYYY-MM-DD` | 사실 또는 절차를 마지막으로 확인한 날짜 |
 
 `mydocs/manual`의 모든 Markdown 문서는 이 메타로 분류한다. 현행 절차와 API는 `active`, 작성 당시의
-방법론·브랜딩·피드백 원문은 `historical`, 이동 안내 문서는 `superseded`로 구분하며 CI가 누락과 잘못된
-canonical 경로를 검사한다.
+방법론·브랜딩·피드백 원문은 `historical`, 이동 안내 문서는 `superseded`로 구분한다. 대규모 문서 이동이나
+정보구조 변경에서는 로컬 검사기로 누락과 잘못된 canonical 경로를 확인한다.
 
 ## CLI 문서 역할
 
@@ -75,15 +76,7 @@ canonical 경로를 검사한다.
 
 ## 링크와 이동 규칙
 
-파일 이동 전과 후에 다음 명령으로 루트 안내 문서와 `mydocs/manual`·`mydocs/tech`의 상대 Markdown·이미지
-링크를 점검한다.
-
-```bash
-python3 scripts/check_markdown_links.py
-```
-
-이 검사는 외부 URL과 같은 문서 안의 앵커를 검사하지 않는다. 저장소 내부 링크는 이동 PR에서 모두 새 경로로
-갱신하며, redirect stub은 GitHub 이슈·PR 같은 외부 이력에서 자주 참조되는 문서만 별도 allowlist로 유지한다.
-PR에서는 `--changed-from <base> --forbid-redirect-references`가 변경 Markdown과 변경 코드·문서의 이전
-경로 재참조를 검사한다. allowlist는 redirect stub에서 동적으로 읽으므로 새 문서 추가나 이전 경로 검증
-때문에 workflow YAML을 수정하지 않는다. 이동 stage의 단일 경로 진단에는 `--forbid-path`를 사용할 수 있다.
+저장소 내부 링크는 이동 작업에서 모두 새 경로로 갱신하며, redirect stub은 GitHub 이슈·PR 같은 외부
+이력에서 자주 참조되는 문서만 유지한다. 검사 명령과 옵션은
+[문서 링크와 메타데이터 로컬 검사 가이드](markdown_link_check_guide.md)를 따른다. 일반 Markdown 추가나
+본문 수정은 자동 CI를 실행하지 않는다.

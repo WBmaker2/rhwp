@@ -23,4 +23,5 @@ last_verified: 2026-07-16
 
 GitHub issue/PR 외부 이력에서 자주 참조된 기존 경로만 redirect stub으로 남긴다. 각 stub의 `canonical`
 메타데이터가 allowlist의 정본이며, 이 지도에 경로 목록을 복제하지 않는다. 저장소 내부 링크는 위의 현재
-경로를 사용한다. CI는 PR 변경분에서 redirect 이전 경로를 새로 참조하면 실패한다.
+경로를 사용한다. 문서 구조를 변경할 때는 [문서 링크와 메타데이터 로컬 검사](../markdown_link_check_guide.md)로
+redirect 이전 경로 재참조를 확인한다.
