@@ -45,9 +45,12 @@ mydocs/orders/YYYYMMDD.md
 ## Folder Roles
 
 - `mydocs/orders/`: 오늘할일
+- `mydocs/orders/archives/`: 전월 이전 오늘할일 보관 — 매월 초 전월분을 이동하고 당월분만 루트에 유지
 - `mydocs/plans/`: 수행 계획서, 구현 계획서
+- `mydocs/plans/archives/`: 완료된 계획서 보관 (merge 후 정리 시 이동)
 - `mydocs/working/`: 단계별 완료 보고서
 - `mydocs/report/`: 최종 보고서
+- `mydocs/feedback/`: 작업지시자 피드백, 코드 리뷰 의견
 - `mydocs/troubleshootings/`: 재발 방지용 문제 해결 기록
 - `mydocs/tech/`: 기술 조사와 스펙 정리
 - `mydocs/manual/`: 매뉴얼과 장기 지침
