@@ -37,7 +37,11 @@ front matter는 이번 감사에서 직접 역할을 확인한 canonical manifes
 | [과거 Codex memory 진입점](manual/codex/MEMORY.md) | snapshot | superseded | `manual/codex/README.md` | 2026-07-17 |
 | [Claude memory dump 색인](manual/memory/MEMORY.md) | memory | historical | `manual/codex/docs_and_git_workflow.md` | 2026-07-17 |
 | [PR 리뷰·통합 워크플로](manual/pr_review_workflow.md) | canonical | active | `manual/pr_review_workflow.md` | 2026-07-16 |
-| [개발 환경 가이드](manual/dev_environment_guide.md) | guide | active | `manual/dev_environment_guide.md` | 2026-07-16 |
+| [개발 환경 가이드](manual/dev_environment_guide.md) | guide | active | `manual/dev_environment_guide.md` | 2026-07-17 |
+| [온보딩 가이드](manual/onboarding_guide.md) | guide | active | `manual/README.md` | 2026-07-17 |
+| [배포 가이드](manual/publish_guide.md) | guide | active | `manual/publish_guide.md` | 2026-07-17 |
+| [Hyper-Waterfall 문서 체계](manual/hyper_waterfall_docs_guide.md) | guide | active | `manual/codex/docs_and_git_workflow.md` | 2026-07-17 |
+| [AI 페어프로그래밍 기록](manual/ai_pair_programming_guide.md) | reference | historical | `manual/codex/docs_and_git_workflow.md` | 2026-07-17 |
 | [CLI 명령어 매뉴얼](manual/cli_commands.md) | canonical | active | `manual/cli_commands.md` | 2026-07-16 |
 | [시각 검증 문서 지도](manual/verification/README.md) | guide | active | `manual/verification/README.md` | 2026-07-16 |
 | [시각 검증 거버넌스](manual/verification/visual_verification_governance.md) | canonical | active | `manual/verification/visual_verification_governance.md` | 2026-07-16 |

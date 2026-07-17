@@ -80,7 +80,7 @@ scripts/svg_regression_diff.sh build HEAD~1 HEAD
 ### Phase 2~4 layout 본질 변경 검증
 
 ```bash
-scripts/svg_regression_diff.sh build devel local/task<N>
+scripts/svg_regression_diff.sh build <baseline-ref> <candidate-ref>
 ```
 
 리팩터링 변경의 영향 범위를 정량 확인.

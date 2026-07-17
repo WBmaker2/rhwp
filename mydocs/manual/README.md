@@ -18,11 +18,13 @@ last_verified: 2026-07-16
 | Codex 저장소 부트스트랩 | [Codex 문서 지도](codex/README.md) | [문서와 Git 워크플로우](codex/docs_and_git_workflow.md) |
 | 외부 PR 검토, collaborator 처리, merge 후속 | [PR 리뷰·통합 워크플로우](pr_review_workflow.md) | [개발 환경 가이드](dev_environment_guide.md) |
 | 로컬 빌드, 테스트, WASM 검증 | [개발 환경 가이드](dev_environment_guide.md) | [CLI 명령어 매뉴얼](cli_commands.md) |
+| 신규 기여자 시작 | [온보딩 가이드](onboarding_guide.md) | [문서와 Git 워크플로우](codex/docs_and_git_workflow.md) |
 | `rhwp` CLI 전체 옵션과 동작 | [CLI 명령어 매뉴얼](cli_commands.md) | [rhwp-cli Skill 사용 가이드](rhwp_cli_skill_guide.md), [dump 명령 가이드](dump_command.md), [PNG 내보내기 가이드](export_png_command.md) |
 | 로컬 OWPML XML 스키마 자산 | [OWPML XML 스키마 reference](owpml_schema_reference.md) | [한컴 공식 OWPML 모델 참조 가이드](../tech/hwpx_hancom_reference.md) |
 | PDF/SVG 기준 비교의 정책 | [시각 검증 문서 지도](verification/README.md) | [시각 검증 거버넌스](verification/visual_verification_governance.md), [PDF/SVG visual sweep 가이드](verification/visual_sweep_guide.md) |
 | 한컴 기준 PDF 산출을 위한 MCP 사용 | [HWP 2020 MCP 사용법](mcp_hwp2020Convert_usage.md) | [PR 리뷰·통합 워크플로우](pr_review_workflow.md)의 기준 PDF 절 |
 | 브라우저 확장 개발·배포 | [브라우저 확장 개발 가이드](browser_extension_dev_guide.md) | [Chrome/Edge 확장 빌드·배포](chrome_edge_extension_build_deploy.md) |
+| release 준비와 배포 | [배포 가이드](publish_guide.md) | [개발 환경 가이드](dev_environment_guide.md) |
 | rhwp-studio UI 명칭·CSS 접두어 | [rhwp-studio UI 명칭과 CSS 접두어](rhwp_studio_ui_conventions.md) | [개발 환경 가이드](dev_environment_guide.md) |
 
 ## 문서 경계
