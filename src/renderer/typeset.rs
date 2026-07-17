@@ -2105,12 +2105,25 @@ impl FormattedParagraph {
         para: &Paragraph,
         col_count: u16,
         allow_spacing_before_only: bool,
+        ladder_dirty: bool,
     ) -> f64 {
         if col_count > 1 {
             return self.height_for_fit;
         }
+        // [#2279 ①] spacing 트림은 **비합성(authoritative) 저장 lineseg** 문단에만.
+        // 저장 ladder 가 spacing 을 이미 반영하고 vpos-snap 이 좌표를 복원하는
+        // 전제의 트림이므로, 합성(reflow) lineseg 문단은 ladder 가 없어 트림하면
+        // sb·ls 가 흐름에서 그냥 소실된다 (한글 fresh 는 가산 — 기계생성 결재
+        // 문서 −1쪽 계열, DIAG_ADV 실측 문단당 4~33px).
+        // [#2279 ①-2] dirty(합성 혼합) ladder 구간도 동일 — #2243 전방-스냅만
+        // 허용되어 트림분이 복원되지 않으므로 full advance 를 쓴다
+        // (36398700 pi6..9 구간 −60px 폐합, 한글 재저장 anchor 실측).
+        let has_authoritative_seg = para.line_segs.iter().any(|seg| {
+            seg.tag & crate::model::paragraph::LineSeg::TAG_IMPLEMENTATION_PROPERTY == 0
+        });
         if para.controls.is_empty()
-            && !para.line_segs.is_empty()
+            && has_authoritative_seg
+            && !ladder_dirty
             && (self.spacing_after > 0.5
                 || (allow_spacing_before_only && self.spacing_before > 0.5))
             && self.height_for_fit > 0.0
@@ -2120,6 +2133,35 @@ impl FormattedParagraph {
         }
         self.total_height
     }
+}
+
+/// [#2279 ①-3] spacing 트림의 복원 가능성 전방 판정.
+///
+/// 트림은 다음 authoritative(비합성 lineseg) anchor 에서 vpos-snap 이 좌표를
+/// 복원한다는 전제다. 현 문단과 다음 anchor 사이에 합성/NO_LS 텍스트 문단이
+/// 끼어 있으면 dirty 규칙(#2243 전방-스냅만)으로 복원이 차단되므로 트림하면
+/// 그 spacing 이 흐름에서 소실된다 (36398700 pi6: 다음 anchor pi10 앞에
+/// 합성 pi7~9 → −35.7px 소실 실측). 표 컨트롤 문단은 재앵커(#2243) 지점이라
+/// 복원 가능으로 본다. 탐색은 32문단 한도(초과 시 보수적으로 복원 불가).
+fn spacing_trim_restorable(paragraphs: &[Paragraph], para_idx: usize) -> bool {
+    use crate::model::paragraph::LineSeg;
+    for para in paragraphs.iter().skip(para_idx + 1).take(32) {
+        if !para.controls.is_empty() {
+            return true; // 표/개체 재앵커 지점
+        }
+        match para.line_segs.first() {
+            Some(seg) if seg.tag & LineSeg::TAG_IMPLEMENTATION_PROPERTY == 0 => {
+                return true; // authoritative anchor 도달 — 복원 가능
+            }
+            _ => {
+                if !para.text.is_empty() {
+                    return false; // 합성/NO_LS 텍스트 문단이 먼저 — 복원 불가
+                }
+                // 빈 문단은 계속 탐색
+            }
+        }
+    }
+    false
 }
 
 fn debug_brief_line_text(text: &str, max_chars: usize) -> String {
@@ -10915,7 +10957,12 @@ impl TypesetEngine {
         let spacing_after = para_style.map(|s| s.spacing_after).unwrap_or(0.0);
 
         // [Task #998 실험] spacing_before=0 으로 강제 — 효과 측정용
-        let spacing_before = if para.line_segs.is_empty() && !para.text.is_empty() {
+        // [#2279 실험 전용] RHWP_EXP_BODY_FRESH 시 NO_LS 문단도 sb 를 보존한다
+        // (한글 fresh 는 sb 를 가산 — 생성기 사다리 sb-누락 모사 우회 계측).
+        let spacing_before = if para.line_segs.is_empty()
+            && !para.text.is_empty()
+            && std::env::var("RHWP_EXP_BODY_FRESH").is_err()
+        {
             0.0
         } else {
             raw_spacing_before
@@ -11586,7 +11633,24 @@ impl TypesetEngine {
             //   - 다단 (col_count > 1): height_for_fit (exam_eng 8p 정상 단 채움 복원)
             // 다단에서는 layout 이 vpos 기반으로 항목을 단별로 stacking 하므로
             // typeset 누적 시 trailing_ls 인플레이션이 단을 조기 종료시킴.
-            let advance = fmt.flow_advance_height(para, st.col_count, trim_spacing_before_for_flow);
+            let advance = fmt.flow_advance_height(
+                para,
+                st.col_count,
+                trim_spacing_before_for_flow,
+                st.vpos_ladder_dirty || !spacing_trim_restorable(paragraphs, para_idx),
+            );
+            if std::env::var("RHWP_DIAG_ADV").is_ok() {
+                eprintln!(
+                    "DIAG_ADV pi={} adv={:.1} total={:.1} h4f={:.1} sb={:.1} sa={:.1} cur={:.1}",
+                    para_idx,
+                    advance,
+                    fmt.total_height,
+                    fmt.height_for_fit,
+                    fmt.spacing_before,
+                    fmt.spacing_after,
+                    st.current_height,
+                );
+            }
             st.current_height += advance;
             st.flow_underrun += (fmt.total_height - advance).max(0.0);
             if let Some(v) = body_bottom_vpos {
@@ -11635,8 +11699,12 @@ impl TypesetEngine {
                 st.current_items.push(PageItem::FullParagraph {
                     para_index: para_idx,
                 });
-                let advance =
-                    fmt.flow_advance_height(para, st.col_count, trim_spacing_before_for_flow);
+                let advance = fmt.flow_advance_height(
+                    para,
+                    st.col_count,
+                    trim_spacing_before_for_flow,
+                    st.vpos_ladder_dirty || !spacing_trim_restorable(paragraphs, para_idx),
+                );
                 st.current_height += advance;
                 st.flow_underrun += (fmt.total_height - advance).max(0.0);
                 if let Some(v) = body_bottom_vpos {
@@ -11745,7 +11813,12 @@ impl TypesetEngine {
             //   - 다단 (col_count > 1): height_for_fit (exam_eng 8p 정상 단 채움 복원)
             // 다단에서는 layout 이 vpos 기반으로 항목을 단별로 stacking 하므로
             // typeset 누적 시 trailing_ls 인플레이션이 단을 조기 종료시킴.
-            let advance = fmt.flow_advance_height(para, st.col_count, trim_spacing_before_for_flow);
+            let advance = fmt.flow_advance_height(
+                para,
+                st.col_count,
+                trim_spacing_before_for_flow,
+                st.vpos_ladder_dirty || !spacing_trim_restorable(paragraphs, para_idx),
+            );
             st.current_height += advance;
             st.flow_underrun += (fmt.total_height - advance).max(0.0);
             if let Some(v) = body_bottom_vpos {
@@ -13794,7 +13867,12 @@ impl TypesetEngine {
             st.current_items.push(PageItem::FullParagraph {
                 para_index: next_idx,
             });
-            st.current_height += fmt_n.flow_advance_height(next, st.col_count, trim_sb);
+            st.current_height += fmt_n.flow_advance_height(
+                next,
+                st.col_count,
+                trim_sb,
+                st.vpos_ladder_dirty || !spacing_trim_restorable(paragraphs_all, next_idx),
+            );
             st.prefilled_paras.insert(next_idx);
         }
     }
