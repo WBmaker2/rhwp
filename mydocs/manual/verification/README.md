@@ -22,7 +22,8 @@ last_verified: 2026-07-16
 ## 이전 경로
 
 아래 기존 경로는 GitHub issue/PR 외부 이력 참조를 보존하기 위해 redirect stub으로만 남긴다. 저장소 내부
-새 링크는 이 목록을 사용하지 않으며, CI가 이전 경로에 대한 새 Markdown 링크를 금지한다.
+새 링크는 이 목록을 사용하지 않는다. 문서 이동 stage에서는 `--forbid-path`로 이 경로의 재참조를
+일회성 검증하며, 완료된 migration 목록을 영구 CI에서 반복 검사하지 않는다.
 
 ```text
 mydocs/manual/visual_verification_governance.md

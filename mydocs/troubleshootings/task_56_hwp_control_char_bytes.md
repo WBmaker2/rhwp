@@ -30,7 +30,7 @@ HWP 5.0 스펙 문서의 "표 6: 문단 텍스트" 제어 문자 정의를 해�
 
 ### 1. hwplib (Java) 코드 분석
 
-[ForParaText.java](../../hwplib/src/main/java/kr/dogfoot/hwplib/reader/bodytext/paragraph/ForParaText.java):
+[ForParaText.java](https://github.com/neolord0/hwplib/blob/main/src/main/java/kr/dogfoot/hwplib/reader/bodytext/paragraph/ForParaText.java):
 
 ```java
 case ControlExtend:
@@ -96,7 +96,7 @@ HWP 5.0은 유니코드 기반으로 모든 문자가 2바이트(WCHAR) 단위.
 
 ### 구현 코드 (수정 후)
 
-[record_parser.py](../../hwp_semantic/record_parser.py):
+작성 당시 외부 로컬 분석 스크립트 `hwp_semantic/record_parser.py`:
 
 ```python
 class CtrlChar:
@@ -142,10 +142,10 @@ addition[0:4]에 저장된 4바이트 ASCII 문자열 (little-endian):
 
 ## 관련 파일
 
-- [HWP 5.0 스펙](../tech/한글문서파일형식_5.0_revision1.3.pdf) - 표 6: 문단 텍스트
-- [hwplib ForParaText.java](../../hwplib/src/main/java/kr/dogfoot/hwplib/reader/bodytext/paragraph/ForParaText.java)
-- [hwplib HWPCharControlExtend.java](../../hwplib/src/main/java/kr/dogfoot/hwplib/object/bodytext/paragraph/text/HWPCharControlExtend.java)
-- [record_parser.py](../../hwp_semantic/record_parser.py) - CtrlChar 클래스
+- [HWP 5.0 스펙](../tech/한글문서파일형식_5.0_revision1.3.md) - 표 6: 문단 텍스트
+- [hwplib ForParaText.java](https://github.com/neolord0/hwplib/blob/main/src/main/java/kr/dogfoot/hwplib/reader/bodytext/paragraph/ForParaText.java)
+- [hwplib HWPCharControlExtend.java](https://github.com/neolord0/hwplib/blob/main/src/main/java/kr/dogfoot/hwplib/object/bodytext/paragraph/text/HWPCharControlExtend.java)
+- 작성 당시 외부 로컬 `hwp_semantic/record_parser.py` - CtrlChar 클래스
 
 ---
 

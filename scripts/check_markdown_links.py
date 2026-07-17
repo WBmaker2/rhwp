@@ -25,6 +25,7 @@ DEFAULT_PATHS = (
     "mydocs/README.md",
     "mydocs/manual",
     "mydocs/tech",
+    "mydocs/troubleshootings",
 )
 FENCE_RE = re.compile(r"^\s*(`{3,}|~{3,})")
 INLINE_LINK_RE = re.compile(
@@ -57,7 +58,10 @@ def parse_args() -> argparse.Namespace:
         "paths",
         nargs="*",
         default=list(DEFAULT_PATHS),
-        help="검사할 저장소 상대 파일 또는 디렉터리 (기본: 루트 안내 문서와 mydocs/manual·tech)",
+        help=(
+            "검사할 저장소 상대 파일 또는 디렉터리 "
+            "(기본: 루트 안내 문서와 mydocs/manual·tech·troubleshootings)"
+        ),
     )
     parser.add_argument(
         "--forbid-path",
