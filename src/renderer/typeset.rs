@@ -12905,6 +12905,7 @@ impl TypesetEngine {
                             tac_count,
                             is_first_placed,
                             is_last_placed,
+                            styles,
                         );
                     } else if self.try_typeset_empty_para_float_table(
                         st,
@@ -13261,6 +13262,7 @@ impl TypesetEngine {
         tac_count: usize,
         is_first_placed: bool,
         is_last_placed: bool,
+        styles: &ResolvedStyleSet,
     ) {
         // [Task #1152] 호스트 문단의 intra-paragraph vpos-reset 가드.
         // empty-text host paragraph 가 N controls + N line_segs 1:1 매핑이고,
@@ -13409,7 +13411,41 @@ impl TypesetEngine {
             table_height,
             is_first_placed,
             is_last_placed,
+            styles,
         );
+    }
+
+    /// [#2279 TAC host] 모순 조합(treat_as_char=true + wrap=자리차지) 표의
+    /// host 빈 줄박스 높이 (한글 fresh 가 표 위에 별도 배치하는 성분).
+    ///
+    /// 정상 문서의 TAC 표는 줄박스에 포함되어 별도 가산이 없다 — 본 판정은
+    /// 기계생성 결재문서 특유의 모순 조합 + 빈 host 문단에만 발동한다.
+    /// 반환 = host 첫 글자모양의 폰트 크기(px) — 한글 PDF 괘선 실측
+    /// (36392557 pi27: 진입 22px ≈ om_top 1.9 + 15pt 줄박스 20px)과 정합.
+    fn tac_topbottom_conflict_host_line_px(
+        &self,
+        para: &Paragraph,
+        table: &crate::model::table::Table,
+        styles: &ResolvedStyleSet,
+    ) -> Option<f64> {
+        if !table.common.treat_as_char
+            || !matches!(
+                table.common.text_wrap,
+                crate::model::shape::TextWrap::TopAndBottom
+            )
+            || para_has_non_whitespace_text(para)
+        {
+            return None;
+        }
+        let cs_id = para
+            .char_shape_id_at(0)
+            .or_else(|| para.char_shapes.first().map(|cs| cs.char_shape_id))?
+            as usize;
+        let font_size = styles.char_styles.get(cs_id)?.font_size;
+        if font_size <= 0.0 {
+            return None;
+        }
+        Some(font_size)
     }
 
     /// 표를 pre-text/table/post-text와 함께 배치한다 (Paginator place_table_fits 동일).
@@ -13426,6 +13462,7 @@ impl TypesetEngine {
         table_total_height: f64,
         is_first_placed: bool,
         is_last_placed: bool,
+        styles: &ResolvedStyleSet,
     ) {
         let vertical_offset = Self::get_table_vertical_offset(table);
         let is_visible_para_float =
@@ -13575,6 +13612,20 @@ impl TypesetEngine {
             }
         } else if tac_wrap_split {
             st.current_height += table_total_height;
+        } else if let Some(host_line_px) = if st.is_hwpx_source {
+            self.tac_topbottom_conflict_host_line_px(para, table, styles)
+        } else {
+            None
+        } {
+            // [#2279 TAC host] 기계생성 결재문서의 모순 조합(treat_as_char=true +
+            // wrap=자리차지) 장제목/결재표: 한글 fresh 는 host 빈 줄박스(호스트
+            // CS 크기)를 표 **위에** 별도 배치한다 — 36392557 pi27 한글 PDF
+            // 괘선 실측: 표 top = 흐름 + om_top(1.9px) + host 줄박스(20px=15pt).
+            // rhwp 는 lh-포함형(host lh = 표+om)으로만 소비해 표당 ~20px 과소
+            // (92셋 −1쪽 계열의 "TAC host +15~21px" 성분). 가산 후에는 생성기
+            // 압축 anchor 로의 후방 스냅이 성장분을 되돌리지 못하게 dirty 처리.
+            st.current_height += host_line_px + pre_height + table_total_height;
+            st.vpos_ladder_dirty = true;
         } else {
             // [#2097 프로브 기록] 빈 host 자리차지 float(v_off>0)의 흐름 전진에
             // v_off + outer_bottom 을 더하는 기하 정합(82802 pi75: 저장 322.6 =
@@ -14778,6 +14829,7 @@ impl TypesetEngine {
                         0.0,
                         is_first_placed,
                         is_last_placed,
+                        styles,
                     );
                     return;
                 }
@@ -14932,6 +14984,7 @@ impl TypesetEngine {
                     block_height,
                     is_first_placed,
                     is_last_placed,
+                    styles,
                 );
                 // 배타 모델: 블록은 flow 를 소비하지 않는다(하단 절대배치) — 소비 롤백
                 // 후 하단 배타 영역으로 예약. 저장-flow 소비 누계는 후속 틀 vpos 보정용.
@@ -15189,6 +15242,7 @@ impl TypesetEngine {
                 },
                 is_first_placed,
                 is_last_placed,
+                styles,
             );
             return;
         }
@@ -15217,6 +15271,7 @@ impl TypesetEngine {
                 table_total,
                 is_first_placed,
                 is_last_placed,
+                styles,
             );
             return;
         }
@@ -15273,6 +15328,7 @@ impl TypesetEngine {
                 table_total,
                 is_first_placed,
                 is_last_placed,
+                styles,
             );
             return;
         }
@@ -15307,6 +15363,7 @@ impl TypesetEngine {
                 table_total,
                 is_first_placed,
                 is_last_placed,
+                styles,
             );
             return;
         }
