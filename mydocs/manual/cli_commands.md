@@ -1,3 +1,10 @@
+---
+kind: canonical
+status: active
+canonical: mydocs/manual/cli_commands.md
+last_verified: 2026-07-16
+---
+
 # rhwp CLI 명령어 매뉴얼
 
 `rhwp` 바이너리의 전체 명령을 정리한다. 권위 출처는 `src/main.rs` 의 명령 디스패치이며,
@@ -168,6 +175,12 @@ HWP 문서를 HWPX(ZIP+XML)로 변환 저장. `convert`(배포용 해제)와 별
   불일치하면 산출물은 남기고 종료 코드 4로 실패한다.
 - 더 넓은 시각 정합은 `tools/roundtrip_fidelity_harness.py` 또는 `render-diff`로 별도 대조한다.
 
+### `export-hml <입력.hml> -o <출력.hml>`
+HML 원본 문서를 의미 보존 HWPML 2.91 XML로 저장한다.
+- `-o`, `--output <파일>`은 필수다.
+- 입력과 출력이 같은 경로이면 원본 보호를 위해 거부한다.
+- 이 명령은 HWP/HWPX 변환 명령이 아니며 입력은 `.hml`만 받는다.
+
 ### `ir-diff <파일A.hwpx> <파일B.hwp> [-s <구역>] [-p <문단>] [--summary] [--max-lines N]`
 두 파일의 IR 비교(HWPX↔HWP 불일치 검출). 상세: [ir_diff_command.md](ir_diff_command.md)
 - 비교: text, char_count/offsets/shapes, line_segs, controls, tab_extended, ParaShape, TabDef,
@@ -212,7 +225,7 @@ rhwp export-svg output/poc/ingest/sample_minimal.hwpx \
 - `export-svg` 는 산출 HWPX 가 렌더러에서 SVG 로 변환 가능한지 확인하는 smoke test 로
   사용할 수 있다. 이것만으로 원본 PDF 와 시각적으로 일치한다고 판정하지 않는다.
 - 원본 PDF 와의 시각 검증이 필요하면 PDF 기준 비교를
-  [visual_sweep_guide.md](visual_sweep_guide.md)에 따라 별도로 수행한다.
+  [visual_sweep_guide.md](verification/visual_sweep_guide.md)에 따라 별도로 수행한다.
 - 수식/도형/손글씨처럼 PDF 텍스트 레이어가 의미 정보를 잃는 항목은 `build-from-ingest` 단독으로
   복원할 수 없다. 이 경우 ingest 단계에서 이미지/media 또는 전용 구조로 분류하고,
   결함 유형을 hotfix/follow-up 으로 나누어 기록한다.
@@ -304,36 +317,6 @@ record 를 축별로 비교한다.
 6. (정밀 좌표) `export-render-tree -p N` → bbox JSON 직접 비교
 
 ---
-
-## 4. HWP5 조사 프로브 (HWPX→HWP contract 분석용)
-
-일회성 조사·역공학 도구 묶음. 온보딩·활용법: [hwpx2hwp_probe_onboarding.md](hwpx2hwp_probe_onboarding.md)
-
-### `hwp5-inventory <파일.hwp> [--format jsonl|md] [--section N] [--out <path>]`
-HWP5 DocInfo/BodyText record inventory 생성.
-
-### `hwp5-inventory-diff <oracle.hwp> <generated.hwp> [옵션]`
-두 inventory 비교 + contract 후보 힌트/bundle 생성.
-옵션: `--align index|lcs` `--report diff|hints|bundles|table-fields|table-probe-plan`
-`--focus all|table|shape|ctrl|missing|docinfo` `--window N` `--format jsonl|md` `--out <path>`
-
-### 개별 프로브/트레이스 (한 줄 요약)
-- `hwp5-anchor-trace` — 앵커(배치 기준) 레코드 추적
-- `hwp5-ctrl-data-trace` — CTRL_DATA 레코드 추적
-- `hwp5-contract-probe` / `hwp5-contract-analyze` — 직렬화 contract 후보 탐침/분석
-- `hwp5-table-probe` — 표 레코드 구조 탐침
-- `hwp5-cell-header-probe` — 셀 헤더(ListHeader) 탐침
-- `hwp5-borderfill-diagonal-probe` — 테두리/대각선 속성 탐침
-- `hwp5-first-para-control-probe` — 첫 문단 컨트롤 탐침
-- `hwp5-mel-personnel-probe` — 특정 실문서(인사 양식) 케이스 탐침
-
-## 5. 내부 개발·회귀 도구 (일반 사용자 대상 아님)
-
-- `test-caption <파일.hwp>` — 캡션 라운드트립 검증
-- `test-field <파일.hwp>` — 필드 라운드트립 검증
-- `test-shape <입력.hwp> <출력.hwp>` — 도형 라운드트립 검증
-- `gen-table` — 표 테스트 HWP 생성
-- `gen-pua` — PUA 문자 테스트 HWP 생성
 
 ## 단위 환산
 - 1인치 = 7200 HWPUNIT = 25.4mm = 96px(DPI 96)

@@ -1,3 +1,10 @@
+---
+kind: guide
+status: active
+canonical: mydocs/manual/edit_command_review_checklist.md
+last_verified: 2026-07-17
+---
+
 # 편집 Command/Undo 검토 체크리스트
 
 새 rhwp-studio 편집 기능 또는 PR을 검토할 때 다음을 확인한다.

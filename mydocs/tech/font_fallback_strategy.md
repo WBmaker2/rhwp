@@ -1,3 +1,10 @@
+---
+kind: canonical
+status: active
+canonical: mydocs/tech/font_fallback_strategy.md
+last_verified: 2026-07-16
+---
+
 # CJK 폰트 폴백 전략 보고서
 
 작성일: 2026-04-07

@@ -1,3 +1,10 @@
+---
+kind: guide
+status: active
+canonical: mydocs/manual/dev_environment_guide.md
+last_verified: 2026-07-17
+---
+
 # 로컬 웹서버 동작 매뉴얼
 
 ---
@@ -11,16 +18,17 @@ TypeScript 기반 rhwp-studio를 Vite 개발 서버로 실행한다.
 
 ### 사전 조건
 
-- Node.js v24+, npm v11+
-- Docker (WASM 빌드용)
+- Node.js와 npm
+- `wasm-pack`
 
 ### 실행 순서
 
 #### 1. WASM 빌드 (소스 변경 시마다 실행)
 
+저장소 루트에서 실행한다.
+
 ```bash
-cd ~/vsworks/rhwp
-docker compose --env-file .env.docker run --rm wasm
+wasm-pack build --target web --out-dir pkg
 ```
 
 빌드 결과물: `pkg/rhwp_bg.wasm`, `pkg/rhwp.js`, `pkg/rhwp.d.ts`
@@ -28,8 +36,9 @@ docker compose --env-file .env.docker run --rm wasm
 #### 2. 개발 서버 시작
 
 ```bash
-cd ~/vsworks/rhwp/rhwp-studio
-npx vite
+cd rhwp-studio
+npm ci
+npx vite --host 0.0.0.0 --port 7700
 ```
 
 브라우저에서 접속:
@@ -40,14 +49,6 @@ http://<PC의 IP>:7700        # 같은 네트워크의 다른 기기
 ```
 
 > `npm run dev`도 동일하게 동작한다. (`package.json`의 dev 스크립트가 `vite`를 실행)
-
-### 한 번에 실행 (WASM 빌드 + 서버 시작)
-
-```bash
-cd ~/vsworks/rhwp && \
-docker compose --env-file .env.docker run --rm wasm && \
-cd rhwp-studio && npx vite
-```
 
 ### 포트
 

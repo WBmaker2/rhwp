@@ -1,3 +1,10 @@
+---
+kind: reference
+status: historical
+canonical: mydocs/troubleshootings/README.md
+last_verified: 2026-07-16
+---
+
 # 트러블슈팅 — 최근 문서 메뉴가 계속 비활성화 (#2285)
 
 - **이슈**: edwardkim/rhwp#2285 / PR #2286

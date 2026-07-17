@@ -164,7 +164,7 @@ python tools/roundtrip_fidelity_harness.py --files <샘플.hwpx> --workdir out/r
 - OVR(개체 시각 회귀)로 "변경 범위 밖 문서의 개체가 움직이지 않았음"을 결과와 함께
   PR 본문에 적어주시면 리뷰가 빨라집니다.
 - 어떤 PR 에 어떤 시각 증거가 필요한지는
-  [시각 검증 거버넌스](mydocs/manual/visual_verification_governance.md)를 참고하세요 —
+  [시각 검증 거버넌스](mydocs/manual/verification/visual_verification_governance.md)를 참고하세요 —
   시각 검증은 전수 절차가 아니라 **PR 의 수정 목적과 사용자에게 보이는 동작 기준으로 선택**합니다.
 - 전체 CLI 도구는 [cli_commands.md](mydocs/manual/cli_commands.md) 참조.
 - 자가 검증 통과는 회귀 없음의 증명이며, 한컴 정합의 최종 판정은 메인테이너 환경에서
