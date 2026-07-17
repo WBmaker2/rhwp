@@ -41,7 +41,7 @@
 
 - `python3 scripts/check_markdown_links.py`: 384개 통과
 - `python3 scripts/check_markdown_links.py --changed-from upstream/devel
-  --forbid-redirect-references`: 635개 Markdown, 변경 파일 638개, redirect 31개 통과
+  --forbid-redirect-references`: 636개 Markdown, 변경 파일 639개, redirect 31개 통과
 - `python3 scripts/check_document_metadata.py`: 379개 통과
 - `python3 -m py_compile scripts/check_markdown_links.py scripts/check_document_metadata.py`: 통과
 - `git diff --check`: 통과
