@@ -65,7 +65,8 @@ OWPML/
 
 ### 3.1 `enumdef.h` — HWPX enum 값의 정답
 
-`/home/edward/mygithub/hwpx-owpml-model/OWPML/Class/enumdef.h` (2,245줄)
+[`OWPML/Class/enumdef.h`](https://github.com/hancom-io/hwpx-owpml-model/blob/main/OWPML/Class/enumdef.h)
+(2,245줄)
 
 HWPX 속성 값에 쓰이는 **모든 enum의 공식 정의**. rhwp의 `src/model/*.rs`에 있는 enum들이 이와 일치하는지 검증하는 기준.
 

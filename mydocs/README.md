@@ -85,13 +85,17 @@ front matter는 `mydocs/manual`, `mydocs/tech`, `mydocs/troubleshootings`의 모
 ## 이동 규칙
 
 문서 이동은 역할·현행성·참조 빈도를 검토한 독립 commit에서만 수행한다. 모든 내부 참조를 새 경로로
-갱신하고, 외부 이력 호환이 필요한 옛 경로만 같은 commit의 redirect allowlist에 기록한다. 이동 stage에서
-`--forbid-path`로 새 문서와 코드의 이전 경로 재참조가 없는지 확인하되, 해당 migration 목록은 영구 CI
-설정으로 유지하지 않는다. 새 문서를 추가할 때는 workflow를 수정하지 않는다.
+갱신하고, 외부 이력 호환이 필요한 옛 경로만 같은 commit의 redirect stub으로 남긴다. CI는 stub의
+`canonical` 메타데이터에서 allowlist를 동적으로 만들고 PR 변경 파일만 검사한다. 따라서 기존 문서를 매번
+전수 재검사하거나 migration 목록을 별도 파일·workflow에 하드코딩하지 않으며, 새 문서 추가 시에도
+workflow를 수정하지 않는다.
 
 ```bash
 python3 scripts/check_markdown_links.py
 python3 scripts/check_document_metadata.py
+python3 scripts/check_markdown_links.py \
+  --changed-from upstream/devel \
+  --forbid-redirect-references
 python3 scripts/check_markdown_links.py \
   --forbid-scan-path mydocs \
   --forbid-path mydocs/manual/<이전-경로>.md

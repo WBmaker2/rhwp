@@ -6242,7 +6242,7 @@ impl LayoutEngine {
 /// paragraph 의 sibling controls 중 `wrap=TopAndBottom` +
 /// `treat_as_char=false` 인 개체가 차지하는 vertical 영역 (HWPUNIT) 합산.
 ///
-/// 한컴 layout 정합 (`mydocs/tech/topandbottom_table_inline_picture_layout.md` H1):
+/// 한컴 layout 정합 (`mydocs/tech/investigations/issue-1151/topandbottom_table_inline_picture_layout.md` H1):
 /// 같은 paragraph 의 sibling tac picture 가 표 아래 영역에 그려지도록 picture
 /// 의 y 위치 보정값을 계산한다. 예약 개체가 없으면 0 반환 (회귀 0 보장).
 ///

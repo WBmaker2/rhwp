@@ -3,7 +3,7 @@
 ## 결과
 
 이슈 #2072 본문과 2026-07-11 maintainer 코멘트의 완료 조건을 최신 `upstream/devel` 기준으로 모두
-충족했다. 문서 동작·권위·생명주기를 내용 기준으로 분류했으며 제품 코드는 변경하지 않았다.
+충족했다. 문서 동작·권위·생명주기를 내용 기준으로 분류했으며 제품 동작은 변경하지 않았다.
 
 ## 최종 정보구조
 
@@ -39,22 +39,27 @@
 2. `kind`와 `status`를 분리하고 `canonical`, `last_verified`를 독립 검사한다.
 3. 경로 이동과 함께 활성 문서의 개인 경로, 종료 브랜치, 오래된 명령과 고정 수치를 감사했다.
 4. 저장소 루트 `AGENTS.md`를 추가하고 전역 사용자 설정을 저장소 계약에서 제외했다.
-5. 내부 링크는 새 경로로 직접 갱신하고 외부 이력용 redirect만 31개 유지했다.
+5. 내부 링크와 소스·문서 경로 문자열을 새 경로로 갱신하고 외부 이력용 redirect만 31개 유지했다.
 6. investigation, troubleshooting, reference 자산의 역할과 승격 경계를 문서 지도에 명시했다.
 
 문서별 하드코딩 메타데이터 목록과 일회성 retired-path CI 의존도를 제거했다. 새 Markdown은 디렉터리
 단위 검사에 자동 포함되므로 문서가 늘어날 때 Python 목록이나 workflow YAML을 수정하지 않는다.
+PR base 이후 변경 Markdown은 canonical 기준선에 추가해 검사하고, 변경 코드·문서의 redirect 이전 경로
+재참조도 stub에서 동적으로 수집해 차단한다. 기존 문서 전체를 CI마다 다시 검사하는 고정 migration
+manifest는 사용하지 않는다.
 
 ## 최종 검증
 
-- Markdown 상대 링크: 383개 문서 통과
+- canonical Markdown 상대 링크: 383개 문서 통과
+- 최신 `upstream/devel` 이후 변경분: 631개 Markdown, 변경 파일 635개, redirect 31개 통과
 - front matter와 canonical 경로: 378개 문서 통과
 - `manual` 143개, `tech` 170개, `troubleshootings` 64개 Markdown 모두 분류
 - investigation: 32개 이슈 디렉터리, 91개 Markdown
-- redirect: 31개, 내부 재참조 0건
+- redirect: 31개, 변경 코드·문서의 이전 경로 재참조 0건
+- 활성 장기 문서의 실제 개인 checkout 경로 0건. historical provenance와 일반 `/Users/me` 예시는 보존
 - Python 구문, 문서 workflow `actionlint`, `git diff --check`: 통과
 - 최신 `upstream/devel` 기준 behind 0
-- 제품 소스·테스트 변경: 0건
+- 제품 동작·테스트 변경: 0건. 제품 소스 주석 2건과 검증 도구 설명 1건의 문서 경로만 현행화
 
 문서와 문서 검증 인프라만 변경했으므로 Cargo 빌드·테스트는 수행하지 않았다.
 

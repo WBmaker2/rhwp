@@ -28,6 +28,9 @@
 
 - 문서 역할·생명주기·canonical 관계는 `mydocs/README.md`의 manifest를 따른다.
 - 파일 이동 전후에는 `python3 scripts/check_markdown_links.py`를 실행한다.
-- 문서 이동 stage에서는 `--forbid-path <이전-경로>`와 필요 시 `--forbid-scan-path mydocs`로 이전
-  경로 재참조를 일회성 검증한다. 이 migration 목록을 영구 CI 설정으로 유지하지 않는다.
+- PR 준비 시 `python3 scripts/check_markdown_links.py --changed-from upstream/devel
+  --forbid-redirect-references`로 변경 Markdown 링크와 변경 파일의 이전 경로 재참조를 검사한다.
+- redirect allowlist는 `# 이동됨` stub의 `canonical` 메타데이터에서 동적으로 읽는다. 문서 이동 stage에서는
+  필요할 때 `--forbid-path <이전-경로>`를 일회성으로 추가하며 migration 목록을 별도 파일이나 CI 설정에
+  하드코딩하지 않는다.
 - 렌더링·레이아웃 변경은 시각 검증 정책에 따라 PDF/SVG 또는 동등한 근거를 남긴다.

@@ -21,18 +21,6 @@ last_verified: 2026-07-16
 
 ## 이전 경로
 
-아래 기존 경로는 GitHub issue/PR 외부 이력 참조를 보존하기 위해 redirect stub으로만 남긴다. 저장소 내부
-새 링크는 이 목록을 사용하지 않는다. 문서 이동 stage에서는 `--forbid-path`로 이 경로의 재참조를
-일회성 검증하며, 완료된 migration 목록을 영구 CI에서 반복 검사하지 않는다.
-
-```text
-mydocs/manual/visual_verification_governance.md
-mydocs/manual/visual_sweep_guide.md
-mydocs/manual/object_visual_regression.md
-mydocs/manual/roundtrip_fidelity_harness.md
-mydocs/manual/svg_regression_diff.md
-mydocs/manual/visual_clipping_detector.md
-mydocs/manual/hangul_pdf_baseline.md
-mydocs/manual/hangul_page_oracle.md
-mydocs/manual/verify_pi_page_vs_hangul.md
-```
+GitHub issue/PR 외부 이력에서 자주 참조된 기존 경로만 redirect stub으로 남긴다. 각 stub의 `canonical`
+메타데이터가 allowlist의 정본이며, 이 지도에 경로 목록을 복제하지 않는다. 저장소 내부 링크는 위의 현재
+경로를 사용한다. CI는 PR 변경분에서 redirect 이전 경로를 새로 참조하면 실패한다.
