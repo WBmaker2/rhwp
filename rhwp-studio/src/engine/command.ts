@@ -1224,18 +1224,19 @@ export class SnapshotCommand implements EditCommand {
 
     // 최초 실행: before 저장 → 작업 수행 → after 저장
     this.beforeId = wasm.saveSnapshot();
-    // [Task #2328] operation 이 throw 하면 커맨드가 히스토리에 등록되지 못해
-    // discard 주체가 사라진다 → before 스냅샷 영구 누수. throw 경로에서 직접 해제.
+    // [Task #2328] operation 또는 after-save 중 어느 것이 throw 하든 커맨드가
+    // 히스토리에 등록되지 못해 discard 주체가 사라진다 → 스냅샷 영구 누수(orphan
+    // → WASM 무통보 축출 재발). after-save(대용량 문서 클론 시 메모리 압박 등)까지
+    // try 범위에 포함해 before/after 를 대칭적으로 해제한다.
     try {
       if (this.operation) {
         this.cursorAfter = this.operation(wasm);
       }
+      this.afterId = wasm.saveSnapshot();
     } catch (e) {
-      wasm.discardSnapshot(this.beforeId);
-      this.beforeId = null;
+      this.discard(wasm); // before/after id 를 null-safe 로 해제
       throw e;
     }
-    this.afterId = wasm.saveSnapshot();
 
     // operation 참조 해제 (클로저에 캡처된 리소스 해제)
     this.operation = null;

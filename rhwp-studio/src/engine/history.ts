@@ -11,8 +11,11 @@ function discardAll(stack: EditCommand[], wasm: WasmBridge): void {
 }
 
 /**
- * [Task #2328] WASM 스냅샷 저장소 상한(document.rs 의 MAX_SNAPSHOTS=100).
- * 값 변경 시 함께 갱신한다.
+ * [Task #2328] WASM 스냅샷 저장소 상한 미러 —
+ * src/document_core/commands/document.rs 의 save_snapshot_native 내부
+ * `const MAX_SNAPSHOTS`(함수-로컬). **양방향 결합**: Rust 값을 이 아래로
+ * 낮추면 아래 예산(MAX-2)이 store 를 넘겨 WASM 무통보 축출이 재발한다.
+ * 값 변경 시 반드시 양쪽을 함께 갱신한다(Rust 쪽에도 역참조 주석이 있다).
  */
 const WASM_MAX_SNAPSHOTS = 100;
 
@@ -100,8 +103,13 @@ export class CommandHistory {
       const evicted = this.undoStack.shift();
       evicted?.discard?.(wasm);
     }
-    // [Task #2328] 스냅샷 예산 정합 — WASM 상한 초과 전에 front 축출.
-    this.enforceSnapshotBudget(wasm);
+    // [Task #2328] 스냅샷 예산 정합 — WASM 상한 초과 전에 front 축출. push 이후에
+    // 강제해야 방금 명령의 +2 가 계산에 포함된다. 스냅샷을 점유하는 명령만
+    // 예산을 늘리므로 그 경우에만 강제한다(텍스트 편집은 예산 무영향 →
+    // liveSnapshotIds O(n) 스캔 생략, 편집 hot-path 비용 제거).
+    if ((command.snapshotResourceCount?.() ?? 0) > 0) {
+      this.enforceSnapshotBudget(wasm);
+    }
 
     return cursorAfter;
   }

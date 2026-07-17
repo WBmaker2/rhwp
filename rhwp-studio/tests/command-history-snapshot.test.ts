@@ -18,8 +18,10 @@ const source = (rel: string): string => readFileSync(join(rootDir, rel), 'utf8')
 function methodBlock(src: string, signature: string): string {
   const start = src.indexOf(signature);
   assert.notEqual(start, -1, `${signature} not found`);
-  // 다음 최상위 메서드( '\n  ' 들여쓰기 + 식별자() ) 또는 클래스 끝까지.
-  const next = src.slice(start + signature.length).search(/\n {2}[a-zA-Z][\w]*\(/);
+  // 다음 최상위 메서드까지( '\n  ' + 선택적 접근자/async/get/set + 식별자() ).
+  // 접근자 접두어를 허용해 modifier 붙은 이웃 메서드로 블록이 새지 않게 한다.
+  const next = src.slice(start + signature.length)
+    .search(/\n {2}(?:public |private |protected |static |async |get |set )*[a-zA-Z][\w]*\s*\(/);
   return next === -1 ? src.slice(start) : src.slice(start, start + signature.length + next);
 }
 
@@ -46,9 +48,13 @@ test('[결함2] undo 는 op-우선 + 실패시-드롭 하이브리드다(pop-먼
   // op 전에 pop 하지 않는다(성공 엔트리 무손실).
   assert.ok(!/const command = this\.undoStack\.pop\(\);[\s\S]*command\.undo/.test(block),
     'pop-먼저(pop 후 undo) 패턴 잔존');
-  // 실패 경로: try/catch 로 오염 엔트리를 pop+discard 후 전파(락업 방지).
-  assert.match(block, /try\s*\{[\s\S]*command\.undo\(wasm\)[\s\S]*\}\s*catch[\s\S]*this\.undoStack\.pop\(\)[\s\S]*discard\?\.\(wasm\)[\s\S]*throw/,
-    'undo 실패 시 오염 엔트리 드롭(pop+discard+throw)이 없으면 세션 undo 락업');
+  // 실패 경로: try/catch 로 오염 엔트리를 pop·discard 후 전파(락업 방지).
+  // pop/discard 순서는 무관(JS 스택 vs WASM id 해제, 독립) — 존재만 강제한다.
+  const catchBody = block.slice(block.search(/\}\s*catch/));
+  assert.match(block, /try\s*\{[\s\S]*command\.undo\(wasm\)[\s\S]*\}\s*catch/, 'command.undo 를 try 로 감싸야 함');
+  assert.match(catchBody, /this\.undoStack\.pop\(\)/, 'catch 에서 오염 엔트리 pop');
+  assert.match(catchBody, /discard\?\.\(wasm\)/, 'catch 에서 스냅샷 discard');
+  assert.match(catchBody, /throw/, 'catch 에서 rethrow');
 });
 
 test('[결함2] redo 도 execute-우선 + 실패시-드롭 하이브리드다', () => {
@@ -58,16 +64,26 @@ test('[결함2] redo 도 execute-우선 + 실패시-드롭 하이브리드다', 
   const idxUndoPush = block.indexOf('this.undoStack.push(command)');
   assert.ok(idxPeek < idxExec && idxExec < idxUndoPush,
     'peek → execute → undo.push 순서여야 함');
-  assert.match(block, /try\s*\{[\s\S]*command\.execute\(wasm\)[\s\S]*\}\s*catch[\s\S]*this\.redoStack\.pop\(\)[\s\S]*discard\?\.\(wasm\)[\s\S]*throw/,
-    'redo 실패 시 오염 엔트리 드롭이 없으면 락업');
+  const catchBody = block.slice(block.search(/\}\s*catch/));
+  assert.match(block, /try\s*\{[\s\S]*command\.execute\(wasm\)[\s\S]*\}\s*catch/, 'command.execute 를 try 로 감싸야 함');
+  assert.match(catchBody, /this\.redoStack\.pop\(\)/, 'catch 에서 오염 엔트리 pop');
+  assert.match(catchBody, /discard\?\.\(wasm\)/, 'catch 에서 discard');
+  assert.match(catchBody, /throw/, 'catch 에서 rethrow');
 });
 
-test('[결함3] SnapshotCommand.execute 는 operation throw 시 before 스냅샷을 해제한다', () => {
+test('[결함3] execute 는 operation·after-save 어느 throw 에도 스냅샷을 누수하지 않는다', () => {
   const block = methodBlock(command, 'execute(wasm: WasmBridge): DocumentPosition {');
   assert.match(block, /this\.beforeId = wasm\.saveSnapshot\(\);/, 'before 저장이 있어야 함');
-  // saveSnapshot(before) 이후 operation 을 try/catch 로 감싸 discard + rethrow.
-  assert.match(block, /try\s*\{[\s\S]*this\.operation\(wasm\)[\s\S]*\}\s*catch[\s\S]*discardSnapshot\(this\.beforeId\)[\s\S]*throw/,
-    'operation 을 try/catch 로 감싸 throw 시 beforeId discard 후 rethrow 해야 함');
+  // try 는 operation 과 after-save 를 모두 감싸야 한다 — after-save(대용량 클론
+  // 메모리 압박 등) throw 도 before 누수 → orphan 이므로 대칭 보호 필수.
+  assert.match(block, /try\s*\{[\s\S]*this\.operation\(wasm\)[\s\S]*this\.afterId = wasm\.saveSnapshot\(\)[\s\S]*\}\s*catch[\s\S]*throw/,
+    'operation 과 after-save 를 함께 try 로 감싸야 함(after-save 가 try 밖이면 누수)');
+  // catch 는 before/after 를 해제해야 한다(discard() 는 둘 다 null-safe 처리).
+  assert.match(block, /catch[\s\S]*this\.discard\(wasm\)[\s\S]*throw/,
+    'catch 에서 discard(wasm)로 before/after 대칭 해제 후 rethrow 해야 함');
+  // after-save 가 try 밖(구 구조)이면 실패해야 한다 — catch 다음에 saveSnapshot 금지.
+  assert.ok(!/\}\s*catch[\s\S]*?throw;\s*\}\s*this\.afterId = wasm\.saveSnapshot/.test(block),
+    'after-save 가 catch 밖(try 이후)에 남아있음 — 누수 경로');
 });
 
 test('[결함1] 스냅샷 예산은 WASM 상한에서 순간 +2 여유를 뺀 값이다', () => {
@@ -81,11 +97,20 @@ test('[결함1] 스냅샷 예산은 WASM 상한에서 순간 +2 여유를 뺀 �
   // 예산 강제 헬퍼: 예산 초과 시 undo 스택 front 를 shift + discard.
   const block = methodBlock(history, 'enforceSnapshotBudget(wasm: WasmBridge): void {');
   assert.match(block, /liveSnapshotIds\(\)\s*>\s*SNAPSHOT_ID_BUDGET/, '예산 초과 판정');
+  assert.match(block, /this\.undoStack\.length\s*>\s*1/, 'front 축출은 최소 1개 보존(length>1) 가드');
   assert.match(block, /this\.undoStack\.shift\(\)/, 'front 축출(shift)');
   assert.match(block, /discard\?\.\(wasm\)/, '축출 시 스냅샷 discard');
-  // execute 경로가 예산을 강제해야 한다.
+  // liveSnapshotIds 는 undo·redo 양 스택을 모두 세야 한다(순간 저장이 redo id 와
+  // 합산돼 store 를 넘길 수 있으므로 — 한 스택만 세면 과소집계 → orphan 회귀).
+  const live = methodBlock(history, 'liveSnapshotIds(): number {');
+  assert.match(live, /this\.undoStack/, 'undoStack 합산');
+  assert.match(live, /this\.redoStack/, 'redoStack 합산(누락 시 과소집계)');
+  // execute 는 push·maxSize 축출 이후에 예산을 강제해야 방금 명령의 +2 가 반영된다.
   const exec = methodBlock(history, 'execute(command: EditCommand, wasm: WasmBridge): DocumentPosition {');
-  assert.match(exec, /this\.enforceSnapshotBudget\(wasm\)/, 'execute 가 예산을 강제해야 함');
+  const idxPush = exec.indexOf('this.undoStack.push(command)');
+  const idxEnforce = exec.indexOf('this.enforceSnapshotBudget(wasm)');
+  assert.ok(idxPush !== -1 && idxEnforce !== -1 && idxPush < idxEnforce,
+    'execute 가 push 이후에 enforceSnapshotBudget 를 호출해야 함(전이면 +2 미반영)');
 });
 
 test('SnapshotCommand 는 점유 스냅샷 id 수를 보고한다(예산 계산용)', () => {
