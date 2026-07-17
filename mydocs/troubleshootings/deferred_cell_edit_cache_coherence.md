@@ -1,3 +1,10 @@
+---
+kind: reference
+status: active
+canonical: mydocs/troubleshootings/README.md
+last_verified: 2026-07-17
+---
+
 # 지연 셀 편집의 캐시·페이지네이션 정합성 진단
 
 ## 목적과 적용 범위

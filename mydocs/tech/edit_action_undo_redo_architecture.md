@@ -1,3 +1,10 @@
+---
+kind: canonical
+status: active
+canonical: mydocs/tech/edit_action_undo_redo_architecture.md
+last_verified: 2026-07-16
+---
+
 # 편집 액션 라우터와 Undo/Redo 아키텍처 계약
 
 본 문서는 Task #1320에서 정리한 rhwp-studio 편집 액션 라우팅과 Undo/Redo 복원 계약이다.

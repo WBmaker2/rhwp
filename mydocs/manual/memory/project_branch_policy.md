@@ -1,4 +1,8 @@
 ---
+kind: memory
+status: historical
+canonical: mydocs/manual/memory/MEMORY.md
+last_verified: 2026-07-17
 name: 프로젝트 브랜치 정책 + iOS 분기
 description: main/devel/local-devel/local-task{N} + ios/devel(맥북 전용) 장기 분리
 type: project

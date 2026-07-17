@@ -1,4 +1,8 @@
 ---
+kind: memory
+status: historical
+canonical: mydocs/manual/memory/MEMORY.md
+last_verified: 2026-07-17
 name: output 폴더 서브폴더 구조
 description: output/ 하위 용도별 서브폴더 규칙 — re/, svg/, debug/
 type: project
