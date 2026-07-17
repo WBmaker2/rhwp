@@ -29,3 +29,21 @@
 - `python3 -m py_compile scripts/check_markdown_links.py scripts/check_document_metadata.py`
 - `git diff --check`
 
+## 구현 결과
+
+- `codex/task2072-doc-ia-final-20260717` 전용 PR 브랜치를 생성했다.
+- 최신 `upstream/devel` 51개 커밋을 충돌 없이 병합했다.
+- 원격의 v0.7.19 준비, 제품 코드, 신규 샘플과 운영 기록은 그대로 보존했다.
+- `mydocs/orders/20260717.md`에 #2072 완료 범위와 PR 생성 승인 대기 상태를 추가했다.
+- PR diff는 문서 정보구조, 로컬 문서 검사 도구, 제품 소스의 문서 경로 주석 2곳으로 한정된다.
+
+## 검증 결과
+
+- `python3 scripts/check_markdown_links.py`: 384개 통과
+- `python3 scripts/check_markdown_links.py --changed-from upstream/devel
+  --forbid-redirect-references`: 635개 Markdown, 변경 파일 638개, redirect 31개 통과
+- `python3 scripts/check_document_metadata.py`: 379개 통과
+- `python3 -m py_compile scripts/check_markdown_links.py scripts/check_document_metadata.py`: 통과
+- `git diff --check`: 통과
+- 제품 동작 변경: 없음
+- Cargo 빌드·테스트: 문서 구조와 로컬 검사 도구 변경이므로 수행하지 않음

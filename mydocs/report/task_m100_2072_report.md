@@ -50,7 +50,7 @@
 ## 최종 검증
 
 - canonical Markdown 상대 링크: 384개 문서 통과
-- 최신 `upstream/devel` 이후 변경분: 633개 Markdown, 변경 파일 636개, redirect 31개 통과
+- 최신 `upstream/devel` 이후 변경분: 635개 Markdown, 변경 파일 638개, redirect 31개 통과
 - front matter와 canonical 경로: 379개 문서 통과
 - `manual` 144개, `tech` 170개, `troubleshootings` 64개 Markdown 모두 분류
 - investigation: 32개 이슈 디렉터리, 91개 Markdown
