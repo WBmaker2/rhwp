@@ -1,3 +1,10 @@
+---
+kind: guide
+status: active
+canonical: mydocs/manual/opengov_corpus.md
+last_verified: 2026-07-17
+---
+
 # opengov 고정 실문서 회귀 말뭉치 가이드 (Task #1564)
 
 `samples/hwpx/opengov/` — 서울 정보소통광장 정보공개 결재문서 클래스별 대표를 동결한

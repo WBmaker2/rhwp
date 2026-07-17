@@ -24,6 +24,11 @@ last_verified: 2026-07-17
 | PDF/SVG 기준 비교의 정책 | [시각 검증 문서 지도](verification/README.md) | [시각 검증 거버넌스](verification/visual_verification_governance.md), [PDF/SVG visual sweep 가이드](verification/visual_sweep_guide.md) |
 | 한컴 기준 PDF 산출을 위한 MCP 사용 | [HWP 2020 MCP 사용법](mcp_hwp2020Convert_usage.md) | [PR 리뷰·통합 워크플로우](pr_review_workflow.md)의 기준 PDF 절 |
 | 브라우저 확장 개발·배포 | [브라우저 확장 개발 가이드](browser_extension_dev_guide.md) | [Chrome/Edge 확장 빌드·배포](chrome_edge_extension_build_deploy.md) |
+| Studio E2E·CDP 검증 | [E2E 조판 자동 검증](e2e_verification_guide.md) | [CDP E2E 가이드](e2e-cdp.md) |
+| HWP/HWPX 저장 회귀 기준 | [HWP5 roundtrip baseline](hwp5_roundtrip_baseline.md), [HWPX roundtrip baseline](hwpx_roundtrip_baseline.md) | [문서 진단 도구](document_diagnostics_tool_manual.md), [HWPX2HWP probe 온보딩](hwpx2hwp_probe_onboarding.md) |
+| `@rhwp/core` 편집 API | [소비자용 편집 API](consumer_edit_api_guide.md) | [WASM options object 규약](wasm_api_options_convention.md) |
+| 편집 command와 단축키 | [Command/Undo 검토 체크리스트](edit_command_review_checklist.md) | [키보드 단축키 추가](keyboard_shortcut_guide.md) |
+| 품질 지표와 리팩터링 검토 | [코드 품질 대시보드](dashboard.md) | [SOLID 채점 기준](solid_scoring_guide.md) |
 | release 준비와 배포 | [배포 가이드](publish_guide.md) | [개발 환경 가이드](dev_environment_guide.md) |
 | rhwp-studio UI 명칭·CSS 접두어 | [rhwp-studio UI 명칭과 CSS 접두어](rhwp_studio_ui_conventions.md) | [개발 환경 가이드](dev_environment_guide.md) |
 
@@ -55,9 +60,9 @@ last_verified: 2026-07-17
 | `canonical` | 저장소 상대 경로 | 더 상세한 문서가 따르는 권위 문서 |
 | `last_verified` | `YYYY-MM-DD` | 사실 또는 절차를 마지막으로 확인한 날짜 |
 
-canonical manifest, CLI·시각 검증 클러스터와 분류가 끝난 조사·보관·트러블슈팅 문서는 이 메타를
-CI에서 검사한다. 나머지 legacy 문서는 클러스터별 현행성 감사에서 실제 내용과 참조 관계를 확인한 뒤
-검사 범위에 추가한다.
+`mydocs/manual`의 모든 Markdown 문서는 이 메타로 분류한다. 현행 절차와 API는 `active`, 작성 당시의
+방법론·브랜딩·피드백 원문은 `historical`, 이동 안내 문서는 `superseded`로 구분하며 CI가 누락과 잘못된
+canonical 경로를 검사한다.
 
 ## CLI 문서 역할
 
