@@ -6,7 +6,7 @@ import { FieldMarkerRenderer } from './field-marker-renderer';
 import { SelectionRenderer } from './selection-renderer';
 import { CommandHistory } from './history';
 import { DeleteSelectionCommand, ApplyCharFormatCommand, ApplyParaFormatCommand, SnapshotCommand, TextMutationEffectAccumulator, IMMEDIATE_TEXT_MUTATION_EFFECTS } from './command';
-import type { OperationDescriptor, ParaFormatTarget, RefreshPolicy, TextMutationEffects } from './command';
+import type { OperationDescriptor, ParaFormatTarget, RefreshPolicy, TextMutationEffects, EditCommand, EditContext } from './command';
 import { VirtualScroll } from '@/view/virtual-scroll';
 import { ViewportManager } from '@/view/viewport-manager';
 import type {
@@ -2129,7 +2129,8 @@ export class InputHandler {
       this.prepareTextMutationBeforeCursor(IMMEDIATE_TEXT_MUTATION_EFFECTS);
       this.clearTableResizeRuntimeCache();
       this.exitObjectSelectionAfterHistoryJump();
-      this.cursor.moveTo(newPos);
+      // [Task #2337] 방금 되돌린 커맨드가 HF/FN 편집이면 그 커서 모드로 복원(본문 moveTo 대신).
+      this.restoreEditContextAfterHistory(this.history.peekRedoTop(), newPos);
       this.afterEdit();
     }
   }
@@ -2143,9 +2144,74 @@ export class InputHandler {
       );
       this.clearTableResizeRuntimeCache();
       this.exitObjectSelectionAfterHistoryJump();
-      this.cursor.moveTo(newPos);
+      // [Task #2337] 방금 다시 실행한 커맨드가 HF/FN 편집이면 그 커서 모드로 복원.
+      this.restoreEditContextAfterHistory(this.history.peekUndoTop(), newPos);
       this.afterEdit(!boundaryHandled);
     }
+  }
+
+  /**
+   * [Task #2337] undo/redo 후 편집 컨텍스트(본문 vs HF/FN) 복원.
+   *
+   * 본문 커맨드(editContext 없음)는 기존대로 HF/FN 모드를 빠져나오고 본문 커서를
+   * 이동한다. HF/FN 편집 커맨드는 해당 모드로 (재)진입해 커서 오프셋을 복원하며,
+   * 이때 본문 moveTo 는 건너뛴다(HF/FN 커서는 별도 상태라 본문 위치 이동이 부적합).
+   * 모드 전환 시 mode-change 이벤트를 emit 해 툴바/오버레이가 따라오게 한다.
+   * enterHeaderFooterMode/enterFootnoteMode 는 _savedBodyPosition 을 덮어쓰므로 이미
+   * 같은 모드일 때는 재진입하지 않고 switch/set 만 한다.
+   */
+  private restoreEditContextAfterHistory(cmd: EditCommand | null, bodyPos: DocumentPosition): void {
+    const ctx: EditContext | null = cmd?.editContext?.() ?? null;
+
+    if (ctx?.mode === 'headerFooter') {
+      if (this.cursor.isInFootnote()) {
+        this.cursor.exitFootnoteMode();
+        this.eventBus.emit('footnoteModeChanged', false);
+      }
+      const sameTarget = this.cursor.isInHeaderFooter()
+        && this.cursor.hfSectionIdx === ctx.sectionIdx
+        && (this.cursor.headerFooterMode === 'header') === ctx.isHeader
+        && this.cursor.hfApplyTo === ctx.applyTo;
+      if (!sameTarget) {
+        if (this.cursor.isInHeaderFooter()) {
+          this.cursor.switchHeaderFooterTarget(ctx.isHeader, ctx.sectionIdx, ctx.applyTo);
+        } else {
+          this.cursor.enterHeaderFooterMode(ctx.isHeader, ctx.sectionIdx, ctx.applyTo);
+          this.eventBus.emit('headerFooterModeChanged', ctx.isHeader ? 'header' : 'footer');
+        }
+      }
+      this.cursor.setHfCursorPosition(ctx.paraIdx, ctx.charOffset);
+      return;
+    }
+
+    if (ctx?.mode === 'footnote') {
+      if (this.cursor.isInHeaderFooter()) {
+        this.cursor.exitHeaderFooterMode();
+        this.eventBus.emit('headerFooterModeChanged', 'none');
+      }
+      const sameTarget = this.cursor.isInFootnote()
+        && this.cursor.fnSectionIdx === ctx.sectionIdx
+        && this.cursor.fnParaIdx === ctx.paraIdx
+        && this.cursor.fnControlIdx === ctx.controlIdx;
+      if (!sameTarget) {
+        if (this.cursor.isInFootnote()) this.cursor.exitFootnoteMode();
+        this.cursor.enterFootnoteMode(ctx.sectionIdx, ctx.paraIdx, ctx.controlIdx, ctx.footnoteIndex, ctx.pageNum);
+        this.eventBus.emit('footnoteModeChanged', true);
+      }
+      this.cursor.setFnCursorPosition(ctx.innerParaIdx, ctx.charOffset);
+      return;
+    }
+
+    // 본문 커맨드 — HF/FN 모드였으면 빠져나오고 본문 커서 이동.
+    if (this.cursor.isInHeaderFooter()) {
+      this.cursor.exitHeaderFooterMode();
+      this.eventBus.emit('headerFooterModeChanged', 'none');
+    }
+    if (this.cursor.isInFootnote()) {
+      this.cursor.exitFootnoteMode();
+      this.eventBus.emit('footnoteModeChanged', false);
+    }
+    this.cursor.moveTo(bodyPos);
   }
 
   /**
