@@ -7,6 +7,7 @@
  *
  *   케이스 1  find-replace-undo.test.ts      (#2037 모두 바꾸기)
  *   케이스 2  picture-props-undo.test.ts     (#2027 그림 속성 다이얼로그)
+ *   케이스 2b (#2317) 그림 속성 실키 Ctrl+Z smoke — 키보드 dispatch 경로
  *   케이스 3  equation-props-undo.test.ts    (#2077 수식 속성 다이얼로그)
  *   케이스 4  table-props-undo.test.ts       (#2053 표/셀 속성 다이얼로그)
  *   케이스 5  wrap-through-preserve.test.ts  (#2054 Through 배치 보존)
@@ -14,6 +15,9 @@
  * 구동 원칙:
  *  - 다이얼로그 open(툴바 개체 속성 / Ctrl+F2), 확인 버튼, Ctrl+Z 는 실제
  *    DOM/키보드 경로로 구동한다.
+ *  - 개체 속성 흐름(2/3/4)의 undo 는 performUndo 직접 호출이다 — 개체 선택
+ *    모드에서 키보드 Ctrl+Z 가 차단되기 때문. 키보드 dispatch 자체는 케이스
+ *    1(텍스트)과 2b(개체 스냅샷, 해제 후 실키)가 커버한다 (#2302 P2).
  *  - 개체 삽입/선택은 기존 e2e 관례대로 window.__wasm / window.__inputHandler
  *    훅을 쓴다(좌표 클릭 의존 제거). raw wasm 호출은 undo 스택(스튜디오
  *    CommandHistory)에 기록되지 않으므로 순수 setup 으로 안전하다.
@@ -178,6 +182,7 @@ async function insertFloatingPicture(page, extraProps = {}) {
   return ci;
 }
 
+
 // ─── 테스트 본문 ────────────────────────────────────────────
 
 runTest('편집 undo 계약 실동작 (Task #2301)', async ({ page }) => {
@@ -221,7 +226,7 @@ runTest('편집 undo 계약 실동작 (Task #2301)', async ({ page }) => {
   await screenshot(page, 'undo-01-find-replace');
 
   // ── 케이스 2: 그림 속성 다이얼로그 undo (#2027) ─────────
-  setTestCase('picture-props: 쪽 영역 제한 토글 → Ctrl+Z 복원');
+  setTestCase('picture-props: 쪽 영역 제한 토글 → performUndo 복원(개체 모드 키 차단 우회)');
   await clearSelections(page);
   console.log('\n[2] 그림 속성 다이얼로그 undo...');
   await createNewDocument(page);
@@ -246,8 +251,68 @@ runTest('편집 undo 계약 실동작 (Task #2301)', async ({ page }) => {
     `undo 후 restrictInPage 복원 (${picUndone.restrictInPage})`);
   await screenshot(page, 'undo-02-picture-props');
 
+  // ── 케이스 2b: 그림 속성 → 실제 키보드 Ctrl+Z smoke (Task #2317) ──
+  // PR #2302 P2(리뷰) 이행: 개체 계열 스냅샷에 대해 키보드 dispatch 경로
+  // (textarea keydown → onKeyDown → undo 라우팅)를 실키로 1종 검증한다.
+  // 개체 선택 중에는 Ctrl+Z 가 차단되므로, 실사용 시퀀스 그대로
+  // "편집 영역 실클릭(자연 해제) → 실키 Ctrl+Z" 로 우회한다.
+  setTestCase('picture-props smoke: 속성 변경 → 실키 Ctrl+Z 복원 (키보드 dispatch)');
+  console.log('\n[2b] 그림 속성 실키 Ctrl+Z smoke...');
+  // 케이스 2의 문서를 이어 사용: 재선택 → 다이얼로그로 다시 토글(스냅샷 기록)
+  await page.evaluate((c) => {
+    const ih = window.__inputHandler;
+    ih.cursor.enterPictureObjectSelectionDirect(0, 0, c, 'image');
+    ih.active = true;
+    window.__eventBus?.emit('picture-object-selection-changed', true);
+  }, picCi);
+  await sleep(page, 200);
+  const smokeBefore = await getPic(page, picCi);
+  const smokeDepth0 = await undoDepth(page);
+  await openObjectPropsDialog(page);
+  await toggleDialogCheckbox(page, '쪽 영역 안으로 제한');
+  await clickPrimary(page);
+  const smokeAfter = await getPic(page, picCi);
+  assert(smokeAfter.restrictInPage !== smokeBefore.restrictInPage,
+    `smoke: 설정 후 restrictInPage 변경됨 (${smokeBefore.restrictInPage}→${smokeAfter.restrictInPage})`);
+  assert(await undoDepth(page) === smokeDepth0 + 1, 'smoke: 확인이 undo 스택에 1건 기록');
+
+  // dispatcher 오류 감시 (실키 경로에서 커맨드 실행 실패가 없어야 함)
+  const smokeErrors = [];
+  const onConsole = (msg) => {
+    if (msg.type() === 'error' && msg.text().includes('커맨드 실행 실패')) smokeErrors.push(msg.text());
+  };
+  page.on('console', onConsole);
+
+  // 키 입력이 도달하도록 에디터 textarea 에 포커스(셋업 — 실사용자는 직전
+  // 편집에서 이미 보유; 다이얼로그 닫힘 직후에는 BODY 로 남는다). 해제는
+  // 실키 Escape 로 수행한다 — 개체 모드의 키보드 dispatch(Escape 계약,
+  // input-handler-keyboard 의 moveOutOfSelectedPicture 분기)까지 함께 검증.
+  await page.evaluate(() => {
+    const ih = window.__inputHandler;
+    ih.active = true;
+    ih.textarea?.focus();
+  });
+  await page.keyboard.press('Escape');
+  await sleep(page, 250);
+  assert(!(await page.evaluate(() => window.__inputHandler.isInPictureObjectSelection())),
+    'smoke: 실키 Escape 로 개체 선택 해제됨 (키보드 dispatch — 개체 모드 분기)');
+
+  // 실키 Ctrl+Z — 키보드 dispatch 경로 전체를 통과해야 한다
+  await page.keyboard.down('Control');
+  await page.keyboard.press('KeyZ');
+  await page.keyboard.up('Control');
+  await sleep(page, 450);
+
+  const smokeUndone = await getPic(page, picCi);
+  assert(smokeUndone.restrictInPage === smokeBefore.restrictInPage,
+    `smoke: 실키 Ctrl+Z 후 restrictInPage 복원 (${smokeUndone.restrictInPage})`);
+  assert(await undoDepth(page) === smokeDepth0, 'smoke: undo 스택 1건 소비');
+  assert(smokeErrors.length === 0, `smoke: 커맨드 실행 실패 0건 (수집 ${smokeErrors.length})`);
+  page.off('console', onConsole);
+  await screenshot(page, 'undo-02b-picture-ctrlz-smoke');
+
   // ── 케이스 3: 수식 속성 다이얼로그 undo (#2077) ─────────
-  setTestCase('equation-props: 글자 크기 변경 → Ctrl+Z 복원');
+  setTestCase('equation-props: 글자 크기 변경 → performUndo 복원(개체 모드 키 차단 우회)');
   await clearSelections(page);
   console.log('\n[3] 수식 속성 다이얼로그 undo...');
   await createNewDocument(page);
@@ -297,7 +362,7 @@ runTest('편집 undo 계약 실동작 (Task #2301)', async ({ page }) => {
   await screenshot(page, 'undo-03-equation-props');
 
   // ── 케이스 4: 표/셀 속성 다이얼로그 undo (#2053) ────────
-  setTestCase('table-props: 쪽 영역 제한 토글 → Ctrl+Z 복원');
+  setTestCase('table-props: 쪽 영역 제한 토글 → performUndo 복원(개체 모드 키 차단 우회)');
   await clearSelections(page);
   console.log('\n[4] 표/셀 속성 다이얼로그 undo...');
   await createNewDocument(page);

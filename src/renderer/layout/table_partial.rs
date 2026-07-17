@@ -300,6 +300,15 @@ impl LayoutEngine {
                         inner_width,
                         styles,
                     );
+                    // [#2291] 부실 저장(ls==1·실폭 초과) 재분할 — 가로쓰기 셀 한정.
+                    if cell.text_direction == 0 {
+                        crate::renderer::composer::recompose_stored_single_line_if_overflowing(
+                            comp,
+                            para,
+                            inner_width,
+                            styles,
+                        );
+                    }
                 }
             }
 

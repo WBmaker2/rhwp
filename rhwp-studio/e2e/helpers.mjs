@@ -219,7 +219,12 @@ export async function waitForCanvas(page, timeout = 10000) {
 
 /** 새 빈 문서 생성 + 캔버스 대기 */
 export async function createNewDocument(page) {
-  await page.evaluate(() => window.__eventBus?.emit('create-new-document'));
+  // [Task #2317] skipUnsavedGuard: 직전 케이스가 문서를 dirty 로 남기면 미저장
+  // 가드 모달이 응답 대기 상태로 잔존해 ① 새 문서가 실제로 생성되지 않고
+  // ② 모달의 document-capture 키 핸들러가 이후 모든 실키 입력을 삼킨다
+  // (실키 Ctrl+Z smoke 가 검출). e2e 셋업은 가드를 명시적으로 우회한다 —
+  // 가드 동작 자체는 unsaved-changes-guard.test.mjs 가 자체 emit 으로 검증.
+  await page.evaluate(() => window.__eventBus?.emit('create-new-document', { skipUnsavedGuard: true }));
   await page.waitForSelector(CANVAS_SELECTOR, { timeout: 10000 });
   await page.evaluate(() => new Promise(r => setTimeout(r, 1000)));
 }
