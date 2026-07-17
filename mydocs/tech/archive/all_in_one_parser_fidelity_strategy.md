@@ -84,7 +84,7 @@ KPI 안:
 
 ## 3. 현재 갭 분석 (예측 결함 매트릭스)
 
-코드 리뷰 보고서(`mydocs/eng/feedback/layout-quality-report.md`, 4.5/10) + 최근 30개 회귀 이슈 + 수식 지원 현황(`mydocs/tech/equation_support_status.md`) 기반 **사전 예측 결함**.
+코드 리뷰 보고서(`mydocs/eng/feedback/layout-quality-report.md`, 4.5/10) + 최근 30개 회귀 이슈 + 수식 지원 현황(`mydocs/tech/investigations/issue-139/equation_support_status.md`) 기반 **사전 예측 결함**.
 
 ### 3.1 수식 영역 (가장 큰 위험)
 
@@ -388,8 +388,8 @@ fixture: 미적분_05.도함수의 활용, page 2, 8
 
 ## 14. 참조
 
-- `mydocs/tech/dev_roadmap.md` — Phase 2 (5월) 코드 품질 9.2 목표와 정렬
-- `mydocs/tech/equation_support_status.md` — 수식 미구현 항목 baseline
+- `mydocs/tech/archive/dev_roadmap_20260324.md` — Phase 2 (5월) 코드 품질 9.2 목표와 정렬
+- `mydocs/tech/investigations/issue-139/equation_support_status.md` — 수식 미구현 항목 baseline
 - `mydocs/eng/feedback/layout-quality-report.md` — layout.rs 4.5/10
 - `mydocs/orders/20260430.md` — #501/#477/#431/#429 정정 패턴
 - PR #498 — Canvas visual diff 인프라 (확장 대상)

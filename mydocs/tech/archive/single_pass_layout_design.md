@@ -1,3 +1,10 @@
+---
+kind: decision
+status: historical
+canonical: mydocs/tech/rendering_engine_design.md
+last_verified: 2026-07-17
+---
+
 # 단일 패스 레이아웃 엔진 설계서
 
 ## 프로젝트 전환점

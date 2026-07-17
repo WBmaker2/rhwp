@@ -1,3 +1,10 @@
+---
+kind: investigation
+status: historical
+canonical: mydocs/tech/investigations/issue-124/README.md
+last_verified: 2026-07-17
+---
+
 # 폰트 메트릭 DB 크기 비교 (rhwp vs 한컴 vs 일부 상용 웹오피스)
 
 ## 1. WASM 바이너리 크기

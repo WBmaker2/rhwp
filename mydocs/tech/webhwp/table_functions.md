@@ -1,8 +1,15 @@
+---
+kind: investigation
+status: historical
+canonical: mydocs/tech/webhwp/README.md
+last_verified: 2026-07-17
+---
+
 # 한컴 웹기안기 — 표(Table) 관련 JS 함수 목록
 
 > 분석 대상: `webhwp/js/hwpApp.*.chunk.js` (5.17MB minified)
 > 작성일: 2026-02-21
-> 참조: `mydocs/tech/webhwp/02_table.md` (기존 구조 분석)
+> 참조: [표 컨트롤 분석](02_table.md)
 
 ## 1. 테두리(Border) 렌더링
 

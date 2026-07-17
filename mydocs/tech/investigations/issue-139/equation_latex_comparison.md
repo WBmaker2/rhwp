@@ -1,3 +1,10 @@
+---
+kind: investigation
+status: historical
+canonical: mydocs/tech/investigations/issue-139/README.md
+last_verified: 2026-07-17
+---
+
 # LaTeX vs 한컴 수식 입력 방식 비교 분석
 
 작성일: 2026-04-14

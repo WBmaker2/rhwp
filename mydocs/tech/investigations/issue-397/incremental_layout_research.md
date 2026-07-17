@@ -1,3 +1,10 @@
+---
+kind: investigation
+status: historical
+canonical: mydocs/tech/investigations/issue-397/README.md
+last_verified: 2026-07-17
+---
+
 # 프로덕션 문서 편집기의 증분 레이아웃(Incremental Layout) 아키텍처 조사
 
 > 조사일: 2026-03-27

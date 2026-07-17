@@ -1,3 +1,10 @@
+---
+kind: investigation
+status: historical
+canonical: mydocs/tech/investigations/issue-124/README.md
+last_verified: 2026-07-17
+---
+
 # 일부 상용 제품 캔버스 렌더링 분석 및 DPR 스케일링 전략
 
 작성일: 2026-02-21

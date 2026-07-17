@@ -1,3 +1,10 @@
+---
+kind: investigation
+status: historical
+canonical: mydocs/tech/parser_architecture.md
+last_verified: 2026-07-17
+---
+
 # Hexagonal Architecture 전환 검토 보고서
 
 작성일: 2026-03-23

@@ -1,3 +1,10 @@
+---
+kind: investigation
+status: historical
+canonical: mydocs/tech/investigations/issue-397/README.md
+last_verified: 2026-07-17
+---
+
 # 텍스트 레이아웃 기술 리뷰 보고서
 
 > Task 397 | 2026-03-28 | 고수준 텍스트 레이아웃 기술 리뷰 (SkParagraph + cosmic-text)

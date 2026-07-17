@@ -1,3 +1,10 @@
+---
+kind: decision
+status: historical
+canonical: rhwp-vscode/README.md
+last_verified: 2026-07-17
+---
+
 # rhwp VSCode 확장 설계 문서
 
 ## 1. 개요

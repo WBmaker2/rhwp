@@ -1,3 +1,10 @@
+---
+kind: snapshot
+status: historical
+canonical: mydocs/tech/hwp_spec_errata.md
+last_verified: 2026-07-17
+---
+
 # 오픈소스 진영에서 HWP 쓰기는 왜 아직 사용할 수 없는가
 
 > 작성일: 2026-02-23 (최종 갱신: 2026-03-16)

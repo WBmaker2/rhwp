@@ -142,7 +142,7 @@ Render Diff의 `web/fonts/**`는 `assets/fonts/**`로 바꾼다. 역사 문서�
 | `mydocs/manual/chrome_edge_extension_build_deploy.md` | source 36개 전체 복사와 dist 계약 현행화 |
 | `mydocs/manual/publish_guide.md` | AMO source archive 입력을 `assets/fonts`로 변경 |
 | `mydocs/tech/font_fallback_strategy.md` | 현재 canonical 경로·36개 inventory로 factual section 현행화, fallback 정책 불변 |
-| `mydocs/tech/equation_font_selection.md` | Latin Modern Math source 경로를 canonical로 갱신 |
+| `mydocs/tech/investigations/issue-139/equation_font_selection.md` | Latin Modern Math source 경로를 canonical로 갱신 |
 | `mydocs/tech/investigations/issue-2125/task_m100_2125_font_ownership.md` | current manifest, #2190 provenance, target copy matrix 신설 |
 
 다음 문서는 당시 경로와 작업 결과를 설명하는 역사 자료이므로 일괄 치환하지 않는다.
@@ -285,7 +285,7 @@ source reference 검사에서 허용되는 `web/fonts`는 compatibility symlink�
 ```bash
 git diff --check
 git diff --name-only
-git grep -n 'web/fonts' -- THIRD_PARTY_LICENSES.md npm/editor/README.md mydocs/manual mydocs/tech/font_fallback_strategy.md mydocs/tech/equation_font_selection.md ttfs/opensource/README.md
+git grep -n 'web/fonts' -- THIRD_PARTY_LICENSES.md npm/editor/README.md mydocs/manual mydocs/tech/font_fallback_strategy.md mydocs/tech/investigations/issue-139/equation_font_selection.md ttfs/opensource/README.md
 git diff -- mydocs/metrics/frontend/2026-07-11 mydocs/tech/investigations/issue-2124/task_m100_2124_font_inventory.md mydocs/report/task_m100_2190_report.md
 ```
 

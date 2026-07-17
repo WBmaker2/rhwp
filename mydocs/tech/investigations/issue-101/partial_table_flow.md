@@ -1,3 +1,10 @@
+---
+kind: investigation
+status: historical
+canonical: mydocs/tech/investigations/issue-101/README.md
+last_verified: 2026-07-17
+---
+
 # PartialTable 분할 처리 흐름도
 
 > 작성일: 2026-04-10

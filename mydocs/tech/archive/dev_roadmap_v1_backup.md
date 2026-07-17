@@ -1,7 +1,7 @@
 ---
 kind: snapshot
 status: historical
-canonical: mydocs/tech/dev_roadmap.md
+canonical: mydocs/tech/archive/README.md
 last_verified: 2026-07-16
 ---
 

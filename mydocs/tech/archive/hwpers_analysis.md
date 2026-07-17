@@ -1,3 +1,10 @@
+---
+kind: investigation
+status: historical
+canonical: mydocs/tech/archive/README.md
+last_verified: 2026-07-17
+---
+
 # hwpers 프로젝트 분석 — rhwp 관점의 경쟁 분석
 
 ## 1. 개요

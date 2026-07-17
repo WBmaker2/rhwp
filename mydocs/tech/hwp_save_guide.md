@@ -1,3 +1,10 @@
+---
+kind: reference
+status: active
+canonical: mydocs/tech/hwp_spec_errata.md
+last_verified: 2026-07-17
+---
+
 # HWP 저장 기술 가이드
 
 ## 1. 편집 영역 좌표계

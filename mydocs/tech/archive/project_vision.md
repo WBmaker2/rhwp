@@ -1,3 +1,10 @@
+---
+kind: decision
+status: historical
+canonical: mydocs/tech/archive/README.md
+last_verified: 2026-07-17
+---
+
 # rhwp 프로젝트 최종 목표
 
 ## 비전

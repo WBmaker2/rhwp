@@ -1,3 +1,10 @@
+---
+kind: decision
+status: historical
+canonical: mydocs/tech/rendering_engine_design.md
+last_verified: 2026-07-17
+---
+
 # 미주 레이아웃 재설계 — 하이브리드 순차-flow 모델 (#1184 / #1257)
 
 상태: 설계 확정(작업지시자 승인). 구현은 `RHWP_EN_SEQ_FLOW` 플래그 게이트로 점진.

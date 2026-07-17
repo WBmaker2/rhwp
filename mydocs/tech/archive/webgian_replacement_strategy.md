@@ -1,3 +1,10 @@
+---
+kind: decision
+status: historical
+canonical: mydocs/tech/archive/README.md
+last_verified: 2026-07-17
+---
+
 # 한컴 웹기안기 대체 소프트웨어 개발 전략
 
 ## 1. 배경
@@ -156,7 +163,7 @@ HTML 보고서 (표, 서식 포함)
 | **인쇄** | **브라우저/서버 의존 인쇄** | **PS/PCL 직접 생성 인쇄** |
 
 > [!TIP]
-> 상세 아키텍처는 [direct_printing_guideline.md](file:///home/edward/vsworks/rhwp/mydocs/tech/direct_printing_guideline.md)를 참조하십시오.
+> 상세 아키텍처는 [직접 인쇄 아키텍처 제안](direct_printing_guideline.md)을 참조하십시오.
 
 ## 3. 상호운용성 전략
 

@@ -1,3 +1,10 @@
+---
+kind: investigation
+status: historical
+canonical: mydocs/tech/investigations/issue-139/README.md
+last_verified: 2026-07-17
+---
+
 # 수식 레이아웃 정밀화 방안 설계
 
 작성일: 2026-04-14

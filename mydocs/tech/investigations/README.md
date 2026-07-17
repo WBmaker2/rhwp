@@ -2,7 +2,7 @@
 kind: guide
 status: active
 canonical: mydocs/tech/investigations/README.md
-last_verified: 2026-07-16
+last_verified: 2026-07-17
 ---
 
 # 이슈별 기술 조사
@@ -19,8 +19,13 @@ last_verified: 2026-07-16
 
 ## 현재 이슈 묶음
 
+- [Issue #101 부분 표 흐름 조사](issue-101/README.md)
+- [Issue #112-115 ThorVG PoC 조사](issue-112/README.md)
+- [Issue #124 캔버스·폰트 측정 조사](issue-124/README.md)
+- [Issue #139 수식 입력·레이아웃 조사](issue-139/README.md)
 - [Issue #257 text-align 시각 비교](issue-257/README.md)
 - [Issue #310 LineSeg vpos 조사](issue-310/README.md)
+- [Issue #397 증분 레이아웃 조사](issue-397/README.md)
 - [Issue #511 Document IR wrap 조사](issue-511/README.md)
 - [Issue #516 다층 렌더링 후보 조사](issue-516/README.md)
 - [Issue #1151 picture TAC 조사](issue-1151/README.md)

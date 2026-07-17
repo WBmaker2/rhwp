@@ -1,3 +1,10 @@
+---
+kind: investigation
+status: historical
+canonical: mydocs/tech/thorvg_decision.md
+last_verified: 2026-07-17
+---
+
 # ThorVG POC 인사이트 보고서
 
 ## 개요

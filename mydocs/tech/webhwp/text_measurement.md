@@ -1,3 +1,10 @@
+---
+kind: investigation
+status: historical
+canonical: mydocs/tech/webhwp/README.md
+last_verified: 2026-07-17
+---
+
 # 한컴 webhwp 텍스트 측정 시스템 분석
 
 > 분석 대상: `/webhwp/js/hwpApp.*.chunk.js` (minified webpack bundle, ~5MB)

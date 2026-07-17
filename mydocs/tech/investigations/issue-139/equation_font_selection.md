@@ -1,3 +1,10 @@
+---
+kind: investigation
+status: historical
+canonical: mydocs/tech/investigations/issue-139/README.md
+last_verified: 2026-07-17
+---
+
 # 수식 폰트 조사 및 선정 보고서
 
 작성일: 2026-04-14

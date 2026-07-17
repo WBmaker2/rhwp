@@ -1,3 +1,10 @@
+---
+kind: snapshot
+status: historical
+canonical: mydocs/tech/investigations/issue-139/README.md
+last_verified: 2026-07-17
+---
+
 # HWP 수식 파서 지원 현황
 
 작성일: 2026-03-23

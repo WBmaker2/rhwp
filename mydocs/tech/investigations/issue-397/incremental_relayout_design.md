@@ -1,3 +1,10 @@
+---
+kind: investigation
+status: historical
+canonical: mydocs/tech/investigations/issue-397/README.md
+last_verified: 2026-07-17
+---
+
 # rhwp 편집 시 재조판 문제 분석 및 개선 설계안
 
 > 2026-03-28 | Task 397 후속 — 편집 시 자연스러운 재조판을 위한 정밀 분석
@@ -218,5 +225,5 @@ segment_width: 34200        segment_width: 34180    ✗ 차이 20 (폰트 메트
 ## 4. 참고
 
 - [증분 레이아웃 아키텍처 조사](incremental_layout_research.md) — LibreOffice, Typst, Google Docs, xi-editor 패턴 비교
-- [표 객체 처리 아키텍처 현황](../report/archives/table_architecture_review.md)
+- [표 객체 처리 아키텍처 현황](../../../report/archives/table_architecture_review.md)
 - [텍스트 레이아웃 기술 리뷰](text_layout_review.md)

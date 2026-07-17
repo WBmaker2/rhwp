@@ -1,3 +1,10 @@
+---
+kind: investigation
+status: historical
+canonical: mydocs/tech/investigations/issue-124/README.md
+last_verified: 2026-07-17
+---
+
 # 한컴 웹기안기 폰트 시스템 소스 분석
 
 작성일: 2026-02-21

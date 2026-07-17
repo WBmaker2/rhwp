@@ -18,11 +18,11 @@ last_verified: 2026-07-17
 | 포맷 파서와 공통 IR 책임 경계 | [포맷 파서와 공통 Document IR 경계](parser_architecture.md) | [HWP/HWPX IR 차이](hwp_hwpx_ir_differences.md) |
 | HWPX와 HWP IR 차이 | [HWP/HWPX IR 차이](hwp_hwpx_ir_differences.md) | [HWPX 한컴 참조](hwpx_hancom_reference.md), [HWPX DVC 참조](hwpx_dvc_reference.md), [로컬 OWPML XML 스키마](../manual/owpml_schema_reference.md) |
 | Document IR와 LineSeg 계약 | [Document IR LineSeg 표준](document_ir_lineseg_standard.md) | [Issue #310 LineSeg vpos 조사](investigations/issue-310/README.md), [HWPX LineSeg 검증](hwpx_lineseg_validation.md) |
-| 렌더링 엔진 | [렌더링 엔진 설계](rendering_engine_design.md) | [Issue #516 다층 렌더링 후보 조사](investigations/issue-516/README.md), [Canvas 렌더링 분석](canvas_rendering_analysis.md) |
-| 표 레이아웃 | [표 레이아웃 규칙](table_layout_rules.md) | [HWP 표 렌더링](hwp_table_rendering.md), [부분 표 흐름](partial_table_flow.md) |
-| 폰트 대체와 충실도 | [폰트 fallback 전략](font_fallback_strategy.md) | [한컴 폰트 시스템 분석](hancom_font_system_analysis.md), [폰트 메트릭 크기 비교](font_metrics_size_comparison.md) |
+| 렌더링 엔진 | [렌더링 엔진 설계](rendering_engine_design.md) | [Issue #516 다층 렌더링 후보 조사](investigations/issue-516/README.md), [Issue #124 캔버스·폰트 측정 조사](investigations/issue-124/README.md) |
+| 표 레이아웃 | [표 레이아웃 규칙](table_layout_rules.md) | [HWP 표 렌더링](hwp_table_rendering.md), [Issue #101 부분 표 흐름 조사](investigations/issue-101/README.md) |
+| 폰트 대체와 충실도 | [폰트 fallback 전략](font_fallback_strategy.md) | [Issue #124 캔버스·폰트 측정 조사](investigations/issue-124/README.md), [Issue #2125 font ownership 조사](investigations/issue-2125/README.md) |
 | 편집 undo/redo | [편집 action undo/redo 아키텍처](edit_action_undo_redo_architecture.md) | 이슈별 실동작 조사 문서 |
-| 기술 채택·비채택 | [ThorVG 결정 기록](thorvg_decision.md) | [ThorVG POC 인사이트](thorvg_poc_insights.md) |
+| 기술 채택·비채택 | [ThorVG 결정 기록](thorvg_decision.md) | [Issue #112-115 ThorVG PoC 조사](investigations/issue-112/README.md) |
 | OLE chart renderer | [OLE chart renderer 선택 결정](hwp_ole_chart_renderer_architecture_decision_1251.md) | [Issue #1251 시각 차이 조사](investigations/issue-1251/README.md) |
 | CI cache 정책 이력 | [Issue #1664 cache 정책 결정](ci_cache_policy_1664.md) | 현재 동작은 `.github/workflows/ci.yml` 재확인 |
 | 이슈별 기술 조사 | [이슈별 기술 조사 지도](investigations/README.md) | [Issue #511 IR wrap 조사](investigations/issue-511/README.md), [Issue #1151 picture TAC 조사](investigations/issue-1151/README.md), [Issue #1584 이후 HWPX 잔여 IR 차이 조사](investigations/issue-1584/README.md), [Issue #1658 페이지네이션 조사](investigations/issue-1658/README.md), [Issue #1772 잔여 OVER 조사](investigations/issue-1772/README.md), [Issue #2125 font ownership 조사](investigations/issue-2125/README.md) |
@@ -35,7 +35,7 @@ last_verified: 2026-07-17
   장기 계약·기준선·설계 결론을 담은 문서는 `investigations/`로 자동 이동하지 않고 현행성 감사를 거쳐 분류한다.
 - 현재 분리된 이슈별 조사는 `investigations/issue-####/`에서 관리한다. 각 디렉터리의 README가 해당
   스냅샷과 진단의 당시 범위, 최신성 제한, 관련 문서를 설명한다.
-- `webhwp/` 하위 문서는 웹 편집기 기능별 reference 묶음이다.
+- [webhwp/](webhwp/README.md) 하위 문서는 2026-02 번들을 역분석한 historical investigation 묶음이다.
 - [archive/](archive/README.md)의 v1 roadmap처럼 대체된 계획은 historical 자료로 취급하며, 새 작업의
   근거로 직접 사용하지 않는다.
 
@@ -60,8 +60,9 @@ last_verified: 2026-07-17
 | `canonical` | 저장소 상대 경로 | 해당 상세 문서가 따르는 권위 문서 |
 | `last_verified` | `YYYY-MM-DD` | 기술 사실을 마지막으로 확인한 날짜 |
 
-canonical manifest와 분류가 끝난 `investigations`, `archive`, redirect 문서는 이 스키마를 CI에서
-검사한다. 나머지 legacy 문서는 역할과 내용 현행성을 확인한 뒤 검사 범위에 추가한다.
+`mydocs/tech`의 모든 Markdown 문서는 이 스키마로 분류한다. 장기 계약은 `active`, 이슈별 비교·실험과
+대체된 설계는 `historical`, 이동 안내 문서는 `superseded`로 구분하며 CI가 누락과 잘못된 canonical
+경로를 검사한다.
 
 ## 링크와 이동 규칙
 

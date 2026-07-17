@@ -1,3 +1,10 @@
+---
+kind: investigation
+status: historical
+canonical: mydocs/tech/webhwp/README.md
+last_verified: 2026-07-17
+---
+
 # 한컴 webhwp vs rhwp: HWP 파싱 아키텍처 비교 브리핑
 
 > 분석 대상: `/webhwp/js/hwpApp.*.chunk.js` (minified 5.17MB, webpack bundle)

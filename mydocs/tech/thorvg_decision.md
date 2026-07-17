@@ -100,5 +100,5 @@ Docker 개발 환경에 추가 설치가 필요하다. 기존 순수 Rust 빌드
 
 ## 참조 문서
 
-- [thorvg_poc_insights.md](thorvg_poc_insights.md) — 타스크 112~115의 보존된 POC 요약과 기술 근거
+- [ThorVG PoC 인사이트](investigations/issue-112/thorvg_poc_insights.md) — 타스크 112~115의 보존된 POC 요약과 기술 근거
 - [mydocs/feedback/font-metrics.md](../feedback/font-metrics.md) — 폰트 메트릭 관련 피드백

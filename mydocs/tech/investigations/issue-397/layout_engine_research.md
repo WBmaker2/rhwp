@@ -1,3 +1,10 @@
+---
+kind: investigation
+status: historical
+canonical: mydocs/tech/investigations/issue-397/README.md
+last_verified: 2026-07-17
+---
+
 # 레이아웃 엔진 설계 연구: MS Word, LibreOffice, Chromium LayoutNG, Typst
 
 ## 1. 연구 배경
