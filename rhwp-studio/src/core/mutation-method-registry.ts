@@ -1,18 +1,20 @@
 /**
- * [Task #2327] 문서 변경 WASM 호출의 히스토리 라우팅 가드 (DEV 전용).
+ * [Task #2327] 문서 변경 WasmBridge 메서드의 단일 권위 목록(레지스트리).
  *
  * studio 의 undo 는 executeOperation → CommandHistory 경유가 전제이지만 강제
  * 장치가 없어 기록이 옵트인이다 — 미기록 뮤테이션은 ① 해당 편집 undo 불가
- * ② redo 스택 미무효화(옛 after-스냅샷 재적용이 변경을 무언 삭제) ③ 스냅샷
- * undo 의 전체 문서 복원에 동반 파괴, 3중 위험을 만든다 (#2027/#2037/#2053/
- * #2077 재발 계급). 이 모듈은 히스토리 실행 창(opDepth) 밖에서 문서 변경
- * 메서드가 호출되면 DEV 빌드에서 경고한다. 런타임 동작은 바꾸지 않는다.
+ * ② redo 스택 미무효화 ③ 스냅샷 undo 의 전체 문서 복원에 동반 파괴, 3중
+ * 위험을 만든다 (#2027/#2037/#2053/#2077 재발 계급).
  *
- * `MUTATING_METHODS`/`EXCLUDED_NON_DOCUMENT` 는 단일 권위 목록으로,
- * tests/mutation-routing-guard.test.ts 가 이 소스를 파싱해 ① 브리지 신규
- * 메서드의 분류 누락(드리프트)과 ② 소스 내 뮤테이션 호출 원장(BASELINE)을
- * 검증한다. 브리지에 문서 변경 메서드를 추가하면 두 목록 중 하나에 반드시
- * 분류해야 한다.
+ * 이 레지스트리는 tests/mutation-routing-guard.test.ts 가 파싱해 저작 시점에
+ * ① 브리지 신규/rename 뮤테이터의 분류 누락(양방향 드리프트)과 ② 뮤테이션
+ * 표면 원장(BASELINE)의 증가를 차단한다. 브리지에 문서 변경 메서드를 추가하면
+ * 두 목록 중 하나에 반드시 분류해야 한다.
+ *
+ * (초기 설계의 DEV 런타임 opDepth 가드는 kind:'record' 계약(드래그/이동/표
+ * nudge — 뮤테이션을 record 전에 직접 적용)을 구분하지 못해 일상 편집마다
+ * 오탐하고 warnedMethods 소진으로 진짜 미라우팅까지 침묵시켜, 저작 시점 소스
+ * 가드만 남겼다. 자세한 근거: PR #2329 리뷰 스레드.)
  */
 
 /** 문서 IR(직렬화 결과)을 바꾸는 WasmBridge 공개 메서드 전수. */
@@ -82,63 +84,3 @@ export const EXCLUDED_NON_DOCUMENT: readonly string[] = [
   'ensureParagraphStableIds', // 런타임 추적 id 부여
 ];
 
-let opDepth = 0;
-let allowDepth = 0;
-const warnedMethods = new Set<string>();
-
-/**
- * 히스토리 비경유가 계약상 허용된 극소수 경로의 명시 선언.
- * 현재 유일한 사용처: IME 조합 중간 raw 삽입/삭제 (조합 확정 시
- * executeOperation(kind:'record') 로 사후 기록되는 2단 계약).
- */
-export function allowUnrecordedMutation<T>(fn: () => T): T {
-  allowDepth++;
-  try {
-    return fn();
-  } finally {
-    allowDepth--;
-  }
-}
-
-/**
- * DEV 전용 설치: WasmBridge 인스턴스의 MUTATING_METHODS 를 래핑해 히스토리
- * 실행 창(CommandHistory.execute/undo/redo/recordWithoutExecute) 밖 호출을
- * console.warn 으로 알린다. 메서드당 1회만 경고(콘솔 홍수 방지).
- * 프로토타입 래핑은 installCanvasFontSubstitution 관용구와 동일 결.
- */
-export function installMutationGuard(
-  bridge: Record<string, unknown>,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  historyCtor: { prototype: any },
-): void {
-  const proto = historyCtor.prototype as Record<string, unknown>;
-  for (const name of ['execute', 'undo', 'redo', 'recordWithoutExecute']) {
-    const original = proto[name] as ((...args: unknown[]) => unknown) | undefined;
-    if (typeof original !== 'function') continue;
-    proto[name] = function (this: unknown, ...args: unknown[]): unknown {
-      opDepth++;
-      try {
-        return original.apply(this, args);
-      } finally {
-        opDepth--;
-      }
-    };
-  }
-
-  for (const name of MUTATING_METHODS) {
-    const original = bridge[name] as ((...args: unknown[]) => unknown) | undefined;
-    if (typeof original !== 'function') continue;
-    bridge[name] = function (this: unknown, ...args: unknown[]): unknown {
-      if (opDepth === 0 && allowDepth === 0 && !warnedMethods.has(name)) {
-        warnedMethods.add(name);
-        // eslint-disable-next-line no-console
-        console.warn(
-          `[MutationGuard] 미기록 문서 변경: wasm.${name}() 이 히스토리 실행 창 밖에서 ` +
-            `호출됨 — undo 불가·redo 오염·스냅샷 undo 동반 파괴 위험 (#2327). ` +
-            `executeOperation 라우팅 또는 allowUnrecordedMutation 명시 선언 필요.`,
-        );
-      }
-      return original.apply(bridge, args);
-    };
-  }
-}

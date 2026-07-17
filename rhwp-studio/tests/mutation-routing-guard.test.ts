@@ -7,15 +7,15 @@ import { fileURLToPath } from 'node:url';
 // [Task #2327] 계급 1(기록 옵트인) 회귀를 저작 시점에 차단하는 소스 가드.
 //
 // 두 정적 검사:
-//  (1) 드리프트 — WasmBridge 의 문서-변경형 공개 메서드는 wasm-mutation-guard.ts 의
-//      MUTATING_METHODS 또는 EXCLUDED_NON_DOCUMENT 중 하나에 반드시 분류돼야 한다.
-//      새 뮤테이터가 목록에 안 잡히면 DEV 가드도 그 호출을 못 잡으므로, 분류 누락을
-//      실패로 만든다.
-//  (2) 원장 트립와이어 — ui/ + command/ 에서 뮤테이터를 직접 호출하는 표면(파일별
-//      호출 수)을 동결한다. 신규 파일·증가는 실패 → 의식적 baseline 갱신 + 리뷰 강제.
-//      (라우팅 경유 여부의 실제 판정은 런타임 DEV MutationGuard 가 담당한다 —
-//      텍스트 카운트는 executeOperation 콜백 내부 호출도 세므로 이관해도 줄지 않는다.
-//      따라서 이 원장은 "라우팅 여부"가 아니라 "뮤테이션 표면 증가"의 트립와이어다.)
+//  (1) 드리프트(양방향) — mutation-method-registry.ts 의 MUTATING_METHODS /
+//      EXCLUDED_NON_DOCUMENT 가 브리지의 문서-변경형 공개 메서드를 전수 분류하고
+//      (신규 뮤테이터 누락 차단), 역으로 목록 전 항목이 실제 브리지 메서드인지도
+//      강제한다(rename/제거 무통보 차단).
+//  (2) 원장 트립와이어 — ui/ + command/ + engine/input-handler* 에서 뮤테이터를
+//      직접 호출하는 표면(파일별 호출 수)을 동결한다. 신규 파일·증가는 실패 →
+//      의식적 baseline 갱신 + 리뷰 강제. (텍스트 카운트는 executeOperation 콜백
+//      내부 호출도 세므로 "라우팅 여부"가 아니라 "뮤테이션 표면 증가"의
+//      트립와이어다.)
 
 const rootDir = dirname(dirname(fileURLToPath(import.meta.url)));
 
@@ -23,7 +23,7 @@ function source(rel: string): string {
   return readFileSync(join(rootDir, rel), 'utf8');
 }
 
-/** wasm-mutation-guard.ts 의 배열 상수를 단일 권위원으로 파싱한다. */
+/** mutation-method-registry.ts 의 배열 상수를 단일 권위원으로 파싱한다. */
 function parseStringArray(guardSrc: string, name: string): string[] {
   // `export const NAME ...= [ ... ];` 선언에 앵커(상단 주석의 이름 언급 회피).
   const m = guardSrc.match(new RegExp(`export const ${name}\\b[^=]*=\\s*\\[([\\s\\S]*?)\\];`));
@@ -31,7 +31,7 @@ function parseStringArray(guardSrc: string, name: string): string[] {
   return [...m![1].matchAll(/'([A-Za-z0-9_]+)'/g)].map((x) => x[1]);
 }
 
-const guardSrc = source('src/core/wasm-mutation-guard.ts');
+const guardSrc = source('src/core/mutation-method-registry.ts');
 const MUTATING = parseStringArray(guardSrc, 'MUTATING_METHODS');
 const EXCLUDED = parseStringArray(guardSrc, 'EXCLUDED_NON_DOCUMENT');
 
@@ -52,8 +52,18 @@ function bridgePublicMethods(): string[] {
   return [...names].filter((n) => !priv.has(n));
 }
 
-// 문서 변경을 시사하는 동사 접두어.
-const MUTATING_VERB = /^(insert|delete|create|apply|add|remove|move|resize|merge|split|update|toggle|replace|paste|assign|group|ungroup|change|clear|evaluate|equalize|transpose|setPage|setSection|setColumn|setCell|setTable|setPicture|setShape|setEquation|setNote|setChar|setPara|setField|setForm|setNumbering|setHeaderFooter|setActiveField|renameBookmark|reflowLinesegs)/;
+// 문서 변경을 시사하는 동사 접두어. MUTATING_METHODS 의 모든 이름을 커버해야
+// 하며(아래 자기정합 단언이 강제), 그래야 새 브리지 뮤테이터가 drift 에 걸린다.
+// find* 는 쿼리(findNextEditableControl 등)가 많아 findOrCreate 로 좁힌다.
+const MUTATING_VERB = /^(insert|delete|create|apply|add|remove|move|resize|merge|split|update|toggle|replace|paste|assign|group|ungroup|change|clear|evaluate|transpose|ensure|findOrCreate|reflow|setPage|setSection|setColumn|setCell|setTable|setPicture|setShape|setEquation|setNote|setChar|setPara|setField|setForm|setNumbering|setHeaderFooter|setActiveField|renameBookmark)/;
+
+test('MUTATING_VERB 는 MUTATING_METHODS 전 항목을 커버한다(drift 사각 방지)', () => {
+  // 목록에 있으나 동사 패턴에 안 걸리는 이름이 있으면, 그 계열의 신규 브리지
+  // 뮤테이터가 drift 에서 누락된다(ensure*/find* 계열 사각이 실제였음).
+  const uncovered = MUTATING.filter((m) => !MUTATING_VERB.test(m));
+  assert.deepEqual(uncovered, [],
+    `MUTATING_METHODS 에 MUTATING_VERB 가 못 잡는 이름: ${uncovered.join(', ')} → 동사 추가 필요`);
+});
 
 test('드리프트: 문서-변경형 브리지 공개 메서드는 모두 분류돼야 한다', () => {
   const classified = new Set([...MUTATING, ...EXCLUDED]);
@@ -64,7 +74,7 @@ test('드리프트: 문서-변경형 브리지 공개 메서드는 모두 분류
     unclassified,
     [],
     `WasmBridge 신규(?) 뮤테이터가 분류되지 않음: ${unclassified.join(', ')}\n` +
-      `→ wasm-mutation-guard.ts 의 MUTATING_METHODS(기록 강제) 또는 ` +
+      `→ mutation-method-registry.ts 의 MUTATING_METHODS(기록 대상) 또는 ` +
       `EXCLUDED_NON_DOCUMENT(문서 비변경 사유)에 추가하라.`,
   );
 });
@@ -74,10 +84,9 @@ test('MUTATING_METHODS / EXCLUDED_NON_DOCUMENT 는 서로 겹치지 않는다', 
   assert.deepEqual(dup, [], `양쪽에 중복 분류됨: ${dup.join(', ')}`);
 });
 
-test('MUTATING_METHODS 는 모두 실제 브리지 공개 메서드여야 한다(rename 무통보 skip 방지)', () => {
-  // installMutationGuard 는 `typeof original !== 'function'` 이면 조용히 건너뛴다.
-  // 브리지에서 메서드가 rename/제거되면 목록의 옛 이름은 가드에서 무통보로
-  // 비활성화되므로(가드 사각), 목록 항목이 전부 실재하는지 역방향으로 강제한다.
+test('MUTATING_METHODS 는 모두 실제 브리지 공개 메서드여야 한다(rename skip 방지)', () => {
+  // 브리지에서 메서드가 rename/제거되면 목록의 옛 이름이 드리프트·원장 검사에서
+  // 무의미해지므로(권위 목록 사각), 목록 항목이 전부 실재하는지 역방향으로 강제한다.
   const bridge = new Set(bridgePublicMethods());
   const missing = MUTATING.filter((m) => !bridge.has(m));
   assert.deepEqual(
@@ -90,7 +99,11 @@ test('MUTATING_METHODS 는 모두 실제 브리지 공개 메서드여야 한다
 
 // ── (2) 원장 트립와이어: 뮤테이션 표면 동결 ─────────────────────────────────
 
-/** ui/ + command/ 하위 .ts 파일 나열(테스트 제외). */
+/**
+ * 뮤테이션 표면 스캔 대상: ui/ + command/ + engine/input-handler*.ts.
+ * input-handler* 는 드래그/키보드 nudge 등 최고밀도 직접-뮤테이션 영역이므로
+ * 반드시 포함한다(누락 시 엔진 층의 신규 미라우팅이 원장에 안 걸림).
+ */
 function scanFiles(): string[] {
   const out: string[] = [];
   const walk = (rel: string) => {
@@ -102,6 +115,12 @@ function scanFiles(): string[] {
   };
   walk('src/ui');
   walk('src/command');
+  for (const ent of readdirSync(join(rootDir, 'src/engine'), { withFileTypes: true })) {
+    if (ent.isFile() && ent.name.startsWith('input-handler') && ent.name.endsWith('.ts')
+      && !ent.name.endsWith('.test.ts')) {
+      out.push(`src/engine/${ent.name}`);
+    }
+  }
   return out.sort();
 }
 
@@ -136,6 +155,14 @@ const BASELINE: Readonly<Record<string, number>> = {
   'src/ui/style-edit-dialog.ts': 6,
   'src/ui/table-cell-props-dialog.ts': 2,
   'src/ui/toolbar.ts': 4,
+  // engine/input-handler* — 드래그/nudge 등 직접-뮤테이션 최고밀도 영역.
+  'src/engine/input-handler.ts': 25,
+  'src/engine/input-handler-connector.ts': 1,
+  'src/engine/input-handler-keyboard.ts': 21,
+  'src/engine/input-handler-mouse.ts': 3,
+  'src/engine/input-handler-picture.ts': 11,
+  'src/engine/input-handler-table.ts': 7,
+  'src/engine/input-handler-text.ts': 14,
 };
 
 test('뮤테이션 표면 원장: 신규·증가 사이트는 baseline 갱신을 강제한다', () => {
