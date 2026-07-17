@@ -880,6 +880,16 @@ function hfFnStubPosition(sectionIdx: number): DocumentPosition {
   return { sectionIndex: sectionIdx, paragraphIndex: 0, charOffset: 0 };
 }
 
+/**
+ * [Task #2337-review] WASM 삭제 count 는 Rust `Paragraph::delete_text_at` 의 char(Unicode
+ * scalar) 단위다. JS `String.length`(UTF-16 code unit)를 넘기면 astral 문자(😀 등)에서
+ * 실제보다 많이 삭제해 undo/redo 가 인접 문자를 잃는다 → 코드포인트 수로 계산한다.
+ * (커서 오프셋은 studio 의 UTF-16 관례를 유지하므로 여기서만 char 단위를 쓴다.)
+ */
+function charCount(s: string): number {
+  return [...s].length;
+}
+
 // ── 머리말/꼬리말 ──────────────────────────────────────────
 
 export class InsertTextInHeaderFooterCommand implements EditCommand {
@@ -903,7 +913,7 @@ export class InsertTextInHeaderFooterCommand implements EditCommand {
   }
 
   undo(wasm: WasmBridge): DocumentPosition {
-    wasm.deleteTextInHeaderFooter(this.target.sectionIdx, this.target.isHeader, this.target.applyTo, this.paraIdx, this.charOffset, this.text.length);
+    wasm.deleteTextInHeaderFooter(this.target.sectionIdx, this.target.isHeader, this.target.applyTo, this.paraIdx, this.charOffset, charCount(this.text));
     this.lastContext = hfEditContext(this.target, this.paraIdx, this.charOffset);
     return hfFnStubPosition(this.target.sectionIdx);
   }
@@ -929,7 +939,7 @@ export class DeleteTextInHeaderFooterCommand implements EditCommand {
   }
 
   execute(wasm: WasmBridge): DocumentPosition {
-    wasm.deleteTextInHeaderFooter(this.target.sectionIdx, this.target.isHeader, this.target.applyTo, this.paraIdx, this.charOffset, this.deletedText.length);
+    wasm.deleteTextInHeaderFooter(this.target.sectionIdx, this.target.isHeader, this.target.applyTo, this.paraIdx, this.charOffset, charCount(this.deletedText));
     this.lastContext = hfEditContext(this.target, this.paraIdx, this.charOffset);
     return hfFnStubPosition(this.target.sectionIdx);
   }
@@ -1034,7 +1044,7 @@ export class InsertTextInFootnoteCommand implements EditCommand {
   }
 
   undo(wasm: WasmBridge): DocumentPosition {
-    wasm.deleteTextInFootnote(this.target.sectionIdx, this.target.paraIdx, this.target.controlIdx, this.innerParaIdx, this.charOffset, this.text.length);
+    wasm.deleteTextInFootnote(this.target.sectionIdx, this.target.paraIdx, this.target.controlIdx, this.innerParaIdx, this.charOffset, charCount(this.text));
     this.lastContext = fnEditContext(this.target, this.innerParaIdx, this.charOffset);
     return hfFnStubPosition(this.target.sectionIdx);
   }
@@ -1059,7 +1069,7 @@ export class DeleteTextInFootnoteCommand implements EditCommand {
   }
 
   execute(wasm: WasmBridge): DocumentPosition {
-    wasm.deleteTextInFootnote(this.target.sectionIdx, this.target.paraIdx, this.target.controlIdx, this.innerParaIdx, this.charOffset, this.deletedText.length);
+    wasm.deleteTextInFootnote(this.target.sectionIdx, this.target.paraIdx, this.target.controlIdx, this.innerParaIdx, this.charOffset, charCount(this.deletedText));
     this.lastContext = fnEditContext(this.target, this.innerParaIdx, this.charOffset);
     return hfFnStubPosition(this.target.sectionIdx);
   }

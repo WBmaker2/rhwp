@@ -155,3 +155,34 @@ test('history 는 peekUndoTop/peekRedoTop 으로 방금 이동한 커맨드를 �
   assert.match(historySrc, /peekUndoTop\(\): EditCommand \| null \{ return this\.undoStack\[this\.undoStack\.length - 1\] \?\? null; \}/);
   assert.match(historySrc, /peekRedoTop\(\): EditCommand \| null \{ return this\.redoStack\[this\.redoStack\.length - 1\] \?\? null; \}/);
 });
+
+// ── (6) [리뷰 반영] Unicode 단위 · form mode 기록 ────────────────────────────
+
+test('HF/FN 삭제 count 는 char(코드포인트) 단위여야 한다 — astral 문자 over-delete 방지', () => {
+  // Rust delete_text_at 은 char 단위인데 JS String.length(UTF-16)를 넘기면 '😀' 같은
+  // astral 문자 undo/redo 때 인접 문자를 잃는다(P1). charCount([...s].length)로 계산해야 한다.
+  assert.match(commandSrc, /function charCount\(s: string\): number \{\s*return \[\.\.\.s\]\.length;/,
+    'charCount(코드포인트 수) 헬퍼 필요');
+  // HF/FN 삭제 WASM 호출의 count 인자가 .length 가 아니라 charCount 여야 한다.
+  for (const cls of ['DeleteTextInHeaderFooterCommand', 'DeleteTextInFootnoteCommand',
+    'InsertTextInHeaderFooterCommand', 'InsertTextInFootnoteCommand']) {
+    const block = classBlock(commandSrc, cls);
+    assert.doesNotMatch(block, /deleteTextIn(HeaderFooter|Footnote)\([^)]*\.(text|deletedText)\.length\)/,
+      `${cls}: 삭제 count 에 .length(UTF-16) 사용 금지 — charCount 사용`);
+  }
+});
+
+test('form mode 에서 kind:record 는 항상 허용된다 — 이미 적용된 편집의 무언 손실 방지', () => {
+  // form mode 에서 HF/FN record 를 드롭하면 뮤테이션이 undo 불가한 미기록 편집으로 남는다(P1).
+  const block = inputHandlerSrc.slice(
+    inputHandlerSrc.indexOf('private isOperationAllowedInEditMode'),
+    inputHandlerSrc.indexOf('private isOperationAllowedInEditMode') + 900,
+  );
+  assert.match(block, /if \(desc\.kind === 'record'\) return true;/,
+    "isOperationAllowedInEditMode 는 kind:'record' 를 항상 허용해야 함");
+  // record 허용이 form 게이트(editMode!=='form' → true) 이후에 와야 실효가 있다.
+  const idxForm = block.indexOf("this.editMode !== 'form'");
+  const idxRecord = block.indexOf("desc.kind === 'record'");
+  assert.ok(idxForm !== -1 && idxRecord !== -1 && idxForm < idxRecord,
+    'record 허용은 editMode form 체크 뒤에 위치');
+});

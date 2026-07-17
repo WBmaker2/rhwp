@@ -3357,6 +3357,12 @@ export class InputHandler {
 
   private isOperationAllowedInEditMode(desc: OperationDescriptor): boolean {
     if (this.editMode !== 'form') return true;
+    // [Task #2337-review] kind:'record' 는 이미 적용된 뮤테이션을 히스토리에 기록만 한다.
+    // form mode 에서 이를 드롭하면 그 뮤테이션이 undo 불가한 미기록 편집으로 남아(더블클릭
+    // 진입한 HF/FN 입력·Enter 분할 등) 이 커밋이 막으려는 무언 손실 경로가 그대로 유지된다.
+    // 뮤테이션 적용 여부는 호출부의 form-mode 게이트(IME 조합·본문 입력 경로)가 이미 결정하므로,
+    // 이미 적용된 편집은 항상 기록한다.
+    if (desc.kind === 'record') return true;
     if (desc.kind === 'snapshot') return false;
 
     const command = desc.command as any;
