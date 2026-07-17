@@ -1,4 +1,8 @@
 ---
+kind: memory
+status: historical
+canonical: mydocs/manual/memory/MEMORY.md
+last_verified: 2026-07-17
 name: feedback_visual_verification_selective
 description: 시각 검증(OVL-step)은 기계적 전수가 아니라 PR 목적·user-visible 동작 기준 선택 적용 — 거버넌스 문서 준수
 metadata: 

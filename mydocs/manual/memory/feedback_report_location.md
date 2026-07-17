@@ -1,4 +1,8 @@
 ---
+kind: memory
+status: historical
+canonical: mydocs/manual/memory/MEMORY.md
+last_verified: 2026-07-17
 name: 최종 보고서 위치 규칙
 description: 타스크 최종 완료보고서는 mydocs/report/에 저장, 단계별 보고서는 mydocs/working/에 저장
 type: feedback

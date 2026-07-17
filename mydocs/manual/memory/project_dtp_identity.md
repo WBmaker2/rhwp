@@ -1,4 +1,8 @@
 ---
+kind: memory
+status: historical
+canonical: mydocs/manual/memory/MEMORY.md
+last_verified: 2026-07-17
 name: rhwp 정체성 — 한국형 DTP 엔진 + 워드프로세서
 description: 아래아한글의 개발 의도 = 쿽 익스프레스 (QuarkXPress) 대체. 단순 워드프로세서가 아닌 DTP 도구 정체성. 다층 레이어 / WebGPU / 마스터 페이지 등은 DTP 인프라 토대.
 type: project

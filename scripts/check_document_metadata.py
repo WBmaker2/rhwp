@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""권위 문서와 분류된 문서 클러스터의 front matter를 검사한다."""
+"""장기 문서 디렉터리의 모든 Markdown front matter를 검사한다."""
 
 from __future__ import annotations
 
@@ -11,43 +11,10 @@ from pathlib import Path
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 REQUIRED_PATHS = (
     "mydocs/README.md",
-    "mydocs/manual/README.md",
-    "mydocs/manual/cli_commands.md",
-    "mydocs/manual/ai_pair_programming_guide.md",
-    "mydocs/manual/codex/MEMORY.md",
-    "mydocs/manual/codex/README.md",
-    "mydocs/manual/codex/docs_and_git_workflow.md",
-    "mydocs/manual/dev_environment_guide.md",
-    "mydocs/manual/dump_command.md",
-    "mydocs/manual/export_png_command.md",
-    "mydocs/manual/hyper_waterfall_docs_guide.md",
-    "mydocs/manual/ir_diff_command.md",
-    "mydocs/manual/mcp_hwp2020Convert_usage.md",
-    "mydocs/manual/memory/MEMORY.md",
-    "mydocs/manual/onboarding_guide.md",
-    "mydocs/manual/owpml_schema_reference.md",
-    "mydocs/manual/pr_review_workflow.md",
-    "mydocs/manual/publish_guide.md",
-    "mydocs/manual/rhwp_cli_skill_guide.md",
-    "mydocs/manual/rhwp_studio_ui_conventions.md",
-    "mydocs/manual/verification",
-    "mydocs/tech/README.md",
-    "mydocs/tech/archive",
-    "mydocs/tech/ci_cache_policy_1664.md",
-    "mydocs/tech/document_ir_lineseg_standard.md",
-    "mydocs/tech/edit_action_undo_redo_architecture.md",
-    "mydocs/tech/font_fallback_strategy.md",
-    "mydocs/tech/hwp_spec_errata.md",
-    "mydocs/tech/hwp_ole_chart_renderer_architecture_decision_1251.md",
-    "mydocs/tech/investigations",
-    "mydocs/tech/parser_architecture.md",
-    "mydocs/tech/rendering_engine_design.md",
-    "mydocs/tech/table_layout_rules.md",
-    "mydocs/tech/thorvg_decision.md",
-    "mydocs/tech/한글문서파일형식_5.0_revision1.3.md",
+    "mydocs/manual",
+    "mydocs/tech",
     "mydocs/troubleshootings",
 )
-REDIRECT_SCAN_PATHS = ("mydocs/manual", "mydocs/tech")
 REQUIRED_FIELDS = ("kind", "status", "canonical", "last_verified")
 ALLOWED_KINDS = {
     "canonical",
@@ -139,8 +106,6 @@ def validate_file(path: Path) -> list[str]:
 
 def main() -> int:
     required_files = iter_markdown_files(REQUIRED_PATHS)
-    redirect_candidates = iter_markdown_files(REDIRECT_SCAN_PATHS)
-    required_files.update(path for path in redirect_candidates if is_redirect_stub(path))
 
     errors: list[str] = []
     for path in sorted(required_files):
