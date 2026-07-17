@@ -1469,7 +1469,11 @@ impl DocumentCore {
         let id = self.next_snapshot_id;
         self.next_snapshot_id += 1;
         self.snapshot_store.push((id, self.document.clone()));
-        // 최대 100개 제한 — 초과 시 가장 오래된 스냅샷 제거
+        // 최대 100개 제한 — 초과 시 가장 오래된 스냅샷 제거.
+        // [Task #2328] studio 히스토리(rhwp-studio/src/engine/history.ts 의
+        // WASM_MAX_SNAPSHOTS)와 양방향 결합. 이 값을 studio 예산(MAX-2)보다 낮추면
+        // studio 가 참조 중인 오래된 undo 스냅샷이 무통보 축출돼 undo 예외가
+        // 재발한다. 변경 시 반드시 studio 상수도 함께 갱신한다.
         const MAX_SNAPSHOTS: usize = 100;
         while self.snapshot_store.len() > MAX_SNAPSHOTS {
             self.snapshot_store.remove(0);

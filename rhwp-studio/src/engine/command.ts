@@ -14,6 +14,11 @@ export interface EditCommand {
   mergeWith(other: EditCommand): EditCommand | null;
   /** 리소스 해제 (스냅샷 명령의 메모리 반환 등). 스택에서 제거될 때 호출. */
   discard?(wasm: WasmBridge): void;
+  /**
+   * [Task #2328] 이 명령이 현재 점유한 WASM 스냅샷 id 개수(없으면 0).
+   * CommandHistory 가 스냅샷 예산을 WASM 상한과 정합시키는 데 쓴다.
+   */
+  snapshotResourceCount?(): number;
   /** page-local refresh 판정을 위한 가벼운 텍스트 편집 payload. */
   getPageLocalTextEditOptions?(): { insertedText?: string; deleteCount?: number };
   /** 방금 실행한 mutation effect를 한 번만 반환한다. */
@@ -1219,10 +1224,19 @@ export class SnapshotCommand implements EditCommand {
 
     // 최초 실행: before 저장 → 작업 수행 → after 저장
     this.beforeId = wasm.saveSnapshot();
-    if (this.operation) {
-      this.cursorAfter = this.operation(wasm);
+    // [Task #2328] operation 또는 after-save 중 어느 것이 throw 하든 커맨드가
+    // 히스토리에 등록되지 못해 discard 주체가 사라진다 → 스냅샷 영구 누수(orphan
+    // → WASM 무통보 축출 재발). after-save(대용량 문서 클론 시 메모리 압박 등)까지
+    // try 범위에 포함해 before/after 를 대칭적으로 해제한다.
+    try {
+      if (this.operation) {
+        this.cursorAfter = this.operation(wasm);
+      }
+      this.afterId = wasm.saveSnapshot();
+    } catch (e) {
+      this.discard(wasm); // before/after id 를 null-safe 로 해제
+      throw e;
     }
-    this.afterId = wasm.saveSnapshot();
 
     // operation 참조 해제 (클로저에 캡처된 리소스 해제)
     this.operation = null;
@@ -1238,6 +1252,11 @@ export class SnapshotCommand implements EditCommand {
   }
 
   mergeWith(): null { return null; }
+
+  /** [Task #2328] 현재 살아있는 before/after 스냅샷 id 개수. */
+  snapshotResourceCount(): number {
+    return (this.beforeId !== null ? 1 : 0) + (this.afterId !== null ? 1 : 0);
+  }
 
   discard(wasm: WasmBridge): void {
     if (this.beforeId !== null) {
