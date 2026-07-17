@@ -26,34 +26,40 @@ function methodBlock(src: string, signature: string): string {
 const history = source('src/engine/history.ts');
 const commandFull = source('src/engine/command.ts');
 // execute/undo 시그니처가 커맨드 클래스마다 반복되므로 SnapshotCommand 클래스
-// 본문으로 범위를 좁힌다.
+// 본문으로 범위를 좁힌다(다음 export class 경계까지 — 뒤 클래스로의 누출 방지).
 const snapClassStart = commandFull.indexOf('export class SnapshotCommand');
 assert.notEqual(snapClassStart, -1, 'SnapshotCommand 클래스 not found');
-const command = commandFull.slice(snapClassStart);
+const snapClassEndRel = commandFull.slice(snapClassStart + 1).indexOf('\nexport class ');
+const command = snapClassEndRel === -1
+  ? commandFull.slice(snapClassStart)
+  : commandFull.slice(snapClassStart, snapClassStart + 1 + snapClassEndRel);
 
-test('[결함2] undo 는 op 성공 후에만 스택을 이동한다(pop-먼저 금지)', () => {
+test('[결함2] undo 는 op-우선 + 실패시-드롭 하이브리드다(pop-먼저 금지, 락업 금지)', () => {
   const block = methodBlock(history, 'undo(wasm: WasmBridge): DocumentPosition | null {');
-  // 참조 읽기(peek) → command.undo → pop → redo.push 순서.
+  // 성공 경로: peek → try{command.undo} → pop → redo.push.
   const idxPeek = block.indexOf('this.undoStack[this.undoStack.length - 1]');
   const idxUndoCall = block.indexOf('command.undo(wasm)');
-  const idxPop = block.indexOf('this.undoStack.pop()');
   const idxRedoPush = block.indexOf('this.redoStack.push(command)');
-  assert.ok(idxPeek !== -1 && idxUndoCall !== -1 && idxPop !== -1 && idxRedoPush !== -1,
-    'undo 가 peek/undo/pop/redo.push 를 모두 포함해야 함');
-  assert.ok(idxPeek < idxUndoCall && idxUndoCall < idxPop && idxPop < idxRedoPush,
-    'undo 예외 안전 순서 위반: peek → command.undo → pop → redo.push 여야 함');
+  assert.ok(idxPeek !== -1 && idxUndoCall !== -1 && idxRedoPush !== -1);
+  assert.ok(idxPeek < idxUndoCall && idxUndoCall < idxRedoPush,
+    'peek → command.undo → redo.push 순서여야 함');
+  // op 전에 pop 하지 않는다(성공 엔트리 무손실).
   assert.ok(!/const command = this\.undoStack\.pop\(\);[\s\S]*command\.undo/.test(block),
-    'pop-먼저(pop 후 undo) 패턴이 남아있음 — 예외 시 엔트리 유실');
+    'pop-먼저(pop 후 undo) 패턴 잔존');
+  // 실패 경로: try/catch 로 오염 엔트리를 pop+discard 후 전파(락업 방지).
+  assert.match(block, /try\s*\{[\s\S]*command\.undo\(wasm\)[\s\S]*\}\s*catch[\s\S]*this\.undoStack\.pop\(\)[\s\S]*discard\?\.\(wasm\)[\s\S]*throw/,
+    'undo 실패 시 오염 엔트리 드롭(pop+discard+throw)이 없으면 세션 undo 락업');
 });
 
-test('[결함2] redo 도 execute 성공 후에만 스택을 이동한다', () => {
+test('[결함2] redo 도 execute-우선 + 실패시-드롭 하이브리드다', () => {
   const block = methodBlock(history, 'redo(wasm: WasmBridge): DocumentPosition | null {');
   const idxPeek = block.indexOf('this.redoStack[this.redoStack.length - 1]');
   const idxExec = block.indexOf('command.execute(wasm)');
-  const idxPop = block.indexOf('this.redoStack.pop()');
   const idxUndoPush = block.indexOf('this.undoStack.push(command)');
-  assert.ok(idxPeek < idxExec && idxExec < idxPop && idxPop < idxUndoPush,
-    'redo 예외 안전 순서 위반: peek → execute → pop → undo.push 여야 함');
+  assert.ok(idxPeek < idxExec && idxExec < idxUndoPush,
+    'peek → execute → undo.push 순서여야 함');
+  assert.match(block, /try\s*\{[\s\S]*command\.execute\(wasm\)[\s\S]*\}\s*catch[\s\S]*this\.redoStack\.pop\(\)[\s\S]*discard\?\.\(wasm\)[\s\S]*throw/,
+    'redo 실패 시 오염 엔트리 드롭이 없으면 락업');
 });
 
 test('[결함3] SnapshotCommand.execute 는 operation throw 시 before 스냅샷을 해제한다', () => {
@@ -64,9 +70,14 @@ test('[결함3] SnapshotCommand.execute 는 operation throw 시 before 스냅샷
     'operation 을 try/catch 로 감싸 throw 시 beforeId discard 후 rethrow 해야 함');
 });
 
-test('[결함1] CommandHistory 는 WASM 상한과 정합된 스냅샷 예산으로 front 를 축출한다', () => {
-  assert.match(history, /const SNAPSHOT_ID_BUDGET = 100;/,
-    'WASM MAX_SNAPSHOTS(100) 와 정합된 JS 예산 상수가 있어야 함');
+test('[결함1] 스냅샷 예산은 WASM 상한에서 순간 +2 여유를 뺀 값이다', () => {
+  // 새 SnapshotCommand.execute 는 before/after 2개를 예산 강제 이전에 저장하므로,
+  // 예산 == MAX 면 그 순간 store 가 MAX 초과 → WASM 무통보 축출 → orphan.
+  // 예산 = MAX - 2 여야 순간 +2 가 MAX 를 넘지 않는다(인터리브 회귀 근절).
+  assert.match(history, /const WASM_MAX_SNAPSHOTS = 100;/,
+    'WASM MAX_SNAPSHOTS(document.rs) 미러 상수가 있어야 함');
+  assert.match(history, /const SNAPSHOT_ID_BUDGET = WASM_MAX_SNAPSHOTS - 2;/,
+    '예산은 MAX - 2 (순간 +2 여유) 여야 함 — MAX 와 같으면 orphan 회귀');
   // 예산 강제 헬퍼: 예산 초과 시 undo 스택 front 를 shift + discard.
   const block = methodBlock(history, 'enforceSnapshotBudget(wasm: WasmBridge): void {');
   assert.match(block, /liveSnapshotIds\(\)\s*>\s*SNAPSHOT_ID_BUDGET/, '예산 초과 판정');

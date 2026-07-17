@@ -11,13 +11,23 @@ function discardAll(stack: EditCommand[], wasm: WasmBridge): void {
 }
 
 /**
- * [Task #2328] WASM 스냅샷 저장소 상한(document.rs 의 MAX_SNAPSHOTS)과 정합시킬
- * JS 측 스냅샷 id 예산. JS 가 이 예산을 넘기 전에 undo 스택 front 를 축출해
- * 스냅샷을 discard 하므로, WASM store 는 이 값을 넘지 않고 WASM 자체의 무통보
- * 축출은 결코 발동하지 않는다(축출된 스냅샷 restore 실패로 undo 가 예외·엔트리
- * 유실되던 결함 #2328 의 근원 제거). 값 변경 시 document.rs 와 함께 갱신한다.
+ * [Task #2328] WASM 스냅샷 저장소 상한(document.rs 의 MAX_SNAPSHOTS=100).
+ * 값 변경 시 함께 갱신한다.
  */
-const SNAPSHOT_ID_BUDGET = 100;
+const WASM_MAX_SNAPSHOTS = 100;
+
+/**
+ * [Task #2328] JS 측 살아있는 스냅샷 id 예산. 새 SnapshotCommand 의 최초 execute 는
+ * before/after 2개를 **연속으로** 저장하는데(command.ts), 이 저장은 히스토리의
+ * redo 정리·예산 강제(enforceSnapshotBudget)보다 **먼저** 일어난다. 예산을
+ * MAX 와 같게 두면 그 순간적 +2 가 WASM store 를 MAX 초과로 밀어 WASM 자체의
+ * 무통보 축출이 발동하고, 이때 축출되는 것은 JS 가 아직 참조하는 오래된 undo
+ * 엔트리의 스냅샷이라 이후 그 엔트리 undo 가 restore 실패로 예외가 된다
+ * (인터리브: 예산 채움→undo→새 편집→오래된 undo 시 재현). 따라서 예산에 그
+ * 순간 +2 만큼 여유를 두어, 라이브 총합이 예산 이하면 새 저장 후에도 store 가
+ * MAX 를 넘지 않게 한다 → WASM 축출은 결코 발동하지 않는다.
+ */
+const SNAPSHOT_ID_BUDGET = WASM_MAX_SNAPSHOTS - 2;
 
 /** Undo/Redo 히스토리 관리 */
 export class CommandHistory {
@@ -102,10 +112,20 @@ export class CommandHistory {
     const command = this.undoStack[this.undoStack.length - 1];
     if (!command) return null;
 
-    // [Task #2328] op 성공 후에만 스택을 이동한다. command.undo() 가 예외를
-    // 던지면(예: 축출된 스냅샷 restore 실패) 스택을 건드리지 않고 전파해
-    // 엔트리 소실을 막는다 (종전 pop-먼저는 예외 시 엔트리를 유실했다).
-    const cursorAfter = command.undo(wasm);
+    // [Task #2328] op-우선 + 실패시-드롭 하이브리드.
+    // - 성공: 스택을 이동한다(op 전에 pop 하지 않으므로 성공 엔트리 무손실).
+    // - 실패(예: 복구 불가한 스냅샷 restore 오류): 오래동안 스택 top 에 남겨
+    //   두면 Ctrl+Z 마다 같은 엔트리가 재예외 → 세션 undo 락업이 된다. 재시도로
+    //   복구되지 않는 오류이므로, 오염 엔트리를 제거·discard 하고 전파한다
+    //   (스냅샷 복원은 문서 전체 치환이라 다음(더 오래된) 엔트리 undo 가 안전).
+    let cursorAfter: DocumentPosition;
+    try {
+      cursorAfter = command.undo(wasm);
+    } catch (e) {
+      this.undoStack.pop();
+      command.discard?.(wasm);
+      throw e;
+    }
     this.undoStack.pop();
     this.redoStack.push(command);
     return cursorAfter;
@@ -117,8 +137,15 @@ export class CommandHistory {
     const command = this.redoStack[this.redoStack.length - 1];
     if (!command) return null;
 
-    // [Task #2328] undo 와 동일 — execute() 성공 후에만 스택 이동.
-    const cursorAfter = command.execute(wasm);
+    // [Task #2328] undo 와 동일 하이브리드 — 성공 시 이동, 실패 시 오염 엔트리 드롭.
+    let cursorAfter: DocumentPosition;
+    try {
+      cursorAfter = command.execute(wasm);
+    } catch (e) {
+      this.redoStack.pop();
+      command.discard?.(wasm);
+      throw e;
+    }
     this.captureExecutionEffects(command);
     this.redoStack.pop();
     this.undoStack.push(command);
