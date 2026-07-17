@@ -74,6 +74,20 @@ test('MUTATING_METHODS / EXCLUDED_NON_DOCUMENT 는 서로 겹치지 않는다', 
   assert.deepEqual(dup, [], `양쪽에 중복 분류됨: ${dup.join(', ')}`);
 });
 
+test('MUTATING_METHODS 는 모두 실제 브리지 공개 메서드여야 한다(rename 무통보 skip 방지)', () => {
+  // installMutationGuard 는 `typeof original !== 'function'` 이면 조용히 건너뛴다.
+  // 브리지에서 메서드가 rename/제거되면 목록의 옛 이름은 가드에서 무통보로
+  // 비활성화되므로(가드 사각), 목록 항목이 전부 실재하는지 역방향으로 강제한다.
+  const bridge = new Set(bridgePublicMethods());
+  const missing = MUTATING.filter((m) => !bridge.has(m));
+  assert.deepEqual(
+    missing,
+    [],
+    `MUTATING_METHODS 에 브리지에 없는 이름: ${missing.join(', ')}\n` +
+      `→ 브리지에서 rename/제거된 메서드. 목록을 갱신하라(방치 시 가드 무통보 비활성).`,
+  );
+});
+
 // ── (2) 원장 트립와이어: 뮤테이션 표면 동결 ─────────────────────────────────
 
 /** ui/ + command/ 하위 .ts 파일 나열(테스트 제외). */
