@@ -15,6 +15,7 @@ last_verified: 2026-07-16
 | 상황 | 권위 문서 | 보조 문서 |
 | --- | --- | --- |
 | 이슈 작업의 문서·브랜치·커밋 흐름 | [문서와 Git 워크플로우](codex/docs_and_git_workflow.md) | [하이퍼 워터폴 문서 가이드](hyper_waterfall_docs_guide.md) |
+| Codex 저장소 부트스트랩 | [Codex 문서 지도](codex/README.md) | [문서와 Git 워크플로우](codex/docs_and_git_workflow.md) |
 | 외부 PR 검토, collaborator 처리, merge 후속 | [PR 리뷰·통합 워크플로우](pr_review_workflow.md) | [개발 환경 가이드](dev_environment_guide.md) |
 | 로컬 빌드, 테스트, WASM 검증 | [개발 환경 가이드](dev_environment_guide.md) | [CLI 명령어 매뉴얼](cli_commands.md) |
 | `rhwp` CLI 전체 옵션과 동작 | [CLI 명령어 매뉴얼](cli_commands.md) | [rhwp-cli Skill 사용 가이드](rhwp_cli_skill_guide.md), [dump 명령 가이드](dump_command.md), [PNG 내보내기 가이드](export_png_command.md) |
@@ -22,12 +23,15 @@ last_verified: 2026-07-16
 | PDF/SVG 기준 비교의 정책 | [시각 검증 문서 지도](verification/README.md) | [시각 검증 거버넌스](verification/visual_verification_governance.md), [PDF/SVG visual sweep 가이드](verification/visual_sweep_guide.md) |
 | 한컴 기준 PDF 산출을 위한 MCP 사용 | [HWP 2020 MCP 사용법](mcp_hwp2020Convert_usage.md) | [PR 리뷰·통합 워크플로우](pr_review_workflow.md)의 기준 PDF 절 |
 | 브라우저 확장 개발·배포 | [브라우저 확장 개발 가이드](browser_extension_dev_guide.md) | [Chrome/Edge 확장 빌드·배포](chrome_edge_extension_build_deploy.md) |
+| rhwp-studio UI 명칭·CSS 접두어 | [rhwp-studio UI 명칭과 CSS 접두어](rhwp_studio_ui_conventions.md) | [개발 환경 가이드](dev_environment_guide.md) |
 
 ## 문서 경계
 
 - `manual/`: 사람이 반복 수행하는 절차, 명령, 검증, 배포, 운영 규칙
-- `manual/codex/`: Codex 부트스트랩과 Codex 전용 작업 규칙. 일반 절차의 권위 출처를 대체하지 않는다.
-- `manual/memory/`: 장기 작업 규칙의 색인과 기억 단위. 현재 세션의 임시 상태나 이슈별 분석을 넣지 않는다.
+- `manual/codex/`: Codex 부트스트랩과 현행 문서·Git 절차. 종료 세션과 task memory는 `archive/`의
+  historical snapshot이며 현재 절차의 근거로 사용하지 않는다.
+- `manual/memory/`: 과거 사용자 피드백과 프로젝트 memory의 출처를 보존하는 historical 색인이다.
+  현행 규칙은 canonical manual에서 확인한다.
 - `tech/`: 포맷 사실, 아키텍처, 설계 결정, 이슈 조사 근거
 - `tech/investigations/`: 특정 이슈의 가설·실험·관찰을 보존한다. 미확정 또는 기각 결론을 포함할 수 있으며
   반복 작업의 지침이나 장기 계약의 권위 문서는 아니다.

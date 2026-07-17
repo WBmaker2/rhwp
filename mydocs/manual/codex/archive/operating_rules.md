@@ -1,3 +1,10 @@
+---
+kind: snapshot
+status: historical
+canonical: mydocs/manual/codex/README.md
+last_verified: 2026-07-17
+---
+
 # Operating Rules
 
 ## Hyper-Waterfall Is Mandatory

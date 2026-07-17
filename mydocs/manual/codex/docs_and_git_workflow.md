@@ -51,8 +51,8 @@ mydocs/orders/YYYYMMDD.md
 - `mydocs/troubleshootings/`: 재발 방지용 문제 해결 기록
 - `mydocs/tech/`: 기술 조사와 스펙 정리
 - `mydocs/manual/`: 매뉴얼과 장기 지침
-- `mydocs/manual/memory/`: Claude 메모리 덤프
-- `mydocs/manual/codex/`: Codex 메모리 덤프
+- `mydocs/manual/memory/`: 과거 사용자 피드백과 프로젝트 memory의 historical 출처
+- `mydocs/manual/codex/`: Codex 부트스트랩과 현행 문서·Git 절차. 종료 세션 자료는 `archive/`에 보존
 
 ## Issue Workflow
 

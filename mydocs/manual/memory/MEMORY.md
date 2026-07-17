@@ -1,3 +1,17 @@
+---
+kind: memory
+status: historical
+canonical: mydocs/manual/codex/docs_and_git_workflow.md
+last_verified: 2026-07-17
+---
+
+# Claude memory dump 색인
+
+이 디렉터리는 과거 사용자 피드백과 프로젝트 메모리의 출처를 보존한다. 항목에 적힌 개인 경로, 브랜치,
+도구 상태와 작업 순서는 현재 절차가 아니며, 현행 정책과 충돌하면
+[`docs_and_git_workflow.md`](../codex/docs_and_git_workflow.md),
+[`pr_review_workflow.md`](../pr_review_workflow.md) 및 작업별 canonical 문서를 따른다.
+
 ## user
 - [작업지시자 정체성 + 역할](user_role_identity.md) — edwardkim, rhwp 메인테이너, Windows + WSL2 + macOS(ios/devel)
 - [기술 스택 + 협업 분배](user_tech_stack.md) — 본인 보유(Rust/WASM) vs Claude 위임(문서/cherry-pick) vs 직접 결정(시각 판정)

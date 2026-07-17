@@ -1,3 +1,10 @@
+---
+kind: snapshot
+status: historical
+canonical: mydocs/manual/codex/README.md
+last_verified: 2026-07-17
+---
+
 # Loaded Claude Memory Inventory
 
 이 세션에서 `mydocs/manual/memory/` 아래 Claude 메모리 덤프를 읽고 Codex 작업 기억에 반영했다.

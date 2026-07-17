@@ -33,6 +33,9 @@ front matter는 이번 감사에서 직접 역할을 확인한 canonical manifes
 | 경로 | kind | status | canonical | last_verified |
 | --- | --- | --- | --- | --- |
 | [문서·Git 워크플로](manual/codex/docs_and_git_workflow.md) | canonical | active | `manual/codex/docs_and_git_workflow.md` | 2026-07-16 |
+| [Codex 문서 지도](manual/codex/README.md) | guide | active | `manual/codex/README.md` | 2026-07-17 |
+| [과거 Codex memory 진입점](manual/codex/MEMORY.md) | snapshot | superseded | `manual/codex/README.md` | 2026-07-17 |
+| [Claude memory dump 색인](manual/memory/MEMORY.md) | memory | historical | `manual/codex/docs_and_git_workflow.md` | 2026-07-17 |
 | [PR 리뷰·통합 워크플로](manual/pr_review_workflow.md) | canonical | active | `manual/pr_review_workflow.md` | 2026-07-16 |
 | [개발 환경 가이드](manual/dev_environment_guide.md) | guide | active | `manual/dev_environment_guide.md` | 2026-07-16 |
 | [CLI 명령어 매뉴얼](manual/cli_commands.md) | canonical | active | `manual/cli_commands.md` | 2026-07-16 |
@@ -46,10 +49,12 @@ front matter는 이번 감사에서 직접 역할을 확인한 canonical manifes
 | [표 레이아웃 규칙](tech/table_layout_rules.md) | canonical | active | `tech/table_layout_rules.md` | 2026-07-16 |
 | [폰트 fallback 전략](tech/font_fallback_strategy.md) | canonical | active | `tech/font_fallback_strategy.md` | 2026-07-16 |
 | [편집 action undo/redo 아키텍처](tech/edit_action_undo_redo_architecture.md) | canonical | active | `tech/edit_action_undo_redo_architecture.md` | 2026-07-16 |
+| [포맷 파서와 공통 Document IR 경계](tech/parser_architecture.md) | canonical | active | `tech/parser_architecture.md` | 2026-07-17 |
 | [ThorVG 결정 기록](tech/thorvg_decision.md) | decision | active | `tech/thorvg_decision.md` | 2026-07-16 |
 | [이전 개발 로드맵](tech/archive/dev_roadmap_v1_backup.md) | snapshot | historical | `tech/dev_roadmap.md` | 2026-07-16 |
 | [이슈별 기술 조사 지도](tech/investigations/README.md) | guide | active | `tech/investigations/README.md` | 2026-07-16 |
 | [트러블슈팅 문서 지도](troubleshootings/README.md) | guide | active | `troubleshootings/README.md` | 2026-07-16 |
+| [rhwp-studio UI 명칭과 CSS 접두어](manual/rhwp_studio_ui_conventions.md) | reference | active | `manual/rhwp_studio_ui_conventions.md` | 2026-07-17 |
 
 ## Reference 자산
 
