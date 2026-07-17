@@ -98,6 +98,10 @@ test('HF/FN 삭제 사이트는 WASM 반환의 deletedText 를 역연산 재삽�
   assert.match(keyboardSrc, /deletedText \?\? ''/, 'FN 삭제가 deletedText 를 커맨드에 전달해야 함');
   assert.match(textSrc, /new DeleteTextInHeaderFooterCommand\(/, 'HF 삭제 record');
   assert.match(keyboardSrc, /new DeleteTextInFootnoteCommand\(/, 'FN 삭제 record');
+  // FN forward-Delete 는 문단 끝에서 clamp 로 실삭제 0 → 유령 undo 엔트리를 막기 위해
+  // 실삭제(res.deletedText 비어있지 않음)일 때만 기록해야 한다.
+  assert.match(keyboardSrc, /if \(res\.deletedText\)\s*\{[\s\S]*?new DeleteTextInFootnoteCommand\(/,
+    'FN Delete 기록은 실삭제 시에만(유령 엔트리 방지) — if (res.deletedText) 가드 필요');
 });
 
 test('HF/FN 편집 사이트가 kind:record 로 히스토리에 기록한다', () => {

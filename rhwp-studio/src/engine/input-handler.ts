@@ -2177,8 +2177,9 @@ export class InputHandler {
           this.cursor.switchHeaderFooterTarget(ctx.isHeader, ctx.sectionIdx, ctx.applyTo);
         } else {
           this.cursor.enterHeaderFooterMode(ctx.isHeader, ctx.sectionIdx, ctx.applyTo);
-          this.eventBus.emit('headerFooterModeChanged', ctx.isHeader ? 'header' : 'footer');
         }
+        // 진입/전환 양쪽 모두 mode-change 를 알려 툴바/오버레이가 stale 하지 않게 한다.
+        this.eventBus.emit('headerFooterModeChanged', ctx.isHeader ? 'header' : 'footer');
       }
       this.cursor.setHfCursorPosition(ctx.paraIdx, ctx.charOffset);
       return;

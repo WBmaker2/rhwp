@@ -646,7 +646,11 @@ export function onKeyDown(this: any, e: KeyboardEvent): void {
         // Delete(forward): 커서는 fnOff 유지 → undo 후에도 fnOff.
         try {
           const res = this.wasm.deleteTextInFootnote(target.sectionIdx, target.paraIdx, target.controlIdx, innerParaIdx, fnOff, 1);
-          this.executeOperation({ kind: 'record', command: new DeleteTextInFootnoteCommand(target, innerParaIdx, fnOff, res.deletedText ?? '', fnOff) });
+          // 문단 끝(삭제 대상 없음)에서는 clamp 로 실삭제 0 → 유령 undo 엔트리를 만들지
+          // 않도록 실제로 삭제됐을 때만 기록한다(HF Delete 의 charCount 가드와 동형).
+          if (res.deletedText) {
+            this.executeOperation({ kind: 'record', command: new DeleteTextInFootnoteCommand(target, innerParaIdx, fnOff, res.deletedText, fnOff) });
+          }
           this.afterEdit();
         } catch { /* ignore */ }
       }
