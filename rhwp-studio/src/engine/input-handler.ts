@@ -1,4 +1,5 @@
 import { WasmBridge } from '@/core/wasm-bridge';
+import { allowUnrecordedMutation } from '@/core/wasm-mutation-guard';
 import { EventBus } from '@/core/event-bus';
 import { CursorState } from './cursor';
 import { CaretRenderer } from './caret-renderer';
@@ -2257,12 +2258,19 @@ export class InputHandler {
 
   /** 위치에 텍스트를 삽입한다 (WASM 직접 호출, IME 조합용) */
   private insertTextAtRaw(pos: DocumentPosition, text: string): void {
-    this.rawTextMutationEffects.add(_text.insertTextAtRaw.call(this, pos, text));
+    // [Task #2327] IME 조합 중간 삽입은 히스토리 비경유가 계약(조합 확정 시
+    // executeOperation(kind:'record')로 사후 기록). 뮤테이션 가드에 명시 선언.
+    allowUnrecordedMutation(() => {
+      this.rawTextMutationEffects.add(_text.insertTextAtRaw.call(this, pos, text));
+    });
   }
 
   /** 위치에서 텍스트를 삭제한다 (WASM 직접 호출, IME 조합용) */
   private deleteTextAt(pos: DocumentPosition, count: number): void {
-    _text.deleteTextAt.call(this, pos, count);
+    // [Task #2327] IME 조합 중간 삭제 — 위와 동일 계약.
+    allowUnrecordedMutation(() => {
+      _text.deleteTextAt.call(this, pos, count);
+    });
     this.rawTextMutationEffects.add(IMMEDIATE_TEXT_MUTATION_EFFECTS);
   }
 
