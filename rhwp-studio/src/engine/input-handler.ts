@@ -2169,10 +2169,16 @@ export class InputHandler {
       this.eventBus.emit('table-object-selection-changed', false);
     }
     // [#2339] 텍스트 선택 anchor/focus 는 undo 로 축소된 문서에서 유령 범위가 되어 이후
-    // Bold/Backspace 시 WASM 예외·본 적 없는 범위 무언 삭제를 유발 → 해제(안전 최소).
-    this.cursor.clearSelection();
-    // [#2339] F5 셀 블록 선택 ctx 도 stale 병합·고스트 오버레이를 유발 → 해제.
+    // Bold/Backspace 시 WASM 예외·본 적 없는 범위 무언 삭제를 유발한다. 본문 블록 선택
+    // (F3 확장 단계·F5)도 _blockSelectionMode/_expandPhase 가 stale 로 남으면 이후 F5 첫
+    // 입력이 모드 종료에만 소비되고 F3 이 미처리 단계로 넘어가므로, 선택만이 아니라 단계까지
+    // 초기화하는 exitBlockSelectionMode 로 해제(내부에서 clearSelection 수행 — 안전 최소).
+    this.cursor.exitBlockSelectionMode();
+    // [#2339] F5 셀 블록 선택은 커서 ctx 해제만으로 stale 병합을 막지만, 하이라이트 DIV 는
+    // 렌더러 clear 까지 해야 사라진다(afterEdit·document-changed 경로가 셀 렌더러 미처리) →
+    // 고스트 오버레이 제거를 위해 렌더러도 함께 clear.
     this.cursor.exitCellSelectionMode();
+    this.cellSelectionRenderer?.clear();
     // [#2339] 외부 위치-기반 파생 상태(find currentHit 등)를 구독으로 정리하는 확장점.
     this.eventBus.emit('history-jumped');
   }

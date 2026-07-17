@@ -40,9 +40,14 @@ test('resetDerivedStateAfterHistoryJump 는 3종 파생 상태 해제 + history-
   // 개체/표 선택(#2303) 해제 유지.
   assert.match(block, /exitPictureObjectSelection\(\)/, '개체 선택 해제(회귀 방지)');
   assert.match(block, /exitTableObjectSelection\(\)/, '표 선택 해제(회귀 방지)');
-  // [#2339] 텍스트 선택 + 셀 블록 선택 해제.
-  assert.match(block, /this\.cursor\.clearSelection\(\)/, '텍스트 선택 해제(유령 범위 방지)');
+  // [#2339] 텍스트 선택 + 본문 블록 선택 단계 + 셀 블록 선택(+렌더러) 해제.
+  // exitBlockSelectionMode 는 _blockSelectionMode/_expandPhase 를 초기화하고 내부에서
+  // clearSelection 도 수행하므로, 선택만 지우던 clearSelection 을 대체한다(stale F3/F5 단계 방지).
+  assert.match(block, /this\.cursor\.exitBlockSelectionMode\(\)/,
+    '텍스트 선택 + 본문 블록 선택 단계 해제(유령 범위·stale 확장 단계 방지)');
   assert.match(block, /this\.cursor\.exitCellSelectionMode\(\)/, 'F5 셀 블록 선택 해제');
+  assert.match(block, /this\.cellSelectionRenderer\?\.clear\(\)/,
+    'F5 셀 하이라이트 렌더러 clear(고스트 오버레이 제거)');
   // 외부 구독자용 이벤트 emit.
   assert.match(block, /this\.eventBus\.emit\('history-jumped'\)/, 'history-jumped emit(확장점)');
 });
