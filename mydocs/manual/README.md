@@ -2,7 +2,7 @@
 kind: guide
 status: active
 canonical: mydocs/manual/README.md
-last_verified: 2026-07-16
+last_verified: 2026-07-17
 ---
 
 # manual 문서 지도

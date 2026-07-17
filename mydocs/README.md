@@ -2,7 +2,7 @@
 kind: guide
 status: active
 canonical: mydocs/README.md
-last_verified: 2026-07-16
+last_verified: 2026-07-17
 ---
 
 # rhwp 문서 지도와 canonical manifest
@@ -34,7 +34,6 @@ front matter는 이번 감사에서 직접 역할을 확인한 canonical manifes
 | --- | --- | --- | --- | --- |
 | [문서·Git 워크플로](manual/codex/docs_and_git_workflow.md) | canonical | active | `manual/codex/docs_and_git_workflow.md` | 2026-07-16 |
 | [Codex 문서 지도](manual/codex/README.md) | guide | active | `manual/codex/README.md` | 2026-07-17 |
-| [과거 Codex memory 진입점](manual/codex/MEMORY.md) | snapshot | superseded | `manual/codex/README.md` | 2026-07-17 |
 | [Claude memory dump 색인](manual/memory/MEMORY.md) | memory | historical | `manual/codex/docs_and_git_workflow.md` | 2026-07-17 |
 | [PR 리뷰·통합 워크플로](manual/pr_review_workflow.md) | canonical | active | `manual/pr_review_workflow.md` | 2026-07-16 |
 | [개발 환경 가이드](manual/dev_environment_guide.md) | guide | active | `manual/dev_environment_guide.md` | 2026-07-17 |

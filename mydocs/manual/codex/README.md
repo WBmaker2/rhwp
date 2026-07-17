@@ -17,8 +17,8 @@ last_verified: 2026-07-17
 
 ## 과거 메모리
 
-- [Codex memory dump 이전 경로](MEMORY.md): 외부·개인 설정 호환을 위한 redirect
 - [archive](archive/): 2026년 5월 특정 세션, 종료 task, 당시 환경을 기록한 historical snapshot
 
+이전 `MEMORY.md` 경로는 외부 이력 호환용 redirect로만 보존하며 활성 문서의 진입점으로 링크하지 않는다.
 `archive/` 문서는 현재 경로, 브랜치, 도구 동작 또는 작업 절차의 근거로 사용하지 않는다. 필요한 장기
 교훈은 현행 canonical 문서에 다시 검증해 반영한다.
