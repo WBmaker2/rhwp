@@ -31,8 +31,6 @@ import { showToast } from '@/ui/toast';
 import { addRecentDoc, listRecentDocs } from '@/recent/recent-store';
 import { showDropConfirmDialog } from '@/ui/drop-confirm-dialog';
 import { initRhwpDev } from '@/core/rhwp-dev';
-import { installMutationGuard } from '@/core/wasm-mutation-guard';
-import { CommandHistory } from '@/engine/history';
 import { DocumentDirtyState } from '@/core/document-dirty-state';
 import { initThemeSync, setThemeMode, getThemeMode, getEffectiveTheme } from '@/core/theme';
 import { analyzeDocumentFonts } from '@/core/document-font-status';
@@ -79,8 +77,6 @@ if (import.meta.env.DEV) {
   (window as any).__autosaveManager = autosaveManager;
   (window as any).__theme = { getThemeMode, getEffectiveTheme, setThemeMode };
   initRhwpDev(wasm);
-  // [Task #2327] 미기록 문서 변경 감시 — 히스토리 실행 창 밖 뮤테이션 경고.
-  installMutationGuard(wasm as unknown as Record<string, unknown>, CommandHistory);
 }
 let canvasView: CanvasView | null = null;
 let inputHandler: InputHandler | null = null;
