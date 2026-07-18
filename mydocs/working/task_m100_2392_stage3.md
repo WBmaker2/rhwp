@@ -150,7 +150,7 @@ dialog를 수정하지 않는다. #2394 merge 시 global metrics 변화 가능�
 - [x] `handleOk` CC 2 / LOC 11
 - [x] 신규·추출 helper CC>25 0
 - [x] 전체 suite·build PASS
-- [ ] 작업지시자의 Stage 4 승인
+- [x] 작업지시자의 Stage 4 승인
 
 승인 후에만 headless undo E2E, final/official metrics, allowlist·public surface audit와 최종 보고서·PR 초안을
 작성한다. 승인 전에는 push, PR 생성, GitHub comment·issue 편집을 수행하지 않는다.
