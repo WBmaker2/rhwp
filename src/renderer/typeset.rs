@@ -13776,7 +13776,12 @@ impl TypesetEngine {
             }
         } else if tac_wrap_split {
             st.current_height += table_total_height;
-        } else if let Some(host_line_px) = if st.is_hwpx_source {
+        } else if let Some(host_line_px) = if st.is_hwpx_source && is_last_placed {
+            // [#2279 10k] host 빈 줄박스는 **문단당 1개** — 다중 표 문단에서
+            // 표마다 가산하면 중간 표 배치의 fit 이 과대해져 후속 표가 조기
+            // 개행된다 (156767148 보도자료 pi7: 표2개 문단, 한글 1쪽 vs +1쪽,
+            // 10k 회귀 +29건 군집의 지배 형상). 마지막 표 배치 시점으로 이연
+            // — 단일 표 문단(36392557 pi27 장제목)은 종전과 동일.
             self.tac_topbottom_conflict_host_line_px(para, table, styles)
         } else {
             None
