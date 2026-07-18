@@ -61,12 +61,14 @@ HWP 파일이 한컴과 다르게 렌더링되면 알려주세요:
 1. Fork (GitHub UI)
    edwardkim/rhwp → myid/rhwp
 
-2. Clone
+2. Clone + upstream 등록 (최초 1회)
    git clone https://github.com/myid/rhwp.git
    cd rhwp
+   git remote add upstream https://github.com/edwardkim/rhwp.git
 
-3. 브랜치 생성 + 작업
-   git checkout -b fix/issue-123
+3. 브랜치 생성 + 작업 — 반드시 최신 upstream/devel 기준
+   git fetch upstream
+   git switch -c fix/issue-123 upstream/devel
    (코드 수정 + 테스트)
 
 4. Push (본인 Fork에)
