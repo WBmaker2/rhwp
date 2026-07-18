@@ -46,3 +46,8 @@ render-diff 게이트가 커버.
 
 **merge 권고.** 하지 않는 것(기본 전환·자동 fallback·WASM·glyph parity)을
 명시한 경계 규율, strict 실패 정책, oracle 게이트 동봉이 모범적.
+
+## 처리 결과 (2026-07-18)
+
+merge 완료(admin) + 메인테이너 코멘트 게시. #2387 은 기여자 본인이 이미 close
+(devel 포함 검증은 앞서 완료). seo-rii 4번째 기여 완결.
