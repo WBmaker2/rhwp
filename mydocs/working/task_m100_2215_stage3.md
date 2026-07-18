@@ -434,3 +434,21 @@ UI 경로에서 유지됐다.
 다음 단계는 Stage 4 PR 준비다. 최신 upstream rebase, 전체 변경 diff 감사, 승인된 전체 회귀
 실행, 이슈 코멘트용 전후 결과 요약과 PR 본문 준비를 수행한다. 최초 visible page cold render와
 cursor-rect split fragment finding은 #2215 완료를 막지 않고 후속 후보로 분리한다.
+
+## 24. Stage 3-D 수동 검증 정정
+
+작업지시자 수동 검증에서 UI 113→114는 정상이나 UI 114→115의 동일 cell paragraph 경계를
+드래그하면 highlight가 페이지 밖으로 뻗고 긴 지연 뒤 잘못된 endpoint에 선택되는 현상이
+확인됐다. 내부 page index로는 113→114이며 UI page는 1-based임을 구분한다.
+
+native probe는 다음 대표 split 경계를 HWP/HWPX에서 동일하게 재현했다.
+
+| UI 경계 | cell paragraph / offset | 반환 page | 최대 page overflow |
+|------|------|------|------:|
+| 1→2 | 17 / 162..170 | 1쪽만 | +393.4px |
+| 56→57 | 1277 / 74..82 | 56쪽만 | +350.6px |
+| 114→115 | 2499 / 110..118 | 114쪽만 | +340.3px |
+
+UI 114→115 문단 전체 범위는 115장 full fallback을 거쳐 26.99초가 걸렸다. 따라서 위의
+“#2215 구현 목표 충족”과 “후속 후보 분리” 판정은 수동 검증 전 잠정 판정으로 정정한다.
+Stage 4로 진행하지 않고 Stage 3-E에서 동일 page cursor pair를 일반 규칙으로 보정한다.

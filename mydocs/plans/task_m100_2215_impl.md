@@ -104,21 +104,22 @@ non-empty 선택에서 endpoint 또는 필요한 segment를 찾지 못하면 부
 
 ### 2.4 split paragraph 경계
 
-Stage 2에서 동일 offset이 이전·다음 page fragment 양쪽에 존재해 전체 탐색이 첫 fragment를
-선택하는 기존 오류를 확인했다.
+Stage 3-D 뒤 작업지시자 수동 검증에서 동일 offset이 이전·다음 page fragment 양쪽에 존재하는
+실제 cross-page split 선택이 잘못된 rect와 긴 fallback을 함께 만든다는 사실을 확인했다.
 
-- 한 page 안에서 실제 pointer endpoint가 모두 다음 fragment를 가리키는 선택은 hinted page
-  1장만 조회해 올바른 fragment를 선택한다.
-- 실제 cross-page 선택은 두 page를 모두 포함하므로 현재 cursor bias/첫-hit 규칙이 이전
-  fragment를 고를 가능성이 남는다.
-- page 후보 제한만으로 cross-page rect가 바로 정정되면 해당 결과를 회귀로 고정한다.
-- line/clip/좌표 산식 또는 cursor bias 의미 변경이 필요하면 #2215에 포함하지 않고 구현을
-  중단해 별도 정확성 이슈로 분리한다.
+- UI 1→2, 56→57, 114→115 경계의 대표 split cell paragraph에서 HWP/HWPX 모두 재현된다.
+- 현재 첫-hit 탐색은 경계 offset의 이전-page trailing을 먼저 고른 뒤 다음-page right hit의
+  x를 같은 rect에 섞어 페이지 폭을 최대 393.4px 초과한다.
+- 선택 segment가 충분히 해소되지 않으면 115장 full fallback으로 돌아가 최대 26.99초가
+  소요됐다.
+- 이는 단순한 기존 정확성 잔여가 아니라 #2215의 hinted candidate 경로가 유효한 두 page를
+  받았는데도 잘못된 rect를 반환하고 성능 목표를 깨는 blocker다.
 
-따라서 #2215의 필수 완료 조건은 same-page hinted fragment의 정확한 page 선택, 정상
-cross-page 선택의 기존 rect/copy 무회귀, 잘못된 hint의 정확한 fallback이다. 기존에 잘못된
-cross-page split rect 자체를 고치는 것은 조건부이며 성능 수정의 완료 조건으로 과장하지
-않는다.
+Stage 3-E에서는 line segment마다 left/right cursor를 **같은 page tree 안에서 짝지은 후보**로
+계산한다. 경계 offset이 두 fragment에 존재하면 해당 segment의 양 endpoint를 함께 해소하는
+page를 선택하고, 서로 다른 page 좌표로 하나의 rect 폭을 계산하지 않는다. 후보 page 순서는
+selection 진행 방향에 맞춰 단조롭게 유지한다. 프런트엔드 page clipping이나 마지막 페이지
+특례는 사용하지 않는다.
 
 ## 3. 단계별 구현
 
@@ -247,6 +248,32 @@ CI의 결정적 gate는 Rust 후보 수·fallback 테스트와 Studio unit test�
 스크립트 syntax check를 CI에 연결하고 실제 115쪽 pointer run은 로컬 통합 검증에서 수행한다.
 환경별 wall-clock 차이를 CI pass/fail에 직접 사용하지 않는다.
 
+### Stage 3-E — split cell paragraph cross-page 보정
+
+대상:
+
+- `src/document_core/queries/cursor_nav.rs`
+- `tests/issue_2215_selection_page_range.rs`
+- `rhwp-studio/e2e/selection-page-range-issue2215.test.mjs`
+- `mydocs/working/task_m100_2215_stage3.md`
+
+작업:
+
+1. UI 1→2, 56→57, 114→115의 같은 cell paragraph cross-page 범위를 HWP/HWPX RED로
+   추가한다.
+2. 각 line segment의 leading/trailing cursor pair를 동일 page 후보 안에서 계산한다.
+3. segment page가 선택 방향을 거슬러 이전 fragment로 돌아가지 않도록 단조 순서를 지킨다.
+4. 서로 다른 page의 x 좌표가 하나의 rect에 결합되는 경우를 구조적으로 차단한다.
+5. 모든 rect가 해당 page 폭 안에 있고 기대 page 양쪽을 포함하는지 검증한다.
+6. 기존 same-page split, p54→p55 서로 다른 문단 cross-page, stale/missing hint fallback과
+   #658 oracle을 함께 유지한다.
+7. Studio 실제 pointer drag에서 UI 114→115 highlight, mouseup 유지, copy, callback 시간과
+   full fallback 부재를 재검증한다.
+
+이 단계는 line break, pagination, Canvas refresh, renderer clipping을 변경하지 않는다. 동일
+page cursor pair만으로 해소되지 않아 LineSeg 또는 layout semantic 변경이 필요하면 구현을
+중단하고 다시 승인받는다.
+
 ### Stage 4 — 성능·통합 검증과 보고
 
 로컬 browser E2E는 앱 내 브라우저 런타임의 유무에 의존하지 않고 저장소 headless
@@ -331,7 +358,8 @@ mydocs/report/task_m100_2215_report.md
 1. 정상 mouse drag에서 endpoint page hint를 얻을 수 없다.
 2. same-page 1장 또는 cross-page inclusive 후보에서 정상 drag가 반복적으로 fallback한다.
 3. 정확성을 위해 pagination, Canvas refresh, line break, clip 또는 좌표 산식을 바꿔야 한다.
-4. cross-page split rect를 고치기 위해 cursor bias/fragment semantic 변경이 필요하다.
+4. 동일 page cursor pair 선택만으로 해소되지 않고 LineSeg·layout·clip semantic 변경이
+   필요하다.
 5. cached 1-page tree clone을 제거해도 p95 50ms를 만족하지 못하고 별도 hit-test/overlay 최적화가
    필요하다.
 6. 기존 positional/Ex without hints, #658 또는 Stage 2 rect/copy oracle이 회귀한다.
@@ -344,8 +372,10 @@ mydocs/report/task_m100_2215_report.md
 - missing/invalid/stale hint는 기존 전체 탐색과 같은 정확한 결과로 fallback한다.
 - HWP/HWPX의 비분할 rect/copy oracle과 #658 회귀가 유지된다.
 - 다음-page same-page split selection이 실제 pointer page에 rect를 반환한다.
+- 같은 cell paragraph의 cross-page split selection이 양쪽 page에 rect를 반환하고 각 rect가
+  해당 page 폭 안에 있다.
 - 실제 pointer drag에서 highlight, mouseup selection, copy, auto-scroll이 유지된다.
 - 문서화된 warm 조건에서 callback p95 50ms 미만, long task 0건이다.
 - drag 중 pagination과 Canvas refresh 호출이 0회다.
-- cross-page split 정확성 잔여가 있으면 별도 이슈 후보로 명시하며 #2215 성능 완료와 섞지
-  않는다.
+- 정상 hinted split cross-page drag가 full host-page fallback 없이 endpoint page 범위만
+  사용한다.
