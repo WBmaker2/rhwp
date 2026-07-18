@@ -14483,6 +14483,13 @@ impl TypesetEngine {
                 end_row = r;
                 continue;
             }
+            // [#2291] landscape RowBreak 연속 페이지 bleed 는 순수 rs=1 행에만
+            // 적용한다. rowspan 걸침 행(세로 병합 라벨이 확정한 행 그리드)은
+            // 한글이 병합 셀 높이 배분으로 정한 행 경계를 지켜 예산을 넘겨
+            // 적재하지 않는다 — 교육과정 연결맵(244×10, rs=176 세로 라벨)에서
+            // 이 bleed 가 쪽당 ~260px(≈5행) 과다 적재를 누적해 s5 표를 24→19쪽
+            // 으로 과소분할(문서 전체 −30쪽)했다. task #1672 편람(순수 rs=1
+            // 행)의 과다분할 완화 대상은 rs_touched=false 라 그대로 보존된다.
             if landscape_rowbreak_bleed
                 && mt.allows_row_break_split()
                 && is_continuation
@@ -14503,6 +14510,7 @@ impl TypesetEngine {
                 && header_overhead > 0.5
                 && row_start_cut.is_empty()
                 && r > cursor_row
+                && !rowspan_touched[r]
                 && row_total <= landscape_short_row_max_height
                 && consumed + cs_before + row_total
                     <= avail_for_rows + landscape_short_row_tolerance
