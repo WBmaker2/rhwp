@@ -59,6 +59,18 @@ impl DocumentCore {
         let mut document = parsed.document;
         let hml_metadata = parsed.hml_metadata;
 
+        // [#2279 실험 전용] 본문 저장 lineseg 전면 무시 → fresh 재계산.
+        // 기계생성 결재문서의 부분-사다리 불신 실험 계측용 (기본 no-op).
+        // 주의: 92셋 전수 실측(2026-07-18)에서 전면 fresh 는 88→76 광역 회귀 —
+        // 부분 사다리의 정합을 fresh 가 아직 대체하지 못함. 판별-자동화 금지.
+        if std::env::var("RHWP_EXP_BODY_FRESH").is_ok() {
+            for sec in document.sections.iter_mut() {
+                for para in sec.paragraphs.iter_mut() {
+                    para.line_segs.clear();
+                }
+            }
+        }
+
         // [Task #1001] HWP3 변환본의 ParaShape 단위 1/2 추가 보정
         let styles = crate::renderer::style_resolver::resolve_styles_with_variant(
             &document.doc_info,
