@@ -1,4 +1,4 @@
-# 단계별 완료 보고서 — Task M100 #2215 Stage 3-A/3-B
+# 단계별 완료 보고서 — Task M100 #2215 Stage 3-A/3-B/3-C
 
 ## 1. 결론
 
@@ -232,3 +232,66 @@ Stage 3-C에서는 다음 Studio 전달만 구현한다.
 
 mouse rAF, auto-scroll, rendering 또는 pagination 정책은 변경하지 않는다. 실제 pointer drag
 E2E와 p95 측정은 Stage 3-D 승인 뒤 수행한다.
+
+---
+
+## 14. Stage 3-C Studio 전달 결론
+
+Studio가 이미 보유한 ordered selection endpoint의 `cursorRect.pageIndex`를 native/WASM의
+hinted path까지 전달하도록 최소 경계를 연결했다.
+
+- 시작·끝 endpoint의 page가 모두 있을 때만 `getSelectionRectsInCellEx`를 호출한다.
+- hint가 없거나 한쪽뿐이거나 음수이면 기존 positional API를 사용한다.
+- 아직 `Ex`를 노출하지 않는 구버전 WASM과 결합해도 positional API로 복구한다.
+- `InputHandler`는 same-cell selection에만 ordered start/end page를 전달한다.
+- mouse rAF, auto-scroll, selection overlay, pagination 및 Canvas refresh 정책은 변경하지
+  않았다.
+
+WASM options의 page key는 기존 Stage 3-B 계약과 동일한 camelCase를 사용한다. JSON 반환은
+기존과 같이 `SelectionRect[]`로 파싱하므로 Studio 공개 반환 형식도 바뀌지 않는다.
+
+## 15. Studio 회귀 계약
+
+WASM import alias에 의존하지 않는 pure dispatch helper를 두어 다음 세 경우를 직접 검증했다.
+
+| 조건 | 기대 호출 |
+|------|-----------|
+| 유효한 start/end page와 `Ex` 존재 | `Ex` 1회, positional 0회 |
+| hint 없음·한쪽만 존재·음수 | positional 1회 |
+| 유효한 hint지만 구버전 WASM에 `Ex` 없음 | positional 1회 |
+
+검증 결과:
+
+```text
+node --test tests/selection-page-hints.test.ts
+3 passed; 0 failed
+
+npm test
+365 passed; 0 failed
+
+npm run build
+TypeScript + Vite production build 통과
+```
+
+분리 worktree에는 설치 의존성과 생성된 `pkg`가 없으므로 build 검증 중에만 주 작업공간의
+`node_modules`와 `pkg`를 임시 symlink로 재사용했고 검증 직후 제거했다. 생성 산출물과
+symlink는 변경 목록에 포함하지 않는다.
+
+## 16. Stage 3-C 변경 파일
+
+| 파일 | 변경 |
+|------|------|
+| `rhwp-studio/src/core/selection-page-hints.ts` | optional hint 검증, Ex/positional 호환 dispatch |
+| `rhwp-studio/src/core/wasm-bridge.ts` | 셀 selection 조회에 optional page hints 연결 |
+| `rhwp-studio/src/engine/input-handler.ts` | ordered same-cell endpoint page 전달 |
+| `rhwp-studio/tests/selection-page-hints.test.ts` | hinted/fallback/구버전 WASM 단위 회귀 |
+
+## 17. 다음 승인 단계
+
+Stage 3-D에서는 production 정책을 더 바꾸지 않고 실제 pointer drag 검증과 계측만 수행한다.
+
+1. 첫·중간·후반 same-page drag에서 focus offset, visible highlight 및 mouseup 유지 확인
+2. page 경계 cross-page drag와 auto-scroll 선택 확인
+3. HWP/HWPX 복사 문자열을 기존 oracle과 비교
+4. warm selection rAF callback p50/p95, long task, pagination 및 Canvas refresh 호출 수 기록
+5. 완료 조건 미달 시 원인을 분리하고 구현 범위 확대 전 다시 승인 요청
