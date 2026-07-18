@@ -21,6 +21,18 @@ const DIALOGS: Array<{ file: string; op: string }> = [
   { file: 'page-border-dialog.ts', op: 'pageBorder' },
 ];
 
+test('양식 모드에서 file:page-setup 은 차단된다(#2361 리뷰 — snapshot 드롭 무언 폐기 방지)', () => {
+  // page:setup 은 'page:' prefix 로 차단되지만 파일 메뉴/F7 변형(file:page-setup)은 목록에
+  // 없어 양식 모드에서 다이얼로그가 열렸고, 라우팅된 snapshot 이 입력-핸들러 게이트에서
+  // 드롭돼 확인이 무언 폐기됐다. 두 진입점의 차단 정합을 핀한다.
+  const dispatcher = readFileSync(join(rootDir, 'src/command/dispatcher.ts'), 'utf8');
+  const blockedIds = dispatcher.slice(
+    dispatcher.indexOf('FORM_MODE_BLOCKED_IDS'),
+    dispatcher.indexOf('FORM_MODE_BLOCKED_PREFIXES'),
+  );
+  assert.match(blockedIds, /'file:page-setup'/, 'file:page-setup 이 FORM_MODE_BLOCKED_IDS 에 있어야 함');
+});
+
 for (const { file, op } of DIALOGS) {
   test(`${file} 는 services 주입 + snapshot 라우팅 + fallback 을 갖춘다`, () => {
     const s = src(file);
