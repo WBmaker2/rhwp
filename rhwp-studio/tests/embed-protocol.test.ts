@@ -257,6 +257,7 @@ function rendererDiagnostics(page: number) {
     initializationError: null,
     effectiveBackend: 'canvaskit' as const,
     backendFallbackReason: null,
+    selection: null,
     page: { index: page, canvaskit: null },
   };
 }

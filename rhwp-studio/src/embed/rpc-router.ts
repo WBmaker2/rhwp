@@ -25,6 +25,7 @@ export interface EmbedRendererDiagnosticsV1 {
   initializationError: string | null;
   effectiveBackend: 'canvas2d' | 'canvaskit' | null;
   backendFallbackReason: string | null;
+  selection: unknown;
   page: { index: number; canvaskit: unknown };
 }
 
