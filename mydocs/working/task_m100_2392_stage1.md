@@ -2,8 +2,9 @@
 
 - 이슈: #2392
 - 브랜치: `issue-2392-picture-props-apply-pipeline`
-- source 기준: `upstream/devel@1cfb42734f57094be5f3c2c43096ce52d0675ce5`
-- 계획 commit: `6a1ef541bd51a0f1b32804cf1443089c01561a56`
+- source 기준: `upstream/devel@af5902b659be9a4d86ad458d79c63353dba88167`
+- 계획 commit: `293c764020488963113630994689c3dac3614860`
+- Stage 1 commit: `8773d6b4310eb4057f13bd8d7af60c8e3c701831`
 - 작성일: 2026-07-19
 
 ## 1. 완료 요약
@@ -50,9 +51,9 @@
 - 대상 파일: 2,825 physical LOC / 2,562 code LOC
 - measured source clean: true
 - metrics snapshot SHA-256:
-  `2adeef7656c037556907daec58e3d8f365306c3cfd4dfdebbb9b3a725438754f`
-- git clean / measured source clean: false / true
-- dirty path: Stage 1 evidence 문서 6개, measured source dirty path 0
+  `02ab67076683a091b1c77f1c9c9889867af42f100dc7fc6ef6092485a59f5a93`
+- git clean / measured source clean: true / true
+- dirty path: 0
 
 metrics output은 ignore된 `output/frontend-metrics/task2392/pre/`에 두고 commit하지 않는다.
 
@@ -83,6 +84,10 @@ Stage 1 도중 #2395가 merge되어 `upstream/devel`이 `eb9c7f1f`에서 `1cfb42
 
 #2370은 `insert.ts`의 회전/대칭 중복 emit 제거만 포함하고 dialog 생성 경로와 겹치지 않는다. #2394는
 대상 dialog를 변경하지 않지만 merge되면 전역 metrics를 바꿀 수 있어 Stage 2 시작 전에 다시 확인한다.
+
+Stage 2 시작 전에 사용자 승인으로 최신 `upstream/devel@af5902b6`에 다시 rebase했다. `1cfb4273..af5902b6`는
+#2393 보고서 7줄만 변경해 frontend 제품 tree와 위 aggregate가 동일했다. 위 commit·snapshot hash는 이
+최신 이력을 기준으로 보정한 값이다.
 
 ## 6. 추가 발견
 
@@ -128,6 +133,6 @@ picture 관련 browser evidence:
 - [x] pre metrics와 characterization 완료
 - [x] baseline gate PASS
 - [x] 범위 밖 결함 후보 분리 기록
-- [ ] 작업지시자의 Stage 2 승인
+- [x] 작업지시자의 Stage 2 승인
 
-승인 전에는 pure model, dialog source와 test를 수정하지 않는다.
+Stage 2 결과는 `mydocs/working/task_m100_2392_stage2.md`에서 이어서 추적한다.
