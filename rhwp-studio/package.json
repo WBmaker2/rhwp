@@ -22,7 +22,8 @@
     "e2e:render-diff": "node e2e/canvas-render-diff.test.mjs --mode=headless",
     "e2e:pdf-render-diff": "node e2e/pdf-render-diff-report.mjs --mode=headless",
     "e2e:render-diff:ci": "node e2e/run-render-diff.mjs",
-    "metrics:frontend": "node ../scripts/frontend-metrics.mjs"
+    "metrics:frontend": "node ../scripts/frontend-metrics.mjs",
+    "e2e:manifest-check": "python3 ../scripts/check_e2e_manifest.py"
   },
   "devDependencies": {
     "@types/chrome": "^0.2.2",
