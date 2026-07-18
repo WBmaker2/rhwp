@@ -194,6 +194,9 @@ export const insertCommands: CommandDef[] = [
           ih.markCurrentFieldEndOutside();
           services.wasm.clearActiveField();
           services.eventBus.emit('document-mutated', 'insert-field');
+          // 모달 확인 버튼으로 옮겨간 포커스를 편집기로 복원 — 종전엔 moveCursorTo 끝의
+          // focusTextarea 가 담당했으나 라우터 경로엔 없다(field:edit 의 onClose 복원과 동형).
+          ih.focus();
         } catch (err) {
           console.warn('[insert:field] 누름틀 삽입 실패:', err);
         }
