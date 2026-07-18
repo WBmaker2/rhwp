@@ -2022,32 +2022,29 @@ impl DocumentCore {
             tree_cache.push((pn, tree));
         }
 
-        // 페이지에서 커서 위치 찾기 (캐시된 트리 사용)
-        macro_rules! find_cursor {
-            ($para_idx:expr, $offset:expr, $bias:expr) => {{
-                let mut result: Option<CursorHit> = None;
-                for (pn, tree) in tree_cache.iter() {
-                    let hit = if let Some((ppi, ci, cei)) = cell_ctx {
-                        find_cell_cursor(&tree.root, ppi, ci, cei, $para_idx, $offset, *pn, $bias)
-                    } else {
-                        find_body_cursor(
-                            &tree.root,
-                            section_idx,
-                            $para_idx,
-                            self.get_render_paragraph_ref(section_idx, $para_idx).ok(),
-                            $offset,
-                            *pn,
-                            $bias,
-                        )
-                    };
-                    if hit.is_some() {
-                        result = hit;
-                        break;
-                    }
-                }
-                result
-            }};
-        }
+        // 한 line segment의 양 cursor는 반드시 같은 page tree에서 찾는다. split paragraph의
+        // 경계 offset은 이전 page의 trailing과 다음 page의 leading 양쪽에 존재할 수 있으므로,
+        // 두 cursor를 독립적으로 첫-hit 탐색하면 서로 다른 page 좌표가 한 rect에 섞인다.
+        let find_cursor_in_tree = |tree: &crate::renderer::render_tree::PageRenderTree,
+                                   page: u32,
+                                   para_idx: usize,
+                                   offset: usize,
+                                   bias: CursorBias|
+         -> Option<CursorHit> {
+            if let Some((ppi, ci, cei)) = cell_ctx {
+                find_cell_cursor(&tree.root, ppi, ci, cei, para_idx, offset, page, bias)
+            } else {
+                find_body_cursor(
+                    &tree.root,
+                    section_idx,
+                    para_idx,
+                    self.get_render_paragraph_ref(section_idx, para_idx).ok(),
+                    offset,
+                    page,
+                    bias,
+                )
+            }
+        };
 
         // ── 단 영역 조회 헬퍼 ──
         let find_column_area = |page: u32, rx: f64| -> (f64, f64) {
@@ -2074,6 +2071,7 @@ impl DocumentCore {
         let mut rects: Vec<String> = Vec::new();
         let mut expected_segments = 0usize;
         let mut rendered_segments = 0usize;
+        let mut last_segment_page: Option<u32> = None;
 
         for para_idx in start_para_idx..=end_para_idx {
             let para = if let Some((ppi, ci, cei)) = cell_ctx {
@@ -2130,33 +2128,48 @@ impl DocumentCore {
                 }
                 expected_segments += 1;
 
-                let left_hit = find_cursor!(para_idx, range_start, CursorBias::Leading);
-                // range_end가 줄바꿈 등 비렌더링 문자 위치이면 한 칸 앞으로 재시도
-                let right_hit = find_cursor!(para_idx, range_end, CursorBias::Trailing)
-                    .or_else(|| {
-                        if range_end > range_start {
-                            find_cursor!(para_idx, range_end - 1, CursorBias::Trailing)
-                        } else {
-                            None
-                        }
-                    })
-                    .or_else(|| {
-                        if cell_ctx.is_none() {
-                            tree_cache.iter().find_map(|(pn, tree)| {
-                                find_body_line_end_cursor(
-                                    &tree.root,
-                                    section_idx,
-                                    para_idx,
-                                    line_idx,
-                                    *pn,
-                                )
+                let cursor_pair = tree_cache.iter().find_map(|(pn, tree)| {
+                    if last_segment_page.is_some_and(|last| *pn < last) {
+                        return None;
+                    }
+                    let left_hit =
+                        find_cursor_in_tree(tree, *pn, para_idx, range_start, CursorBias::Leading);
+                    // range_end가 줄바꿈 등 비렌더링 문자 위치이면 같은 page tree에서 한 칸
+                    // 앞으로 재시도한다. body line-end fallback도 같은 page로 제한한다.
+                    let right_hit =
+                        find_cursor_in_tree(tree, *pn, para_idx, range_end, CursorBias::Trailing)
+                            .or_else(|| {
+                                if range_end > range_start {
+                                    find_cursor_in_tree(
+                                        tree,
+                                        *pn,
+                                        para_idx,
+                                        range_end - 1,
+                                        CursorBias::Trailing,
+                                    )
+                                } else {
+                                    None
+                                }
                             })
-                        } else {
-                            None
-                        }
-                    });
+                            .or_else(|| {
+                                if cell_ctx.is_none() {
+                                    find_body_line_end_cursor(
+                                        &tree.root,
+                                        section_idx,
+                                        para_idx,
+                                        line_idx,
+                                        *pn,
+                                    )
+                                } else {
+                                    None
+                                }
+                            });
+                    left_hit.zip(right_hit)
+                });
 
-                if let (Some(lh), Some(rh)) = (left_hit, right_hit) {
+                if let Some((lh, rh)) = cursor_pair {
+                    debug_assert_eq!(lh.page, rh.page);
+                    last_segment_page = Some(lh.page);
                     let partial_start = range_start > line_char_start;
 
                     let selection_continues = cell_ctx.is_none()

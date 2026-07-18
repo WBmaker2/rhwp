@@ -452,3 +452,86 @@ native probe는 다음 대표 split 경계를 HWP/HWPX에서 동일하게 재현
 UI 114→115 문단 전체 범위는 115장 full fallback을 거쳐 26.99초가 걸렸다. 따라서 위의
 “#2215 구현 목표 충족”과 “후속 후보 분리” 판정은 수동 검증 전 잠정 판정으로 정정한다.
 Stage 4로 진행하지 않고 Stage 3-E에서 동일 page cursor pair를 일반 규칙으로 보정한다.
+
+## 25. Stage 3-E 원인 제거
+
+`get_selection_rects_native()`의 기존 cursor 탐색은 한 line segment의 leading과 trailing을
+각각 전체 page 후보에서 첫-hit로 찾았다. split paragraph 경계 offset은 이전 page의 trailing과
+다음 page의 leading 양쪽에서 유효하므로, 독립 탐색 결과가 서로 다른 page 좌표계에 속할 수
+있었다.
+
+Stage 3-E는 각 후보 `PageRenderTree` 안에서 leading/trailing을 함께 해소한 cursor pair만
+채택한다. 줄바꿈 문자와 body line-end fallback도 같은 page tree에 한정하고, 다음 segment가
+이미 채택한 page보다 이전 fragment로 돌아가지 않게 page 순서를 단조롭게 유지한다. LineSeg,
+pagination, Canvas clipping 및 Studio page hint 계약은 변경하지 않았다.
+
+## 26. native 회귀와 성능
+
+HWP/HWPX 각각에서 UI 1→2, 56→57, 114→115의 같은 cell paragraph 경계를 회귀로 추가했다.
+모든 경우 endpoint 양쪽 page의 rect가 반환되고 각 rect의 `x + width`가 해당 page 폭 안에
+있는지, HWP/HWPX rect와 copy bytes가 같은지 고정했다.
+
+```text
+CARGO_TARGET_DIR=/private/tmp/rhwp-task2215-test-target \
+  cargo test --offline --test issue_2215_selection_page_range -- \
+  --nocapture --test-threads=1
+
+4 passed; 0 failed
+```
+
+기존 `issue_658_text_selection_rects`도 `2 passed; 0 failed`로 유지됐다. HWP cpi2499의
+114→115 경계 native probe 결과는 다음과 같다.
+
+| 범위 | cold | warm | rect page |
+|------|-----:|-----:|------|
+| 0..368 | 571.3ms | 2.56ms | 113, 114 |
+| 110..118 | — | 0.52–0.59ms | 113, 114 |
+| 110..160 | — | 약 0.81ms | 113, 114 |
+| 110..200 | — | 약 1.12ms | 113, 114 |
+| 110..368 | — | 약 2.4ms | 113, 114 |
+
+수정 전 같은 문단 전체 범위의 115장 fallback은 26.99초였으며, 수정 뒤 같은 범위는 cold
+571.3ms, warm 2.56ms로 복구됐다.
+
+## 27. UI 114→115 실제 pointer 재검증
+
+최신 WASM을 다시 빌드하고 사용자 스크린샷과 같은 `(p)` 문단 중간
+`cellPara=2499, offset=40`에서 다음 page 첫 줄 `offset=118`까지 실제
+`mouse.down → 16 mouse.move → mouse.up`을 수행했다.
+
+| 항목 | HWP | HWPX |
+|------|-----:|------:|
+| endpoint | p113:2499/40 → p114:2499/118 | 동일 |
+| visible highlight | 3개 | 3개 |
+| drag callback p50 / p95 | 0.6 / 0.8ms | 0.6 / 0.8ms |
+| rect call p95 | 0.3ms | 0.3ms |
+| warm long task | 0회 | 0회 |
+| hint 전이 | `[113,113]` → `[113,114]` | 동일 |
+
+두 형식의 copy 결과도 다음 문자열로 byte 동등했다.
+
+```text
+으로 이루어져야 한다. 수면비행선박에 해상탈출설비(MES)가 설치되어 있는 경우, 시험 시작 시 비상탈출구가 개방상태에 있고 해상탈출설비가
+```
+
+위 표시 문자열 뒤에는 공백 1개가 있으며 HWP/HWPX 모두 동일하다.
+
+mouse up 뒤 selection과 양쪽 page highlight가 유지됐으며 page 밖으로 뻗는 rect는 없었다.
+계측 probe는 `/private/tmp/issue2215_stage3e_probe.mjs`에 두었고, 환경별 wall-clock을 CI
+계약으로 만들지 않기 위해 source에는 포함하지 않는다. 결정적 정확성 계약은 Rust 회귀가
+담당한다.
+
+## 28. Stage 3-E 판정
+
+수동 검증에서 확인된 blocker는 동일 page cursor pair 규칙으로 해소됐다.
+
+- UI 1→2, 56→57, 114→115 대표 split 경계: HWP/HWPX GREEN
+- 모든 rect: 자기 page 폭 안에 위치
+- 사용자 재현과 같은 UI 114→115 실제 pointer drag: endpoint/highlight/copy 유지
+- warm drag callback p95: 0.8ms, long task 0회
+- 115장 full fallback: 제거
+- 기존 same-page, 서로 다른 문단 cross-page, stale/missing hint, #658: 유지
+
+다음 단계는 Stage 4의 전체 CI 성격 검증과 최종 보고서·PR 준비다. 수행계획에 따라 focused
+결과를 먼저 공유하고 작업지시자의 별도 승인을 받은 뒤 `cargo test --verbose`와
+`cargo clippy --all-targets -- -D warnings`를 실행한다.

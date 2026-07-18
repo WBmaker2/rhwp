@@ -307,3 +307,72 @@ fn issue_2215_split_paragraph_same_page_hints_select_the_pointer_fragment() {
         failures.join("\n")
     );
 }
+
+#[test]
+fn issue_2215_split_paragraph_cross_page_hints_keep_cursor_pairs_on_each_page() {
+    let split_cross_cases = [
+        SelectionCase {
+            start_para: 17,
+            start_offset: 162,
+            end_para: 17,
+            end_offset: 170,
+            start_page_hint: 0,
+            end_page_hint: 1,
+        },
+        SelectionCase {
+            start_para: 1277,
+            start_offset: 74,
+            end_para: 1277,
+            end_offset: 82,
+            start_page_hint: 55,
+            end_page_hint: 56,
+        },
+        SelectionCase {
+            start_para: 2499,
+            start_offset: 110,
+            end_para: 2499,
+            end_offset: 118,
+            start_page_hint: 113,
+            end_page_hint: 114,
+        },
+    ];
+
+    let mut format_oracles = Vec::new();
+    for file_name in [
+        "issue1949_giant_cell_nested_tables_perf.hwp",
+        "issue1949_giant_cell_nested_tables_perf.hwpx",
+    ] {
+        let mut doc = load_sample(file_name);
+        let mut case_oracles = Vec::new();
+        for case in split_cross_cases {
+            let json = selection_rects_with_hints(&doc, case);
+            let rects = rect_values(&json);
+            assert_eq!(
+                rect_pages(&rects),
+                vec![
+                    u64::from(case.start_page_hint),
+                    u64::from(case.end_page_hint),
+                ],
+                "{file_name}: split cross-page selection must render on both endpoint pages; got {json}"
+            );
+            for rect in &rects {
+                let page = rect["pageIndex"].as_u64().expect("rect page") as u32;
+                let x = rect["x"].as_f64().expect("rect x");
+                let width = rect["width"].as_f64().expect("rect width");
+                let page_width = page_width(&doc, page);
+                assert!(
+                    x >= -0.5 && x + width <= page_width + 0.5,
+                    "{file_name}: split cross-page rect must stay within page {page} width {page_width}; got {json}"
+                );
+            }
+            let copied = copied_text(&mut doc, case);
+            case_oracles.push((json, copied));
+        }
+        format_oracles.push(case_oracles);
+    }
+
+    assert_eq!(
+        format_oracles[0], format_oracles[1],
+        "HWP/HWPX split cross-page rect and copy bytes must match"
+    );
+}
