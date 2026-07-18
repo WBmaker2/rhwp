@@ -13175,7 +13175,6 @@ impl TypesetEngine {
             && !para.line_segs.is_empty()
             && st.pages.len() == page_count_before
         {
-            let height_added = st.current_height - height_before;
             // tac_seg_total 계산: 각 TAC 표의 max(seg.lh, 실측높이) + ls/2
             let mut tac_seg_total = 0.0;
             let mut tac_idx = 0;
@@ -13214,8 +13213,95 @@ impl TypesetEngine {
             } else {
                 fmt.total_height
             };
-            if height_added > cap {
-                st.current_height = height_before + cap;
+            // [#2279 누적Δ] 저장 ladder 가 host paraPr spacing 을 누락한 기계생성
+            // 결재문서(HWPX, 빈 host TAC 표): 저장 스텝(다음 문단 vpos−현 vpos)이
+            // fmt.total_height(sb+lh+ls+sa)보다 짧으면 생성기가 sa/sb 를 좌표에
+            // 반영하지 않은 것이다 — 한글 fresh 는 전량 순수 가산(36399374 재저장
+            // 오라클: pi4 +500(sa)+300(sb), pi5 +300(sb), fmt.total 과 HU 단위
+            // 일치). 이때 cap 을 fmt.total 로 올리고 ladder 를 dirty 로 표시해
+            // 후속 스냅이 성장분을 압축 anchor 로 되감지 못하게 한다. 스텝이
+            // fmt.total 과 일치(±1px)하는 정상 생성기 ladder 는 불변.
+            let stored_step_px = if st.is_hwpx_source && para.text.is_empty() {
+                para.line_segs
+                    .first()
+                    .filter(|s| {
+                        s.tag & crate::model::paragraph::LineSeg::TAG_IMPLEMENTATION_PROPERTY == 0
+                    })
+                    .zip(next_para.and_then(|np| np.line_segs.first()).filter(|s| {
+                        s.tag & crate::model::paragraph::LineSeg::TAG_IMPLEMENTATION_PROPERTY == 0
+                    }))
+                    .map(|(cur, next)| {
+                        hwpunit_to_px(
+                            (next.vertical_pos as i64 - cur.vertical_pos as i64) as i32,
+                            self.dpi,
+                        )
+                    })
+                    .filter(|&s| s > 0.0)
+            } else {
+                None
+            };
+            // 저장 스텝이 fmt.total(sb+lh+ls+sa)보다 짧고 그 부족분이 host
+            // paraPr spacing(sb+sa)과 정확히 일치하면, 생성기가 sb/sa 를 좌표에
+            // 반영하지 않은 ladder 다 — 한글 fresh 는 전량 순수 가산한다
+            // (36399374 재저장 오라클: pi4 부족분 6.7px=sa, pi5 4.0px=sb, HU
+            // 단위 일치). cap 을 fmt.total 로 올리고 ladder 를 dirty 로 표시해
+            // 후속 스냅이 성장분을 압축 anchor 로 되감지 못하게 한다.
+            // 부족분이 sb/sa 서명과 다른 ladder(#2352 host 줄박스 계열,
+            // 36392557 pi27 부족분 13.3px)는 대상이 아니다 — 그 경로의 별도
+            // 가산과 이중 성장(+1쪽 회귀 실측)한다.
+            let ladder_omits_spacing = stored_step_px
+                .filter(|&step| step + 1.0 < fmt.total_height && cap + 1.0 < fmt.total_height)
+                .map(|step| {
+                    let shortfall = fmt.total_height - step;
+                    let sig = fmt.spacing_before + fmt.spacing_after;
+                    sig > 0.5 && (shortfall - sig).abs() < 2.0
+                })
+                .unwrap_or(false);
+            if ladder_omits_spacing {
+                if std::env::var("RHWP_DIAG_LADSP").is_ok() {
+                    eprintln!(
+                        "DIAG_LADSP pi={} OMIT step={:.1} cap={:.1} fmt_total={:.1} sb={:.1} sa={:.1}",
+                        para_idx,
+                        stored_step_px.unwrap_or(0.0),
+                        cap,
+                        fmt.total_height,
+                        fmt.spacing_before,
+                        fmt.spacing_after
+                    );
+                }
+                st.vpos_ladder_dirty = true;
+            }
+            // 성장 전에 저장 anchor 로 전방 사전-스냅 — 직전 표들이 cap
+            // (lh+ls/2)으로 ladder 보다 짧게 전진한 잔차(36399374 pi3 −3.1px)를
+            // 표→표 연쇄(스냅 부재 구간)에서 회수한다. 전방·소폭 한정.
+            let snapped_base = if ladder_omits_spacing {
+                para.line_segs
+                    .first()
+                    .zip(st.vpos_page_base)
+                    .map(|(seg0, base)| {
+                        let implied = st.vpos_col_anchor
+                            + hwpunit_to_px(
+                                (seg0.vertical_pos as i64 - base as i64) as i32,
+                                self.dpi,
+                            );
+                        let delta = implied - height_before;
+                        if delta > 0.0 && delta < 24.0 {
+                            implied
+                        } else {
+                            height_before
+                        }
+                    })
+                    .unwrap_or(height_before)
+            } else {
+                height_before
+            };
+            let cap = if ladder_omits_spacing {
+                fmt.total_height
+            } else {
+                cap
+            };
+            if st.current_height - snapped_base > cap {
+                st.current_height = snapped_base + cap;
             }
         }
     }
