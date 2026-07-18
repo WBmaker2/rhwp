@@ -49,5 +49,5 @@ render-diff 게이트가 커버.
 
 ## 처리 결과 (2026-07-18)
 
-merge 완료(admin) + 메인테이너 코멘트 게시. #2387 은 기여자 본인이 이미 close
-(devel 포함 검증은 앞서 완료). seo-rii 4번째 기여 완결.
+merge 완료(admin) + 메인테이너 코멘트 게시. #2387 은 close-issues 워크플로가
+#2388 merge 직후 자동 close (devel 포함 검증은 앞서 완료). seo-rii 4번째 기여 완결.
