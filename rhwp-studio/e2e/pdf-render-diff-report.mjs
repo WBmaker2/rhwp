@@ -1,9 +1,8 @@
 /**
- * Report-only visual diff between browser Canvas output and SVG-derived PDF
- * export output rasterized back to PNG.
+ * Visual diff for PDF export paths rasterized back to PNG.
  *
- * This is intentionally non-gating. It writes JSON/Markdown summaries and PNG
- * artifacts so PDF export drift can be reviewed before it becomes a hard gate.
+ * Browser Canvas vs SVG-derived PDF remains report-only. A selected corpus can
+ * additionally gate direct PageLayerTree PDF against the SVG compatibility PDF.
  */
 import { createHash } from 'crypto';
 import {
@@ -45,6 +44,12 @@ const MAX_CAPTURE_SIZE_DRIFT_PX = 1;
 const DEFAULT_FIXTURES = [
   'basic/KTX.hwp',
   'biz_plan.hwp',
+  'tac-case-001.hwp',
+];
+
+const DEFAULT_DIRECT_PDF_FIXTURES = [
+  'biz_plan.hwp',
+  'kps-ai.hwp',
   'tac-case-001.hwp',
 ];
 
@@ -148,6 +153,18 @@ function fixturesFromEnv() {
     ? raw.split(',').map(s => s.trim()).filter(Boolean)
     : process.env.RHWP_RENDER_DIFF_ALL === '1' ? ALL_FIXTURES : DEFAULT_FIXTURES;
   return fixtures.map(normalizeFixture);
+}
+
+function directPdfFixturesFromEnv() {
+  const raw = process.env.RHWP_RENDER_DIFF_DIRECT_PDF_FILES;
+  const fixtures = raw
+    ? raw.split(',').map(s => s.trim()).filter(Boolean)
+    : DEFAULT_DIRECT_PDF_FIXTURES;
+  return fixtures.map(normalizeFixture);
+}
+
+function uniqueFixtures(...fixtureLists) {
+  return [...new Set(fixtureLists.flat())];
 }
 
 function safeName(value) {
@@ -337,10 +354,14 @@ function comparePngPaths(referencePath, pdfPath, diffPath, channelTolerance) {
 function renderMarkdownSummary(config, results) {
   const errors = results.filter(result => result.error);
   const warnings = results.filter(result => !result.error && result.exceedsReportThreshold);
+  const directResults = results.filter(result => result.directExpected && !result.error);
+  const directFailures = results.filter(result => (
+    result.directExpected && (result.error || result.directGateFailed)
+  ));
   const lines = [
     '# PDF Visual Diff Report',
     '',
-    `- status: report-only (does not gate CI)`,
+    `- browser/compatibility status: report-only`,
     `- fixtures: ${config.fixtures.map(markdownCell).join(', ')}`,
     `- scale: ${config.scale}`,
     `- raster DPI: ${config.rasterDpi}`,
@@ -351,6 +372,12 @@ function renderMarkdownSummary(config, results) {
     `- compared pages: ${results.filter(result => !result.error).length}`,
     `- warning pages: ${warnings.length}`,
     `- error pages: ${errors.length}`,
+    `- direct PDF gate: ${config.directPdfGate ? 'enabled' : 'disabled'}`,
+    `- direct PDF fixtures: ${config.directPdfFixtures.map(markdownCell).join(', ') || 'none'}`,
+    `- direct PDF fallback raster DPI: ${config.directFallbackRasterDpi}`,
+    `- direct/compatibility max ratio: ${config.directMaxDiffRatio}`,
+    `- direct PDF compared pages: ${directResults.length}`,
+    `- direct PDF failed pages: ${directFailures.length}`,
     '',
   ];
 
@@ -404,6 +431,45 @@ function renderMarkdownSummary(config, results) {
     }
   }
 
+  if (config.directPdfEnabled) {
+    lines.push('');
+    lines.push('## Direct PDF Compatibility Gate');
+    lines.push('');
+    lines.push('| Status | Fixture | Page | Size | Diff pixels | Diff ratio | Max channel delta | Artifacts |');
+    lines.push('| --- | --- | ---: | --- | ---: | ---: | ---: | --- |');
+    for (const result of results.filter(item => item.directExpected)) {
+      if (result.error || !result.directComparison) {
+        lines.push([
+          'error',
+          markdownCell(result.fixture),
+          result.pageIndex + 1,
+          '-',
+          '-',
+          '-',
+          '-',
+          markdownCell(result.error || 'direct comparison was not produced'),
+        ].join(' | ').replace(/^/, '| ').replace(/$/, ' |'));
+        continue;
+      }
+      const comparison = result.directComparison;
+      const status = result.directGateFailed ? 'fail' : 'pass';
+      const size = comparison.sameSize
+        ? `${comparison.width}x${comparison.height}`
+        : `${comparison.referenceWidth}x${comparison.referenceHeight} vs ${comparison.pdfWidth}x${comparison.pdfHeight}`;
+      const artifactText = Object.values(result.directArtifactFiles || {}).join('<br>');
+      lines.push([
+        status,
+        markdownCell(result.fixture),
+        result.pageIndex + 1,
+        size,
+        comparison.diffPixels,
+        comparison.diffRatio.toFixed(8),
+        comparison.maxChannelDelta,
+        markdownCell(artifactText),
+      ].join(' | ').replace(/^/, '| ').replace(/$/, ' |'));
+    }
+  }
+
   if (errors.length > 0) {
     lines.push('');
     lines.push('## Errors');
@@ -428,16 +494,34 @@ function writeReports(config, results) {
   writeFileSync(SUMMARY_PATH, renderMarkdownSummary(config, results));
 }
 
+const requestedFixtures = fixturesFromEnv();
+const directPdfEnabled = process.env.RHWP_RENDER_DIFF_DIRECT_PDF === '1';
+const directPdfFixtures = directPdfEnabled ? directPdfFixturesFromEnv() : [];
 const config = {
-  fixtures: fixturesFromEnv(),
+  fixtures: uniqueFixtures(requestedFixtures, directPdfFixtures),
+  requestedFixtures,
   scale: numberFromEnv('RHWP_RENDER_DIFF_SCALE', 1),
   maxPages: maxPagesFromEnv(),
   channelTolerance: numberFromEnv('RHWP_RENDER_DIFF_PDF_CHANNEL_TOLERANCE', 8),
   maxDiffRatio: optionalNumberFromEnv('RHWP_RENDER_DIFF_PDF_MAX_RATIO'),
   commandTimeoutMs: COMMAND_TIMEOUT_MS,
   writeImages: process.env.RHWP_RENDER_DIFF_PDF_WRITE_IMAGES !== '0',
+  directPdfEnabled,
+  directPdfGate: process.env.RHWP_RENDER_DIFF_DIRECT_PDF_GATE === '1',
+  directPdfFixtures,
+  directFallbackRasterDpi: numberFromEnv('RHWP_RENDER_DIFF_DIRECT_PDF_RASTER_DPI', 144),
+  directMaxDiffRatio: numberFromEnv('RHWP_RENDER_DIFF_DIRECT_PDF_MAX_RATIO', 0.02),
 };
 config.rasterDpi = Math.max(1, Math.round(72 * config.scale));
+if (config.directPdfGate && !config.directPdfEnabled) {
+  throw new Error('RHWP_RENDER_DIFF_DIRECT_PDF_GATE requires RHWP_RENDER_DIFF_DIRECT_PDF=1');
+}
+if (!Number.isFinite(config.directFallbackRasterDpi) || config.directFallbackRasterDpi <= 0) {
+  throw new Error('direct PDF fallback raster DPI must be positive');
+}
+if (!Number.isFinite(config.directMaxDiffRatio) || config.directMaxDiffRatio < 0) {
+  throw new Error('direct PDF max diff ratio must be non-negative');
+}
 
 mkdirSync(ARTIFACT_DIR, { recursive: true });
 
@@ -448,6 +532,7 @@ runTest('PDF export visual diff report', async ({ page }) => {
   try {
     for (const fixture of config.fixtures) {
       setTestCase(`pdf-render-diff ${fixture}`);
+      const directExpected = config.directPdfFixtures.includes(fixture);
       let pageCount;
       try {
         ({ pageCount } = await loadHwpFile(page, fixture));
@@ -455,6 +540,7 @@ runTest('PDF export visual diff report', async ({ page }) => {
         results.push({
           fixture,
           pageIndex: 0,
+          directExpected,
           error: error.message || String(error),
         });
         continue;
@@ -469,9 +555,21 @@ runTest('PDF export visual diff report', async ({ page }) => {
         const pdfRasterPrefix = join(ARTIFACT_DIR, `${baseName}-pdf-raster`);
         const pdfRasterPath = `${pdfRasterPrefix}.png`;
         const diffPath = join(ARTIFACT_DIR, `${baseName}-pdf-diff.png`);
+        const directPdfPath = join(ARTIFACT_DIR, `${baseName}-direct.pdf`);
+        const directRasterPrefix = join(ARTIFACT_DIR, `${baseName}-direct-raster`);
+        const directRasterPath = `${directRasterPrefix}.png`;
+        const directDiffPath = join(ARTIFACT_DIR, `${baseName}-direct-vs-compat-diff.png`);
 
         try {
-          for (const artifactPath of [referencePath, pdfPath, pdfRasterPath, diffPath]) {
+          for (const artifactPath of [
+            referencePath,
+            pdfPath,
+            pdfRasterPath,
+            diffPath,
+            directPdfPath,
+            directRasterPath,
+            directDiffPath,
+          ]) {
             removeIfExists(artifactPath);
           }
 
@@ -513,13 +611,61 @@ runTest('PDF export visual diff report', async ({ page }) => {
           ]);
 
           const comparison = comparePngPaths(referencePath, pdfRasterPath, diffPath, config.channelTolerance);
+          let directComparison = null;
+          let directGateFailed = false;
+          let directArtifactFiles = null;
+          if (directExpected) {
+            runCommand(rhwp.command, [
+              ...rhwp.args,
+              'export-pdf',
+              samplePath,
+              '--backend',
+              'direct',
+              '--profile',
+              'print',
+              '--raster-dpi',
+              String(config.directFallbackRasterDpi),
+              '-o',
+              directPdfPath,
+              '-p',
+              String(pageIndex),
+            ]);
+            assertFreshPdf(directPdfPath);
+            runCommand('pdftoppm', [
+              '-r',
+              String(config.rasterDpi),
+              '-singlefile',
+              '-png',
+              directPdfPath,
+              directRasterPrefix,
+            ]);
+            directComparison = comparePngPaths(
+              pdfRasterPath,
+              directRasterPath,
+              directDiffPath,
+              config.channelTolerance,
+            );
+            directGateFailed = directComparison.majorSizeMismatch
+              || directComparison.diffRatio > config.directMaxDiffRatio;
+            directArtifactFiles = {
+              compatibilityPdf: `e2e/screenshots/render-diff/${baseName}.pdf`,
+              compatibilityRaster: `e2e/screenshots/render-diff/${baseName}-pdf-raster.png`,
+              directPdf: `e2e/screenshots/render-diff/${baseName}-direct.pdf`,
+              directRaster: `e2e/screenshots/render-diff/${baseName}-direct-raster.png`,
+              diff: `e2e/screenshots/render-diff/${baseName}-direct-vs-compat-diff.png`,
+            };
+          }
           const result = {
             fixture,
             pageIndex,
+            directExpected,
             rhwpMode: rhwp.mode,
             ...comparison,
             exceedsReportThreshold: comparison.majorSizeMismatch
               || (config.maxDiffRatio != null && comparison.diffRatio > config.maxDiffRatio),
+            directComparison,
+            directGateFailed,
+            directArtifactFiles,
             artifactFiles: {
               reference: `e2e/screenshots/render-diff/${baseName}-pdf-reference.png`,
               pdf: `e2e/screenshots/render-diff/${baseName}.pdf`,
@@ -539,6 +685,7 @@ runTest('PDF export visual diff report', async ({ page }) => {
           results.push({
             fixture,
             pageIndex,
+            directExpected,
             error: error.message || String(error),
           });
         }
@@ -550,6 +697,16 @@ runTest('PDF export visual diff report', async ({ page }) => {
 
   const warnings = results.filter(result => result.exceedsReportThreshold).length;
   const errors = results.filter(result => result.error).length;
+  const directCompared = results.filter(result => result.directExpected && result.directComparison).length;
+  const directFailures = results.filter(result => (
+    result.directExpected && (result.error || result.directGateFailed)
+  )).length;
   console.log(`PDF visual diff report: ${results.length} page(s), ${warnings} warning(s), ${errors} error(s)`);
+  console.log(`Direct PDF compatibility gate: ${directCompared} compared page(s), ${directFailures} failure(s)`);
   console.log(`PDF visual diff summary: ${SUMMARY_PATH}`);
+  if (config.directPdfGate && (directCompared === 0 || directFailures > 0)) {
+    throw new Error(
+      `direct PDF compatibility gate failed: ${directCompared} compared page(s), ${directFailures} failure(s)`,
+    );
+  }
 });

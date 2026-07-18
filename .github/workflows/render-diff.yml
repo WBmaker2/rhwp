@@ -250,8 +250,13 @@ jobs:
           targets: wasm32-unknown-unknown
 
       - name: Install PDF raster tools
-        continue-on-error: true
-        run: sudo apt-get update && sudo apt-get install -y poppler-utils
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            fonts-dejavu-core \
+            libfontconfig1-dev \
+            libfreetype6-dev \
+            poppler-utils
 
       - name: Install wasm-pack
         run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
@@ -275,8 +280,7 @@ jobs:
         run: wasm-pack build --target web --dev
 
       - name: Build native CLI for PDF report
-        continue-on-error: true
-        run: cargo build --bin rhwp
+        run: cargo build --features native-skia --bin rhwp
 
       - name: Save cargo registry & build cache
         if: ${{ github.event_name == 'workflow_dispatch' && (github.ref == 'refs/heads/devel' || github.ref == 'refs/heads/main') && steps.render_diff_cargo_cache_restore.outputs.cache-hit != 'true' }}
@@ -330,6 +334,10 @@ jobs:
           RHWP_RENDER_DIFF_WRITE_IMAGES: ${{ inputs['write-images'] == true && '1' || '0' }}
           RHWP_RENDER_DIFF_PDF: '1'
           RHWP_RENDER_DIFF_PDF_WRITE_IMAGES: '1'
+          RHWP_RENDER_DIFF_DIRECT_PDF: '1'
+          RHWP_RENDER_DIFF_DIRECT_PDF_GATE: '1'
+          RHWP_RENDER_DIFF_DIRECT_PDF_MAX_RATIO: '0.02'
+          RHWP_RENDER_DIFF_DIRECT_PDF_RASTER_DPI: '144'
           RHWP_RENDER_DIFF_RHWP_BIN: ../target/debug/rhwp
         run: npm run e2e:render-diff:ci
 
