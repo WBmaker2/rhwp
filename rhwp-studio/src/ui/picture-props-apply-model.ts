@@ -1,8 +1,56 @@
-import type { PictureProperties, ShapeProperties } from '@/core/types';
+import type { CellPathLike, PictureProperties, ShapeProperties } from '@/core/types';
 
 export type PicturePropsObjectType = 'image' | 'shape' | 'line' | 'group' | 'ole';
 
 export type PicturePropsPatch = Record<string, unknown>;
+
+export interface PicturePropsApplyTargetContext {
+  sec: number;
+  para: number;
+  ci: number;
+  headerFooter?: {
+    outerParaIdx: number;
+    outerControlIdx: number;
+  };
+  cellPath?: CellPathLike;
+  innerControlIdx: number;
+}
+
+export type PicturePropsApplyTarget =
+  | {
+      kind: 'cell-shape';
+      sec: number;
+      para: number;
+      cellPath: CellPathLike;
+      innerControlIdx: number;
+    }
+  | {
+      kind: 'body-shape';
+      sec: number;
+      para: number;
+      ci: number;
+    }
+  | {
+      kind: 'header-footer-picture';
+      sec: number;
+      outerParaIdx: number;
+      outerControlIdx: number;
+      para: number;
+      ci: number;
+    }
+  | {
+      kind: 'cell-picture';
+      sec: number;
+      para: number;
+      cellPath: CellPathLike;
+      innerControlIdx: number;
+    }
+  | {
+      kind: 'body-picture';
+      sec: number;
+      para: number;
+      ci: number;
+    };
 
 interface RawRotationControl {
   value: string;
@@ -455,4 +503,53 @@ export function buildPicturePropsPatch(
     else appendNonOleShapePatch(patch, shapeProps, form);
   }
   return patch;
+}
+
+export function resolvePicturePropsApplyTarget(
+  objectType: PicturePropsObjectType,
+  context: PicturePropsApplyTargetContext,
+): PicturePropsApplyTarget {
+  if (objectType !== 'image') {
+    if (context.cellPath) {
+      return {
+        kind: 'cell-shape',
+        sec: context.sec,
+        para: context.para,
+        cellPath: context.cellPath,
+        innerControlIdx: context.innerControlIdx,
+      };
+    }
+    return {
+      kind: 'body-shape',
+      sec: context.sec,
+      para: context.para,
+      ci: context.ci,
+    };
+  }
+
+  if (context.headerFooter) {
+    return {
+      kind: 'header-footer-picture',
+      sec: context.sec,
+      outerParaIdx: context.headerFooter.outerParaIdx,
+      outerControlIdx: context.headerFooter.outerControlIdx,
+      para: context.para,
+      ci: context.ci,
+    };
+  }
+  if (context.cellPath) {
+    return {
+      kind: 'cell-picture',
+      sec: context.sec,
+      para: context.para,
+      cellPath: context.cellPath,
+      innerControlIdx: context.innerControlIdx,
+    };
+  }
+  return {
+    kind: 'body-picture',
+    sec: context.sec,
+    para: context.para,
+    ci: context.ci,
+  };
 }

@@ -18,7 +18,10 @@ import { userSettings } from '@/core/user-settings';
 import { enableDialogDrag } from './dialog-drag';
 import {
   buildPicturePropsPatch,
+  resolvePicturePropsApplyTarget,
   type PicturePropsApplyForm,
+  type PicturePropsApplyTarget,
+  type PicturePropsPatch,
 } from './picture-props-apply-model';
 
 /** HWPUNIT ↔ mm 변환 상수 (1 inch = 25.4 mm = 7200 HWPUNIT) */
@@ -2033,63 +2036,73 @@ export class PicturePropsDialog {
     };
   }
 
+  private applyPropertyPatchToWasm(
+    target: PicturePropsApplyTarget,
+    patch: PicturePropsPatch,
+  ): void {
+    switch (target.kind) {
+      case 'cell-shape':
+        this.wasm.setCellShapePropertiesByPath(
+          target.sec, target.para, target.cellPath, target.innerControlIdx, patch,
+        );
+        return;
+      case 'body-shape':
+        this.wasm.setShapeProperties(target.sec, target.para, target.ci, patch);
+        return;
+      case 'header-footer-picture':
+        // 캡션 신규 생성은 native API에서 미지원이며 기존 속성 변경만 허용한다.
+        this.wasm.setHeaderFooterPictureProperties(
+          target.sec, target.outerParaIdx, target.outerControlIdx,
+          target.para, target.ci, patch,
+        );
+        return;
+      case 'cell-picture':
+        this.wasm.setCellPicturePropertiesByPath(
+          target.sec, target.para, target.cellPath, target.innerControlIdx, patch,
+        );
+        return;
+      case 'body-picture':
+        this.wasm.setPictureProperties(target.sec, target.para, target.ci, patch);
+    }
+  }
+
+  private applyPropertyPatch(patch: PicturePropsPatch): void {
+    const target = resolvePicturePropsApplyTarget(this.objectType, {
+      sec: this.sec,
+      para: this.para,
+      ci: this.ci,
+      headerFooter: this.headerFooter,
+      cellPath: this.cellPath,
+      innerControlIdx: this.innerControlIdx,
+    });
+    const applyProps = () => this.applyPropertyPatchToWasm(target, patch);
+
+    // 개체 속성 변경도 undo 대상이다. services 미주입 환경에서만 직접 적용한다.
+    const ih = this.services?.getInputHandler();
+    if (ih) {
+      ih.executeOperation({
+        kind: 'snapshot',
+        operationType: 'objectProps',
+        operation: () => {
+          applyProps();
+          return ih.getCursorPosition();
+        },
+      });
+    } else {
+      applyProps();
+      this.eventBus.emit('document-changed');
+    }
+  }
+
   private handleOk(): void {
     if (!this.props) { this.hide(); return; }
-    const updated = buildPicturePropsPatch(
+    const patch = buildPicturePropsPatch(
       this.objectType,
       this.props,
       this.shapeProps,
       this.captureApplyForm(),
     );
-    if (Object.keys(updated).length > 0) {
-      // setter 분기:
-      // - shape/line/group/ole: cellPath > 외부
-      // - picture: headerFooter > cellPath > 외부
-      //   [Task #1151 v4] 셀 안 inline picture 는 setCellPicturePropertiesByPath
-      //   wasm API 호출. 본문 picture (cellPath 없음) 는 기존 setPictureProperties.
-      const applyProps = () => {
-        if (this.objectType === 'shape' || this.objectType === 'line' || this.objectType === 'group' || this.objectType === 'ole') {
-          if (this.cellPath) {
-            this.wasm.setCellShapePropertiesByPath(
-              this.sec, this.para, this.cellPath, this.innerControlIdx, updated,
-            );
-          } else {
-            this.wasm.setShapeProperties(this.sec, this.para, this.ci, updated);
-          }
-        } else if (this.headerFooter) {
-          // [Task #825] 머리말/꼬리말 그림은 별도 API — 5-tuple lookup. 캡션 신규
-          // 생성은 미지원 (set_header_footer_picture_properties_native 가 NotSupported
-          // 에러 반환 — 본 dialog 에서는 일반 속성 변경만 허용).
-          this.wasm.setHeaderFooterPictureProperties(
-            this.sec, this.headerFooter.outerParaIdx, this.headerFooter.outerControlIdx,
-            this.para, this.ci, updated,
-          );
-        } else if (this.cellPath) {
-          // [Task #1151 v4] 셀 안 inline picture — by_path API 호출.
-          this.wasm.setCellPicturePropertiesByPath(
-            this.sec, this.para, this.cellPath, this.innerControlIdx, updated,
-          );
-        } else {
-          this.wasm.setPictureProperties(this.sec, this.para, this.ci, updated);
-        }
-      };
-      // 개체 속성 변경도 undo 대상이다 — 편집 라우터를 통과시켜 스냅샷으로
-      // 기록한다 (#1320 계약). services 미주입 환경에서만 직접 적용 fallback.
-      const ih = this.services?.getInputHandler();
-      if (ih) {
-        ih.executeOperation({
-          kind: 'snapshot',
-          operationType: 'objectProps',
-          operation: () => {
-            applyProps();
-            return ih.getCursorPosition();
-          },
-        });
-      } else {
-        applyProps();
-        this.eventBus.emit('document-changed');
-      }
-    }
+    if (Object.keys(patch).length > 0) this.applyPropertyPatch(patch);
     this.hide();
   }
 

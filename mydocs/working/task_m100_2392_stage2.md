@@ -153,7 +153,6 @@ global metrics 모집단이 바뀔 수 있으므로 다음 Stage 시작 전에 �
 - [x] global/file Total CC와 CC>25 합 순감소
 - [x] mutation setter 5회와 undo/fallback block 유지
 - [x] 범위 밖 stale-control 결함 후보를 기능 수정하지 않음
-- [ ] 작업지시자의 Stage 3 승인
+- [x] 작업지시자의 Stage 3 승인
 
-승인 후에만 pure target resolver, setter adapter와 undo orchestration method 분리, source guard 보강을
-진행한다. 승인 전에는 push, PR 생성, GitHub comment·issue 편집을 수행하지 않는다.
+Stage 3 결과는 `mydocs/working/task_m100_2392_stage3.md`에서 이어서 추적한다.

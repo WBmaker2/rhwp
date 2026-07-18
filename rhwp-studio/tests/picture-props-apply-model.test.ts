@@ -1,11 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import type { PictureProperties, ShapeProperties } from '../src/core/types.ts';
+import type { CellPathLike, PictureProperties, ShapeProperties } from '../src/core/types.ts';
 import {
   buildPicturePropsPatch,
+  resolvePicturePropsApplyTarget,
   type PicturePropsApplyForm,
   type PicturePropsObjectType,
   type PicturePropsPatch,
+  type PicturePropsApplyTarget,
+  type PicturePropsApplyTargetContext,
 } from '../src/ui/picture-props-apply-model.ts';
 
 function pictureProps(overrides: Partial<PictureProperties> = {}): PictureProperties {
@@ -531,5 +534,79 @@ for (const fixture of fixtures) {
       buildPicturePropsPatch(fixture.objectType, props, shape, form),
       fixture.expected,
     );
+  });
+}
+
+interface TargetFixture {
+  name: string;
+  objectType: PicturePropsObjectType;
+  context: PicturePropsApplyTargetContext;
+  expected: PicturePropsApplyTarget;
+}
+
+const cellPath: CellPathLike = [];
+const location = { sec: 1, para: 2, ci: 3, innerControlIdx: 4 };
+const headerFooter = { outerParaIdx: 5, outerControlIdx: 6 };
+
+const targetFixtures: TargetFixture[] = [
+  {
+    name: 'shape in a table cell resolves to cell-shape',
+    objectType: 'shape',
+    context: { ...location, cellPath },
+    expected: { kind: 'cell-shape', sec: 1, para: 2, cellPath, innerControlIdx: 4 },
+  },
+  {
+    name: 'OLE in the body resolves through the shape body setter',
+    objectType: 'ole',
+    context: location,
+    expected: { kind: 'body-shape', sec: 1, para: 2, ci: 3 },
+  },
+  {
+    name: 'header-footer image preserves the five lookup indexes',
+    objectType: 'image',
+    context: { ...location, headerFooter },
+    expected: {
+      kind: 'header-footer-picture',
+      sec: 1,
+      outerParaIdx: 5,
+      outerControlIdx: 6,
+      para: 2,
+      ci: 3,
+    },
+  },
+  {
+    name: 'image in a table cell resolves to cell-picture',
+    objectType: 'image',
+    context: { ...location, cellPath },
+    expected: { kind: 'cell-picture', sec: 1, para: 2, cellPath, innerControlIdx: 4 },
+  },
+  {
+    name: 'body image resolves to body-picture',
+    objectType: 'image',
+    context: location,
+    expected: { kind: 'body-picture', sec: 1, para: 2, ci: 3 },
+  },
+  {
+    name: 'header-footer marker takes priority over an image cell path',
+    objectType: 'image',
+    context: { ...location, headerFooter, cellPath },
+    expected: {
+      kind: 'header-footer-picture',
+      sec: 1,
+      outerParaIdx: 5,
+      outerControlIdx: 6,
+      para: 2,
+      ci: 3,
+    },
+  },
+];
+
+for (const fixture of targetFixtures) {
+  test(fixture.name, () => {
+    const actual = resolvePicturePropsApplyTarget(fixture.objectType, fixture.context);
+    assert.deepEqual(actual, fixture.expected);
+    if (actual.kind === 'cell-shape' || actual.kind === 'cell-picture') {
+      assert.equal(actual.cellPath, cellPath, 'cell path identity must be preserved');
+    }
   });
 }
