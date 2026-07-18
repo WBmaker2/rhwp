@@ -1,5 +1,8 @@
 import init, { HwpDocument, version } from '@wasm/rhwp.js';
-import type { DocumentInfo, PageInfo, PageDef, SectionDef, PageBorderFillSettings, EndnoteShapeSettings, NoteEditInfo, CursorRect, HitTestResult, BodyFootnoteMarkerHit, FootnoteAtCursorResult, DeleteFootnoteResult, LineInfo, TableDimensions, CellInfo, CellBbox, CellProperties, TableProperties, DocumentPosition, MoveVerticalResult, SelectionRect, CharProperties, ParaProperties, CellPathEntry, CellPathLike, NavContextEntry, FieldInfoResult, BookmarkInfo, LayerRenderProfile, PageLayerTree } from './types';
+import { blake3 } from '@noble/hashes/blake3.js';
+import { bytesToHex } from '@noble/hashes/utils.js';
+import type { DocumentInfo, PageInfo, PageDef, SectionDef, PageBorderFillSettings, EndnoteShapeSettings, NoteEditInfo, CursorRect, HitTestResult, BodyFootnoteMarkerHit, FootnoteAtCursorResult, DeleteFootnoteResult, LineInfo, TableDimensions, CellInfo, CellBbox, CellProperties, TableProperties, DocumentPosition, MoveVerticalResult, SelectionRect, CharProperties, ParaProperties, CellPathEntry, CellPathLike, NavContextEntry, FieldInfoResult, BookmarkInfo, LayerRenderProfile, PageLayerTree, CanvasKitDocumentPreflight } from './types';
+import { parseCanvasKitDocumentPreflight } from './canvaskit-document-preflight';
 import {
   normalizeHmlSaveState,
   parseHmlSaveState,
@@ -126,6 +129,7 @@ export class WasmBridge {
   private initialized = false;
   private _fileName = 'document.hwp';
   private _currentFileHandle: FileSystemFileHandleLike | null = null;
+  private _documentDigest: string | null = null;
 
   async initialize(): Promise<void> {
     if (this.initialized) return;
@@ -168,17 +172,20 @@ export class WasmBridge {
       this.doc = null;
     }
     this._currentFileHandle = null;
+    this._documentDigest = null;
   }
 
   loadDocument(data: Uint8Array, fileName?: string): DocumentInfo {
     this.releaseDocument();
     const nextFileName = fileName ?? 'document.hwp';
+    const nextDocumentDigest = `blake3:${bytesToHex(blake3(data))}`;
     let nextDoc: HwpDocument | null = null;
 
     try {
       nextDoc = new HwpDocument(data);
       this.doc = nextDoc;
       this._fileName = nextFileName;
+      this._documentDigest = nextDocumentDigest;
       this.doc.convertToEditable();
       this.ensureParagraphStableIds();
       this.doc.setFileName(this._fileName);
@@ -204,6 +211,7 @@ export class WasmBridge {
       }
       this._fileName = 'document.hwp';
       this._currentFileHandle = null;
+      this._documentDigest = null;
       throw error;
     }
   }
@@ -257,12 +265,21 @@ export class WasmBridge {
     this._fileName = '새 문서.hwp';
     this._currentFileHandle = null;
     this.doc.setFileName(this._fileName);
+    try {
+      this._documentDigest = `blake3:${bytesToHex(blake3(this.doc.exportHwp()))}`;
+    } catch {
+      this._documentDigest = null;
+    }
     console.log(`[WasmBridge] 새 문서 생성: ${info.pageCount}페이지`);
     return info;
   }
 
   get fileName(): string {
     return this._fileName;
+  }
+
+  get documentDigest(): string | null {
+    return this._documentDigest;
   }
 
   set fileName(name: string) {
@@ -611,7 +628,26 @@ export class WasmBridge {
       },
       items: [],
       textVariants: [],
+      requiredFontFamilies: [],
+      requiredFontFamiliesComplete: true,
     });
+  }
+
+  getCanvasKitDocumentPreflight(
+    mode: 'default' | 'compat' = 'default',
+    profile: LayerRenderProfile = 'screen',
+  ): CanvasKitDocumentPreflight {
+    if (!this.doc) throw new Error('문서가 로드되지 않았습니다');
+    const d = this.doc as unknown as {
+      getCanvasKitDocumentPreflight?: (mode: string, profile: string) => string;
+    };
+    if (typeof d.getCanvasKitDocumentPreflight !== 'function') {
+      throw new Error('[WasmBridge] 현재 WASM은 CanvasKit document preflight를 지원하지 않습니다');
+    }
+    return parseCanvasKitDocumentPreflight(
+      d.getCanvasKitDocumentPreflight(mode, profile),
+      '[WasmBridge] CanvasKit document preflight',
+    );
   }
 
   getPageOverlayImages(pageNum: number): string {

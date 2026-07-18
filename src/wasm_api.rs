@@ -661,6 +661,19 @@ impl HwpDocument {
             .map_err(|error| error.into())
     }
 
+    /// 문서 전체의 bounded CanvasKit direct replay capability를 compact JSON으로 반환한다.
+    #[wasm_bindgen(js_name = getCanvasKitDocumentPreflight)]
+    pub fn get_canvaskit_document_preflight(
+        &self,
+        mode: &str,
+        profile: &str,
+    ) -> Result<String, JsValue> {
+        let profile = crate::paint::RenderProfile::parse(profile)
+            .ok_or_else(|| JsValue::from_str(&format!("unsupported render profile: {profile}")))?;
+        self.get_canvaskit_document_preflight_native(mode, profile)
+            .map_err(|error| error.into())
+    }
+
     /// 페이지 overlay 이미지 정보만 JSON 문자열로 반환한다.
     #[wasm_bindgen(js_name = getPageOverlayImages)]
     pub fn get_page_overlay_images(&self, page_num: u32) -> Result<String, JsValue> {

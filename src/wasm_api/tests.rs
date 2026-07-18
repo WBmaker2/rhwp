@@ -1565,6 +1565,8 @@ fn test_canvaskit_replay_plan_export_uses_mode_policy() {
     assert!(default_json.contains("\"mode\":\"default\""));
     assert!(default_json.contains("\"hiddenCanvas2dOverlayAllowed\":false"));
     assert!(default_json.contains("\"directReplayRequired\":true"));
+    assert!(default_json.contains("\"requiredFontFamilies\""));
+    assert!(default_json.contains("\"requiredFontFamiliesComplete\":true"));
 
     let compat_json = doc
         .get_canvaskit_replay_plan_native(0, "compat")
@@ -1578,6 +1580,44 @@ fn test_canvaskit_replay_plan_export_uses_mode_policy() {
     let message = error.to_string();
     assert!(message.contains("canvas2d"));
     assert!(message.contains("allowed modes: default, compat"));
+}
+
+#[test]
+fn test_empty_document_canvaskit_preflight_api_schema() {
+    let doc = HwpDocument::create_empty();
+
+    let json = doc
+        .get_canvaskit_document_preflight("default", "screen")
+        .expect("empty document CanvasKit preflight should export");
+    let parsed: Value = serde_json::from_str(&json).expect("CanvasKit preflight JSON");
+
+    assert_eq!(parsed["schemaVersion"].as_u64(), Some(1));
+    assert_eq!(parsed["mode"].as_str(), Some("default"));
+    assert_eq!(parsed["profile"].as_str(), Some("screen"));
+    assert!(matches!(
+        parsed["status"].as_str(),
+        Some("eligible" | "ineligible" | "incomplete")
+    ));
+    assert!(parsed["eligible"].is_boolean());
+    assert!(parsed["complete"].is_boolean());
+    assert_eq!(parsed["pageCount"].as_u64(), Some(1));
+    assert!(parsed["scannedPages"].is_u64());
+    assert!(parsed["scannedWorkUnits"].is_u64());
+    assert_eq!(parsed["limits"]["maxPages"].as_u64(), Some(128));
+    assert_eq!(parsed["limits"]["maxWorkUnits"].as_u64(), Some(50_000));
+    assert_eq!(parsed["limits"]["maxBlockers"].as_u64(), Some(32));
+    assert_eq!(
+        parsed["limits"]["maxRequiredFontFamilies"].as_u64(),
+        Some(256)
+    );
+    assert!(parsed["summary"]["totalItems"].is_u64());
+    assert!(parsed["blockers"].is_array());
+    assert!(parsed["requiredFontFamilies"].is_array());
+    assert!(parsed["capabilityDigest"]
+        .as_str()
+        .is_some_and(|digest| digest.len() == 71 && digest.starts_with("blake3:")));
+    assert!(parsed.get("root").is_none());
+    assert!(parsed.get("resources").is_none());
 }
 
 #[test]
