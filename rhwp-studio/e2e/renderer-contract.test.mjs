@@ -1435,6 +1435,29 @@ assert.ok(
   'Render Diff preflight must syntax-check and self-test the native parity comparator',
 );
 assert.ok(
+  renderDiffWorkflowSource.includes('actions: read')
+    && renderDiffWorkflowSource.includes('github.rest.actions.listWorkflowRuns')
+    && renderDiffWorkflowSource.includes("workflow_id: 'render-diff.yml'")
+    && renderDiffWorkflowSource.includes('head_sha: candidateSha')
+    && renderDiffWorkflowSource.includes("run.path === '.github/workflows/render-diff.yml'")
+    && renderDiffWorkflowSource.includes("renderDiffRun.conclusion !== 'success'")
+    && renderDiffWorkflowSource.includes('renderDiffRun.head_repository?.id !== pr.head.repo?.id')
+    && renderDiffWorkflowSource.includes('github.rest.actions.listJobsForWorkflowRun')
+    && renderDiffWorkflowSource.includes("job.name === 'Canvas visual diff'")
+    && renderDiffWorkflowSource.includes("renderDiffJob.conclusion !== 'success'")
+    && renderDiffWorkflowSource.includes('`Render Diff identity PR #${pr.number} base ${pr.base.sha}`')
+    && renderDiffWorkflowSource.includes("identityStep.conclusion !== 'success'")
+    && renderDiffWorkflowSource.includes('Render Diff identity PR #${{ github.event.pull_request.number }} base ${{ github.event.pull_request.base.sha }}')
+    && !renderDiffWorkflowSource.includes('github.rest.checks.listForRef')
+    && !renderDiffWorkflowSource.includes('allowedConclusions'),
+  'Render Diff fast-pass must trust only the exact successful workflow and Canvas job',
+);
+assert.ok(
+  renderDiffWorkflowSource.includes("- 'src/model/**'")
+    && renderDiffWorkflowSource.includes("- 'ttfs/**'"),
+  'Render Diff must rerun for model and bundled-font changes',
+);
+assert.ok(
   rendererBaselineDriverSource.includes('--scope')
     && rendererBaselineSource.includes("scope: 'representative'")
     && fullRendererSweepWorkflowSource.includes('corpus:')
