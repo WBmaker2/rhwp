@@ -1717,6 +1717,7 @@ impl DocumentCore {
         end_para_idx: usize,
         end_char_offset: usize,
         cell_ctx: Option<(usize, usize, usize)>,
+        page_hints: Option<(u32, u32)>,
     ) -> Result<String, HwpError> {
         use crate::renderer::layout::compute_char_positions;
         use crate::renderer::render_tree::{RenderNode, RenderNodeType};
@@ -1973,7 +1974,7 @@ impl DocumentCore {
             visit(node, sec, para, line_idx, page)
         }
 
-        // ── 페이지별 렌더 트리 캐시 (최대 2페이지) ──
+        // ── 후보 페이지별 렌더 트리 캐시 ──
         let mut tree_cache: Vec<(u32, crate::renderer::render_tree::PageRenderTree)> = Vec::new();
 
         // 선택 범위에 관련된 페이지 번호 수집 (중복 제거)
@@ -1982,32 +1983,43 @@ impl DocumentCore {
         } else {
             start_para_idx
         };
-        let page_nums = self.find_pages_for_paragraph(section_idx, lookup_para)?;
+        let full_page_nums = self.find_pages_for_paragraph(section_idx, lookup_para)?;
         // 끝 문단이 다른 페이지에 있을 수 있으므로 추가
         if cell_ctx.is_none() && end_para_idx != start_para_idx {
             if let Ok(end_pages) = self.find_pages_for_paragraph(section_idx, end_para_idx) {
                 for &p in &end_pages {
-                    if !page_nums.contains(&p) {
+                    if !full_page_nums.contains(&p) {
                         // page_nums에 없는 페이지만 추가 (tree_cache에서 처리)
                         let _ = p; // 아래에서 on-demand로 빌드
                     }
                 }
             }
         }
+
+        let page_plan = if cell_ctx.is_some() {
+            plan_selection_pages(
+                &full_page_nums,
+                page_hints.map(|hints| hints.0),
+                page_hints.map(|hints| hints.1),
+            )
+        } else {
+            SelectionPagePlan::FullFallback(full_page_nums)
+        };
+        let (page_nums, used_hints) = match page_plan {
+            SelectionPagePlan::Hinted(pages) => (pages, true),
+            SelectionPagePlan::FullFallback(pages) => (pages, false),
+        };
+
         // 주요 페이지 트리 미리 빌드
         for &pn in &page_nums {
-            tree_cache.push((pn, self.build_page_tree(pn)?));
-        }
-
-        // 캐시에서 트리 참조를 가져오거나, 없으면 빌드 후 추가
-        macro_rules! get_tree {
-            ($page:expr) => {{
-                let pg = $page;
-                if !tree_cache.iter().any(|(p, _)| *p == pg) {
-                    tree_cache.push((pg, self.build_page_tree(pg)?));
-                }
-                &tree_cache.iter().find(|(p, _)| *p == pg).unwrap().1
-            }};
+            let tree = if used_hints {
+                self.build_page_tree_cached(pn)?
+            } else {
+                // positional/missing/invalid hint는 기존 함수 로컬 수명을 유지한다.
+                // 115쪽 fallback을 shared cache에 영구 보관해 메모리 체류를 늘리지 않는다.
+                self.build_page_tree(pn)?
+            };
+            tree_cache.push((pn, tree));
         }
 
         // 페이지에서 커서 위치 찾기 (캐시된 트리 사용)
@@ -2060,6 +2072,8 @@ impl DocumentCore {
 
         // ── 메인 루프 ──
         let mut rects: Vec<String> = Vec::new();
+        let mut expected_segments = 0usize;
+        let mut rendered_segments = 0usize;
 
         for para_idx in start_para_idx..=end_para_idx {
             let para = if let Some((ppi, ci, cei)) = cell_ctx {
@@ -2096,7 +2110,12 @@ impl DocumentCore {
                 if let Ok(pp) = self.find_pages_for_paragraph(section_idx, para_idx) {
                     for &pn in &pp {
                         if !tree_cache.iter().any(|(p, _)| *p == pn) {
-                            tree_cache.push((pn, self.build_page_tree(pn)?));
+                            let tree = if used_hints {
+                                self.build_page_tree_cached(pn)?
+                            } else {
+                                self.build_page_tree(pn)?
+                            };
+                            tree_cache.push((pn, tree));
                         }
                     }
                 }
@@ -2109,6 +2128,7 @@ impl DocumentCore {
                 if range_start >= range_end {
                     continue;
                 }
+                expected_segments += 1;
 
                 let left_hit = find_cursor!(para_idx, range_start, CursorBias::Leading);
                 // range_end가 줄바꿈 등 비렌더링 문자 위치이면 한 칸 앞으로 재시도
@@ -2168,6 +2188,7 @@ impl DocumentCore {
                     };
 
                     if width > 0.01 {
+                        rendered_segments += 1;
                         rects.push(format!(
                             "{{\"pageIndex\":{},\"x\":{:.1},\"y\":{:.1},\"width\":{:.1},\"height\":{:.1}}}",
                             page_idx, rect_x, rect_y, width, rect_h
@@ -2175,6 +2196,20 @@ impl DocumentCore {
                     }
                 }
             }
+        }
+
+        // page hint는 성능 힌트다. 후보 범위에서 필요한 segment를 모두 해소하지 못하면
+        // 부분 rect를 반환하지 않고 기존 전체 host-page 탐색으로 정확성을 복구한다.
+        if used_hints && rendered_segments != expected_segments {
+            return self.get_selection_rects_native(
+                section_idx,
+                start_para_idx,
+                start_char_offset,
+                end_para_idx,
+                end_char_offset,
+                cell_ctx,
+                None,
+            );
         }
 
         Ok(format!("[{}]", rects.join(",")))

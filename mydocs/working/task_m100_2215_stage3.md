@@ -1,4 +1,4 @@
-# 단계별 완료 보고서 — Task M100 #2215 Stage 3-A
+# 단계별 완료 보고서 — Task M100 #2215 Stage 3-A/3-B
 
 ## 1. 결론
 
@@ -112,7 +112,7 @@ cargo test --test issue_658_text_selection_rects
 
 `src/wasm_api.rs`, Studio source, page-tree build 경로는 아직 변경하지 않았다.
 
-## 7. 다음 승인 단계
+## 7. Stage 3-A 당시 다음 승인 단계
 
 Stage 3-B에서는 승인된 구현계획에 따라 다음만 수행한다.
 
@@ -123,3 +123,112 @@ Stage 3-B에서는 승인된 구현계획에 따라 다음만 수행한다.
 5. 이 보고서의 6개 split RED를 GREEN으로 전환한다.
 
 Studio 전달과 실제 pointer E2E는 Stage 3-C/3-D이며 Stage 3-B에 섞지 않는다.
+
+---
+
+## 8. Stage 3-B GREEN 결론
+
+2026-07-19 최신 `upstream/devel@af5902b6`에 RED 커밋을 rebase한 뒤 native candidate 제한과
+정확성 fallback을 구현했다.
+
+- `getSelectionRectsInCellEx`가 optional `startPageHint`/`endPageHint`를 파싱한다.
+- 두 hint가 유효하면 same-page 1장 또는 endpoint 사이 host page만 조회한다.
+- hinted 후보만 shared `build_page_tree_cached()`를 사용한다.
+- 필요한 line segment를 모두 해소하지 못하면 기존 full host-page path로 한 번 재시도한다.
+- positional, missing, one-sided, invalid hint의 full fallback은 기존 uncached 함수 로컬 tree
+  수명을 유지한다.
+- Stage 3-A의 split RED 6건은 모두 GREEN으로 전환됐다.
+
+Studio source는 아직 변경하지 않았으므로 실제 mouse drag는 계속 positional API를 사용한다.
+이번 GREEN은 native/WASM options 경계까지만 완료한 상태다.
+
+## 9. native 구현
+
+`get_selection_rects_native()`에 내부 `Option<(u32, u32)>` page hints를 추가했다.
+
+```text
+host pages 조회
+→ plan_selection_pages()
+→ Hinted: 제한된 page만 shared cache로 build
+→ FullFallback: 기존 전체 page를 함수 로컬 tree로 build
+→ line segment별 rect 계산
+→ expected_segments != rendered_segments이면 hints 없이 full retry
+```
+
+fallback 판단은 non-empty line segment 수와 실제 rect segment 수를 비교한다. 따라서 hinted
+범위가 일부 rect만 반환하는 경우 부분 결과를 노출하지 않는다. page hints가 없거나 host
+집합 밖이면 처음부터 full fallback을 사용하므로 재귀는 한 번을 넘지 않는다.
+
+full fallback까지 shared cache를 사용하면 115개 tree가 호출 뒤에도 남아 메모리 체류가
+증가할 수 있다. 그래서 cache는 정상 hinted 후보에만 적용하고 positional/fallback은 기존
+수명을 보존했다.
+
+## 10. WASM options 호환
+
+`src/wasm_api.rs`의 기존 positional API는 `page_hints=None`으로 호출한다. `Ex`만 두 optional
+key를 `zip()`해 둘 다 있을 때 native hinted path로 전달한다.
+
+| 호출 | 동작 |
+|------|------|
+| positional | 기존 full host-page 탐색 |
+| `Ex` hints 없음 | 기존 full host-page 탐색 |
+| `Ex` 한 hint만 존재 | 기존 full host-page 탐색 |
+| `Ex` host 밖 hints | 기존 full host-page 탐색 |
+| `Ex` 유효 same-page hints | endpoint page 1장 |
+| `Ex` 유효 cross-page hints | endpoint 사이 host pages |
+| `Ex` 유효하지만 endpoint miss | full host-page 재시도 |
+
+public positional signature와 JSON 반환 형식은 바뀌지 않았다.
+
+## 11. GREEN 검증
+
+### #2215 통합 회귀
+
+```text
+cargo test --test issue_2215_selection_page_range -- --nocapture --test-threads=1
+3 passed; 0 failed; finished in 99.25s
+```
+
+세부 결과:
+
+- HWP/HWPX 정상 same-page·cross-page rect/copy oracle 유지
+- HWP의 valid-but-stale p0 hint로 p54 endpoint 조회 시 full fallback 결과 유지
+- missing, one-sided, invalid hints가 positional 결과와 동일
+- p1, p56, p114 same-page split rect가 HWP/HWPX 모두 기대 page와 page 폭 안에 존재
+
+Stage 3-A full target은 정상 oracle의 초기 과엄격 metric assertion을 포함한 상태에서
+238.34초였고, GREEN target은 stale full-fallback 회귀까지 추가하고도 99.25초였다. 이 값에는
+두 형식 parse와 의도적인 115-page fallback이 포함되므로 최종 drag p95로 해석하지 않는다.
+
+### 후보 helper와 기존 회귀
+
+```text
+cargo test --lib issue_2215_selection_page_plan_tests
+4 passed; 0 failed
+
+cargo test --test issue_658_text_selection_rects
+2 passed; 0 failed; finished in 0.08s
+
+cargo fmt --check
+통과
+```
+
+## 12. Stage 3-B 변경 파일
+
+| 파일 | 변경 |
+|------|------|
+| `src/document_core/queries/cursor_nav.rs` | hinted candidate 연결, 제한된 cached tree, segment fallback |
+| `src/wasm_api.rs` | `Ex` optional page hints 파싱과 positional 호환 |
+| `tests/issue_2215_selection_page_range.rs` | stale/missing/one-sided/invalid fallback 회귀 추가 |
+
+## 13. 다음 승인 단계
+
+Stage 3-C에서는 다음 Studio 전달만 구현한다.
+
+1. `WasmBridge.getSelectionRectsInCell()`에 optional hints를 추가한다.
+2. 두 hints가 있을 때만 `getSelectionRectsInCellEx`를 호출한다.
+3. `InputHandler.updateSelection()`이 ordered endpoint의 `cursorRect?.pageIndex`를 전달한다.
+4. bridge dispatch 단위 테스트를 추가한다.
+
+mouse rAF, auto-scroll, rendering 또는 pagination 정책은 변경하지 않는다. 실제 pointer drag
+E2E와 p95 측정은 Stage 3-D 승인 뒤 수행한다.

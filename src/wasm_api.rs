@@ -5076,6 +5076,7 @@ impl HwpDocument {
             end_para_idx as usize,
             end_char_offset as usize,
             None,
+            None,
         )
         .map_err(|e| e.into())
     }
@@ -5106,6 +5107,7 @@ impl HwpDocument {
                 control_idx as usize,
                 cell_idx as usize,
             )),
+            None,
         )
         .map_err(|e| e.into())
     }
@@ -5113,7 +5115,8 @@ impl HwpDocument {
     /// `getSelectionRectsInCell` 의 options object 변형 (#1413).
     ///
     /// options JSON 키: `{ sectionIdx, parentParaIdx, controlIdx, cellIdx, startCellParaIdx,
-    /// startCharOffset, endCellParaIdx, endCharOffset }`. positional 과 동일 동작.
+    /// startCharOffset, endCellParaIdx, endCharOffset, startPageHint?, endPageHint? }`.
+    /// page hint가 누락되거나 유효하지 않으면 positional 과 동일한 전체 탐색을 사용한다.
     #[wasm_bindgen(js_name = getSelectionRectsInCellEx)]
     pub fn get_selection_rects_in_cell_ex(&self, options_json: &str) -> Result<String, JsValue> {
         use crate::document_core::helpers::json_u32;
@@ -5128,6 +5131,7 @@ impl HwpDocument {
                 json_u32(options_json, "controlIdx").unwrap_or(0) as usize,
                 json_u32(options_json, "cellIdx").unwrap_or(0) as usize,
             )),
+            json_u32(options_json, "startPageHint").zip(json_u32(options_json, "endPageHint")),
         )
         .map_err(|e| e.into())
     }

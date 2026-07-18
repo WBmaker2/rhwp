@@ -163,6 +163,19 @@ fn issue_2215_hwp_and_hwpx_preserve_normal_selection_oracles() {
         let middle_text = copied_text(&mut doc, middle);
         assert_eq!(middle_text, "8");
 
+        if file_name.ends_with(".hwp") {
+            let stale_but_valid_hints = SelectionCase {
+                start_page_hint: 0,
+                end_page_hint: 0,
+                ..middle
+            };
+            assert_eq!(
+                selection_rects_with_hints(&doc, stale_but_valid_hints),
+                middle_rects,
+                "valid host-page hints that miss the endpoint must retry the full host range"
+            );
+        }
+
         let cross_rects = selection_rects_with_hints(&doc, cross);
         let cross_values = rect_values(&cross_rects);
         assert_eq!(cross_values.len(), 45, "{file_name}: cross rect count");
@@ -187,6 +200,49 @@ fn issue_2215_hwp_and_hwpx_preserve_normal_selection_oracles() {
         format_oracles[0], format_oracles[1],
         "HWP/HWPX normal rect and copy bytes must match"
     );
+}
+
+#[test]
+fn issue_2215_missing_or_invalid_hints_match_the_positional_fallback() {
+    let mut doc = load_sample("exam_social.hwp");
+    let positional = doc
+        .get_selection_rects_in_cell(1, 16, 0, 0, 0, 0, 6, 469)
+        .expect("positional fallback");
+    let base = json!({
+        "sectionIdx": 1,
+        "parentParaIdx": 16,
+        "controlIdx": 0,
+        "cellIdx": 0,
+        "startCellParaIdx": 0,
+        "startCharOffset": 0,
+        "endCellParaIdx": 6,
+        "endCharOffset": 469,
+    });
+
+    let missing = doc
+        .get_selection_rects_in_cell_ex(&base.to_string())
+        .expect("missing hint fallback");
+    assert_eq!(missing, positional);
+
+    let mut one_sided = base.clone();
+    one_sided["startPageHint"] = json!(1);
+    let one_sided = doc
+        .get_selection_rects_in_cell_ex(&one_sided.to_string())
+        .expect("one-sided hint fallback");
+    assert_eq!(one_sided, positional);
+
+    let mut invalid = base;
+    invalid["startPageHint"] = json!(999);
+    invalid["endPageHint"] = json!(999);
+    let invalid = doc
+        .get_selection_rects_in_cell_ex(&invalid.to_string())
+        .expect("invalid hint fallback");
+    assert_eq!(invalid, positional);
+
+    let copied = doc
+        .copy_selection_in_cell(1, 16, 0, 0, 0, 0, 6, 469)
+        .expect("fallback copy remains available");
+    assert!(copied.contains("\"ok\":true"));
 }
 
 #[test]
