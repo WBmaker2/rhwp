@@ -3541,20 +3541,37 @@ export class InputHandler {
     }
 
     try {
-      const result = this.wasm.removeFieldAt(pos);
-      if (result.ok) {
+      // [Task #2377] 누름틀 제거는 필드+안내문 텍스트를 지운다(문자 수 변경) — 일반
+      // 모드에선 snapshot 으로 기록해 undo 가능하게 한다. 양식 모드는 게이트가 snapshot 을
+      // 드롭해 무언 폐기 회귀(#2361 리뷰 계급)가 되므로 기존 직접 경로를 유지한다(비기록 —
+      // 양식 모드 누름틀 제거의 기록은 역연산 설계가 필요해 범위 외).
+      if (this.editMode === 'form') {
+        const result = this.wasm.removeFieldAt(pos);
+        if (!result.ok) return;
         if (restorePos) {
           this.cursor.clearSelection();
           this.cursor.moveTo(restorePos);
           this.cursor.resetPreferredX();
         }
-        this.fieldMarker.hide();
-        this.fieldStartExitKey = null;
-        this.fieldEndExitKey = null;
-        this.wasm.clearActiveField();
         this.afterEdit();
-        this.eventBus.emit('field-info-changed', null);
+      } else {
+        this.cursor.clearSelection();
+        this.executeOperation({
+          kind: 'snapshot',
+          operationType: 'removeField',
+          operation: (wasm) => {
+            const result = wasm.removeFieldAt(pos);
+            if (!result.ok) throw new Error('removeFieldAt not ok');
+            return restorePos ?? pos;
+          },
+        });
+        // 커서 이동·refresh 는 라우터가 수행.
       }
+      this.fieldMarker.hide();
+      this.fieldStartExitKey = null;
+      this.fieldEndExitKey = null;
+      this.wasm.clearActiveField();
+      this.eventBus.emit('field-info-changed', null);
     } catch (err) {
       console.warn('[InputHandler] 누름틀 제거 실패:', err);
     }

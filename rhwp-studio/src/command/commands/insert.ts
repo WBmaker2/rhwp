@@ -178,21 +178,25 @@ export const insertCommands: CommandDef[] = [
       fieldInsertDialog = new FieldInsertDialog();
       fieldInsertDialog.onApply = (props) => {
         try {
-          const result = services.wasm.insertClickHereField(
-            pos,
-            props.guide,
-            props.memo,
-            props.name,
-            props.editable,
-          );
-          if (result.ok) {
-            const insertedPos = { ...pos, charOffset: result.charOffset ?? pos.charOffset };
-            ih.moveCursorTo(insertedPos);
-            ih.markCurrentFieldEndOutside();
-            services.wasm.clearActiveField();
-            services.eventBus.emit('document-mutated', 'insert-field');
-            services.eventBus.emit('document-changed');
-          }
+          // [Task #2377] 누름틀 삽입은 안내문 텍스트를 문서에 넣는다(문자 수 변경) —
+          // 미기록 시 undo 불가 + 후속 undo 오프셋 오염. snapshot 으로 라우팅한다(이 커맨드는
+          // 일반 모드 전용이라 게이트 드롭 없음). 실패 시 throw 로 엔트리 생성을 막는다.
+          ih.executeOperation({
+            kind: 'snapshot',
+            operationType: 'insertField',
+            operation: (wasm) => {
+              const result = wasm.insertClickHereField(pos, props.guide, props.memo, props.name, props.editable);
+              if (!result.ok) throw new Error('insertClickHereField not ok');
+              return { ...pos, charOffset: result.charOffset ?? pos.charOffset };
+            },
+          });
+          // 커서는 라우터가 삽입 위치로 이동시킨다 — 필드 끝 밖 마킹·활성 필드 해제는 기존대로.
+          ih.markCurrentFieldEndOutside();
+          services.wasm.clearActiveField();
+          services.eventBus.emit('document-mutated', 'insert-field');
+          // 모달 확인 버튼으로 옮겨간 포커스를 편집기로 복원 — 종전엔 moveCursorTo 끝의
+          // focusTextarea 가 담당했으나 라우터 경로엔 없다(field:edit 의 onClose 복원과 동형).
+          ih.focus();
         } catch (err) {
           console.warn('[insert:field] 누름틀 삽입 실패:', err);
         }
