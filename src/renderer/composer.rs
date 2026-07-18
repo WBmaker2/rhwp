@@ -1462,6 +1462,85 @@ pub fn recompose_stored_single_line_if_overflowing(
     recompose_for_cell_width(composed, &para_no_ls, cell_inner_width_px, styles);
 }
 
+/// [#2279] 저장 lineseg 분할의 실폭-과잉 판정 (본문 판, 줄수 무관).
+///
+/// 저장(비합성) 분할의 어떤 줄이든 추정 실폭이 단 내폭을 명백히(×1.05)
+/// 초과하면 그 분할은 물리적으로 성립하지 않는 부실 저장이다 — 마스킹('*'
+/// 치환) 결재문서는 원문 기준의 저장 분할을 남겨 실폭과 모순인 경우가 있고,
+/// 한글은 항상 fresh 재계산하므로 더 많은 줄로 배치한다 (36392557 pi34
+/// 실측: '*'×164 저장 2줄, 줄0 90자 ≈ 내폭 1.4× vs 한글 PDF 3줄 80/68/16).
+/// [정밀화] 마스킹 문단('*' 비중 ≥ 50%) 한정 — 일반 텍스트 문단은 rhwp
+/// 폭 추정 오차가 1.05×를 넘는 사례(prep_1790387/온새미로 실측 회귀)가
+/// 있어 재래핑하지 않는다. 마스킹 치환은 원문과 글자폭이 달라지는 유일한
+/// 물리적 근거가 있는 계열이다.
+pub fn stored_lines_overflow(
+    composed: &ComposedParagraph,
+    para: &Paragraph,
+    inner_width_px: f64,
+    styles: &ResolvedStyleSet,
+) -> bool {
+    let stored = !para.line_segs.is_empty()
+        && para
+            .line_segs
+            .iter()
+            .all(|seg| seg.tag & LineSeg::TAG_IMPLEMENTATION_PROPERTY == 0);
+    if !stored || composed.lines.is_empty() || inner_width_px <= 0.0 {
+        return false;
+    }
+    if composed.lines.len() != para.line_segs.len() {
+        return false;
+    }
+    // 마스킹 판별: 공백 제외 글자의 절반 이상이 '*'
+    let (mut stars, mut others) = (0usize, 0usize);
+    for c in para.text.chars() {
+        if c == '*' {
+            stars += 1;
+        } else if !c.is_whitespace() {
+            others += 1;
+        }
+    }
+    if stars < 8 || stars < others {
+        return false;
+    }
+    let fired = composed
+        .lines
+        .iter()
+        .any(|l| estimate_composed_line_width(l, styles) > inner_width_px * 1.05);
+    if fired && std::env::var("RHWP_DIAG_REWRAP").is_ok() {
+        let widths: Vec<String> = composed
+            .lines
+            .iter()
+            .map(|l| format!("{:.0}", estimate_composed_line_width(l, styles)))
+            .collect();
+        eprintln!(
+            "DIAG_REWRAP fire inner={:.0} lines={} widths={:?} text='{}'",
+            inner_width_px,
+            composed.lines.len(),
+            widths,
+            para.text.chars().take(24).collect::<String>(),
+        );
+    }
+    fired
+}
+
+/// [#2279] 본문(column) 판 부실-저장 예외 — 저장 분할이 실폭 모순이면
+/// 저장을 불신하고 본문 경로(`recompose_for_body_width` — 글자모양 재분할
+/// 포함)로 fresh 재래핑한다. 셀 판(#2291, 1줄 한정)과 같은 원리의 다중줄
+/// 일반화 + 마스킹 한정. 정상 분할(전 줄 실폭 ≤ 내폭×1.05)은 불변.
+pub fn recompose_stored_lines_if_overflowing_body(
+    composed: &mut ComposedParagraph,
+    para: &Paragraph,
+    column_inner_width_px: f64,
+    styles: &ResolvedStyleSet,
+) {
+    if !stored_lines_overflow(composed, para, column_inner_width_px, styles) {
+        return;
+    }
+    let mut para_no_ls = para.clone();
+    para_no_ls.line_segs.clear();
+    recompose_for_body_width(composed, &para_no_ls, column_inner_width_px, styles);
+}
+
 pub fn recompose_for_cell_width(
     composed: &mut ComposedParagraph,
     para: &Paragraph,

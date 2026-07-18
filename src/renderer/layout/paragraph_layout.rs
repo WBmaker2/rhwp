@@ -1911,6 +1911,24 @@ impl LayoutEngine {
                         styles,
                     );
                     Some(cloned)
+                } else if column_inner_width > 0.0
+                    && crate::renderer::composer::stored_lines_overflow(
+                        comp,
+                        para,
+                        column_inner_width,
+                        styles,
+                    )
+                {
+                    // [#2279] 마스킹 저장분할 실폭-모순 본문 문단 fresh 재래핑 —
+                    // typeset(format_paragraph)과 동일.
+                    let mut cloned = comp.clone();
+                    crate::renderer::composer::recompose_stored_lines_if_overflowing_body(
+                        &mut cloned,
+                        para,
+                        column_inner_width,
+                        styles,
+                    );
+                    Some(cloned)
                 } else {
                     None
                 }
