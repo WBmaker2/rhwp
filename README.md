@@ -114,16 +114,18 @@ rhwp는 Rust + WebAssembly 기반의 오픈소스 HWP/HWPX 뷰어/에디터입�
 
 ### Output (출력)
 - SVG export (CLI, legacy + layer replay)
-- PNG export (native Skia, `--features native-skia`) / PDF export (`--text-as-paths` 지원, 바이트 재현성)
+- PNG export (native Skia, `--features native-skia`)
+- PDF export: SVG compatibility 기본(`--text-as-paths` 지원, 바이트 재현성), native Skia direct opt-in(`--features native-skia`, `--backend direct`)
 - Canvas rendering (WASM/Web) + CanvasKit direct replay (opt-in)
 - 저장: HWP 편집 저장, HWPX/HML 의미 보존 저장, HWPX → HWP 변환 경로
 - Debug overlay (paragraph/table boundaries + indices + y-coordinates)
 
 ### Multi-Renderer Backends (멀티 렌더러 백엔드)
 - 공통 paint IR: `PageRenderTree` → `PageLayerTree` (Rust `DocumentCore::build_page_layer_tree`, WASM `getPageLayerTree`) — `schemaVersion: 1`, 호환 변경은 additive 원칙
-- 백엔드: legacy/layered SVG, Canvas2D(브라우저 기본), CanvasKit 직접 replay(`?renderer=canvaskit` opt-in + readiness gate), native Skia PNG/PDF(`--features native-skia`)
+- 백엔드: legacy/layered SVG, Canvas2D(브라우저 기본), CanvasKit 직접 replay(`?renderer=canvaskit` opt-in + readiness gate), native Skia PNG/direct PDF(`--features native-skia`)
 - Text IR v2: 폰트 blob 증명 기반 GlyphRun/GlyphOutline 사이드카 — 미증명 케이스는 항상 `TextRun` 폴백 (호환 계약)
-- 시각 회귀 CI: render-diff(Canvas 계열 + report-only PDF diff), 4-backend 공통 replay-plane(배경→글뒤→본문→글앞) 계약
+- direct PDF는 print profile과 CSS px→PDF point `72/96` 변환을 사용합니다. 손실되는 gradient/pattern/shadow/connector/image adjustment는 SVG backend 사용을 안내하며 실패하고, Raw SVG만 `--raster-dpi` 기반 bounded raster fallback을 사용합니다.
+- 시각 회귀 CI: render-diff(Canvas 계열 + browser/compatibility PDF report), selected direct/compatibility PDF 2% hard gate, 4-backend 공통 replay-plane(배경→글뒤→본문→글앞) 계약
 
 ### Web Editor (웹 에디터)
 - Text editing (insert, delete, undo/redo)
