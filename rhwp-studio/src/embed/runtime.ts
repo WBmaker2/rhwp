@@ -112,10 +112,14 @@ async function handleLegacy(
 
 export function installEmbedRuntime(options: EmbedRuntimeOptions): () => void {
   const ports = new Set<MessagePort>();
+  const isTopLevelSameWindow = options.parentWindow === options.hostWindow;
   let binding: { origin: string; sessionId: string; port: MessagePort } | null = null;
   const onMessage = (event: MessageEvent) => {
     const transferredPorts = Array.from(event.ports);
-    if (event.source !== options.parentWindow || !isUsableParentOrigin(event.origin)) {
+    if (
+      event.source !== options.parentWindow
+      || (!isUsableParentOrigin(event.origin) && !isTopLevelSameWindow)
+    ) {
       releasePorts(transferredPorts);
       return;
     }
