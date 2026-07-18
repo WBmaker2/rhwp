@@ -3886,7 +3886,13 @@ impl TypesetEngine {
                     self.format_paragraph(para, composed.get(para_idx), styles, Some(col_w));
                 let is_last_in_section = para_idx + 1 == paragraphs.len();
                 // [Task #1027 Stage D] fit 직전 vpos 스냅으로 누적 drift 제거 (렌더러 정합).
-                self.vpos_snap_current_height(&mut st, para_idx, paragraphs, styles);
+                self.vpos_snap_current_height(
+                    &mut st,
+                    para_idx,
+                    paragraphs,
+                    styles,
+                    formatted.spacing_before,
+                );
                 self.typeset_paragraph(
                     &mut st,
                     para_idx,
@@ -10850,6 +10856,7 @@ impl TypesetEngine {
         para_idx: usize,
         paragraphs: &[Paragraph],
         styles: &ResolvedStyleSet,
+        spacing_before_px: f64,
     ) {
         if st.col_count != 1 {
             return; // 다단은 Stage E
@@ -10894,6 +10901,18 @@ impl TypesetEngine {
         // [#2243] dirty 저장-앵커 사다리의 역스냅 금지 — 저장 lineseg 누락 문단의
         // fresh 재계산 성장분을 낡은 기계 v0 가 되돌리지 못하게 한다(전방만 허용).
         if st.vpos_ladder_dirty && st.vpos_page_base_stored && y < st.current_height {
+            y = st.current_height;
+        }
+        // [#2279 ladder-sb] 후방 스냅량이 이 문단의 spacing_before 와 정확히
+        // 일치(±2px)하면 생성기 ladder 의 sb-누락이다 — 한글 fresh 는 sb 를
+        // 가산하므로(서브픽셀 하니스 실측: 36398709 본문 문단당 −5.0pt 균일
+        // = sb 6.7px) 스냅으로 되감지 않는다. ladder 가 sb 를 포함하는 정상
+        // 문서는 후방 스냅량이 sb 와 일치하지 않아 불변.
+        if st.is_hwpx_source
+            && spacing_before_px > 0.5
+            && y < st.current_height
+            && (st.current_height - y - spacing_before_px).abs() < 2.0
+        {
             y = st.current_height;
         }
         // [#2243 진단] snap 입출력 — 동작 불변.
