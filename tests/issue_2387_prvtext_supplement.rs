@@ -44,7 +44,8 @@ fn generated_document_preview_carries_body_text() {
 fn existing_preview_is_preserved_on_reserialize() {
     let mut core = DocumentCore::new_empty();
     core.create_blank_document_native().expect("blank 템플릿");
-    core.insert_text_native(0, 0, 0, "제목 텍스트").expect("제목");
+    core.insert_text_native(0, 0, 0, "제목 텍스트")
+        .expect("제목");
 
     // 1차 직렬화 → PrvText 가 본문으로 보정됨
     let bytes1 = serialize_hwp(core.document()).expect("직렬화1");
