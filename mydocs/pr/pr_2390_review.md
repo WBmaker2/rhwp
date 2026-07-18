@@ -31,3 +31,8 @@ embed `loadFile` 응답이 로드 후 안내창(HWPX lineseg 검증 모달 #177,
 **merge 권고.** 이슈의 원인 분석(응답 보류 지점 특정, pageCount 정상 응답
 대조)이 정확하고, opt-in 설계로 기존 동작을 보존한다. 첫 PR 로서 재현
 로그·테스트·문서(README/d.ts) 동봉이 충실.
+
+## 처리 결과 (2026-07-18)
+
+CI 전 항목 green 확인 → merge(admin) + 첫 기여 환영 코멘트(+fork devel 동기화
+안내). #2389 는 close-issues 워크플로 자동 close. sxngt 첫 PR 완결.
