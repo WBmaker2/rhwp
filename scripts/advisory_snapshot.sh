@@ -11,8 +11,9 @@ mkdir -p "$OUT"
 
 # 1) public Rust API 표면 — pub 선언 시그니처의 결정적 목록 (파일 경로 + 정규화 시그니처)
 #    도구 무의존(grep 기반) — 같은 방법으로 재생성해 비교하는 전제의 advisory 스냅샷.
+#    줄번호는 제외한다 — 무관한 필드 추가로 전 항목이 밀리는 diff 노이즈 방지 (1단계 실측).
 grep -rn --include="*.rs" -E "^[[:space:]]*pub (fn|struct|enum|trait|type|const|static|mod|use) " src \
-  | sed -E 's/[[:space:]]+/ /g; s/ \{.*$//; s/;.*$//' \
+  | sed -E 's/^([^:]+):[0-9]+:/\1: /; s/[[:space:]]+/ /g; s/ \{.*$//; s/;.*$//' \
   | sort > "$OUT/api_surface.txt"
 
 # 2) WASM JSON 계약 — wasm_api 가 노출하는 JSON 반환 계약의 대표 표본.

@@ -19,3 +19,12 @@ last_verified: 2026-07-19
 | WASM/render-tree JSON 계약 | `advisory/render_tree_sha256.txt` | export-render-tree p0 구조 해시 3건 |
 
 재현성: 동일 커밋에서 2회 생성 `diff -r` 바이트 동일 검증 완료 (2026-07-19).
+
+## 1단계 재고정 (2026-07-19)
+
+- api_surface 정규화에서 **줄번호 제외**로 스크립트 보정 (무관 필드 추가로 전
+  항목이 밀리는 노이즈 — 1단계 실측) 후 baseline 재고정.
+- 1단계 의도 delta (검토 완료, 추가 7건뿐 — 이동/제거 0):
+  `model/provenance.rs` 신설(SourceFormat/SourceProvenance/
+  LayoutCompatibilityProfile + 질의 2), `Document::layout_profile`,
+  `pub mod provenance`. CLI output·render-tree 해시는 **무변동**.
