@@ -23,7 +23,38 @@ export interface EditCommand {
   getPageLocalTextEditOptions?(): { insertedText?: string; deleteCount?: number };
   /** 방금 실행한 mutation effect를 한 번만 반환한다. */
   consumeTextMutationEffects?(): TextMutationEffects;
+  /**
+   * [Task #2337] 이 커맨드의 마지막 execute/undo 후 복원할 머리말/꼬리말·각주 편집
+   * 컨텍스트. 본문 커맨드는 미구현(→ 반환 없음 = 본문 모드). InputHandler 가 undo/redo
+   * 시 이 값을 읽어 HF/FN 모드 재진입 + 커서 위치를 복원하고 본문 moveTo 를 건너뛴다.
+   */
+  editContext?(): EditContext | null;
 }
+
+/**
+ * [Task #2337] 머리말/꼬리말·각주 편집 커맨드가 undo/redo 후 복원할 편집 컨텍스트.
+ * 본문 DocumentPosition 과 별개인 HF/FN 커서 모드를 서술한다(cursor.ts 의
+ * enterHeaderFooterMode/enterFootnoteMode + set{Hf,Fn}CursorPosition 인자에 대응).
+ */
+export type EditContext =
+  | {
+      readonly mode: 'headerFooter';
+      readonly sectionIdx: number;
+      readonly isHeader: boolean;
+      readonly applyTo: number;
+      readonly paraIdx: number;
+      readonly charOffset: number;
+    }
+  | {
+      readonly mode: 'footnote';
+      readonly sectionIdx: number;
+      readonly paraIdx: number;
+      readonly controlIdx: number;
+      readonly footnoteIndex: number;
+      readonly pageNum: number;
+      readonly innerParaIdx: number;
+      readonly charOffset: number;
+    };
 
 /** cell text mutation의 deferred/flow 경계와 immediate pagination 완료를 함께 전달한다. */
 export interface TextMutationEffects {
@@ -801,6 +832,318 @@ export class MergeNextParagraphCommand implements EditCommand {
     return { ...this.position };
   }
 
+  mergeWith(): null { return null; }
+}
+
+// ─── [Task #2337] 머리말/꼬리말·각주 편집 커맨드 ───────────────────────────
+//
+// HF/FN 편집은 본문과 별개 WASM 경로(insert/delete/merge/split × HeaderFooter/Footnote)
+// 를 쓰고 커서도 별도 모드다. 본문 텍스트/문단 커맨드(역연산 경량)를 미러링해 히스토리에
+// 기록함으로써, 본문 스냅샷 undo 가 미기록 HF/FN 편집을 무언 파괴하던 데이터 손실을 막는다.
+// 최초 적용은 InputHandler 가 인라인 뮤테이션 후 kind:'record' 로 기록하므로 execute()
+// 는 redo 시에만 호출된다. undo()/execute() 는 lastContext 를 각각 실행 전/후 좌표로
+// 갱신하며, InputHandler 가 editContext() 로 읽어 HF/FN 커서 모드를 복원한다(커맨드는 순수).
+
+export interface HeaderFooterEditTarget {
+  readonly sectionIdx: number;
+  readonly isHeader: boolean;
+  readonly applyTo: number;
+}
+
+export interface FootnoteEditTarget {
+  readonly sectionIdx: number;
+  /** 각주 컨트롤을 담은 본문 문단 인덱스 */
+  readonly paraIdx: number;
+  readonly controlIdx: number;
+  /** 모드 재진입용 (enterFootnoteMode 인자) */
+  readonly footnoteIndex: number;
+  readonly pageNum: number;
+}
+
+function hfEditContext(t: HeaderFooterEditTarget, paraIdx: number, charOffset: number): EditContext {
+  return { mode: 'headerFooter', sectionIdx: t.sectionIdx, isHeader: t.isHeader, applyTo: t.applyTo, paraIdx, charOffset };
+}
+
+function fnEditContext(t: FootnoteEditTarget, innerParaIdx: number, charOffset: number): EditContext {
+  return {
+    mode: 'footnote', sectionIdx: t.sectionIdx, paraIdx: t.paraIdx, controlIdx: t.controlIdx,
+    footnoteIndex: t.footnoteIndex, pageNum: t.pageNum, innerParaIdx, charOffset,
+  };
+}
+
+/**
+ * HF/FN 커맨드의 execute/undo 반환 위치는 형식상 값이다 — InputHandler 는 editContext()
+ * 로 커서를 복원하며 이 본문 위치로 moveTo 하지 않는다(단, 반환은 non-null 이어야
+ * history.undo/redo 가 성공으로 간주한다).
+ */
+function hfFnStubPosition(sectionIdx: number): DocumentPosition {
+  return { sectionIndex: sectionIdx, paragraphIndex: 0, charOffset: 0 };
+}
+
+/**
+ * [Task #2337-review] WASM 삭제 count 는 Rust `Paragraph::delete_text_at` 의 char(Unicode
+ * scalar) 단위다. JS `String.length`(UTF-16 code unit)를 넘기면 astral 문자(😀 등)에서
+ * 실제보다 많이 삭제해 undo/redo 가 인접 문자를 잃는다 → 코드포인트 수로 계산한다.
+ * (커서 오프셋은 studio 의 UTF-16 관례를 유지하므로 여기서만 char 단위를 쓴다.)
+ */
+function charCount(s: string): number {
+  return [...s].length;
+}
+
+// ── 머리말/꼬리말 ──────────────────────────────────────────
+
+export class InsertTextInHeaderFooterCommand implements EditCommand {
+  readonly type = 'insertTextInHeaderFooter';
+  readonly timestamp = Date.now();
+  private lastContext: EditContext;
+
+  constructor(
+    private target: HeaderFooterEditTarget,
+    private paraIdx: number,
+    private charOffset: number,
+    private text: string,
+  ) {
+    this.lastContext = hfEditContext(target, paraIdx, charOffset + text.length);
+  }
+
+  execute(wasm: WasmBridge): DocumentPosition {
+    wasm.insertTextInHeaderFooter(this.target.sectionIdx, this.target.isHeader, this.target.applyTo, this.paraIdx, this.charOffset, this.text);
+    this.lastContext = hfEditContext(this.target, this.paraIdx, this.charOffset + this.text.length);
+    return hfFnStubPosition(this.target.sectionIdx);
+  }
+
+  undo(wasm: WasmBridge): DocumentPosition {
+    wasm.deleteTextInHeaderFooter(this.target.sectionIdx, this.target.isHeader, this.target.applyTo, this.paraIdx, this.charOffset, charCount(this.text));
+    this.lastContext = hfEditContext(this.target, this.paraIdx, this.charOffset);
+    return hfFnStubPosition(this.target.sectionIdx);
+  }
+
+  editContext(): EditContext { return this.lastContext; }
+  mergeWith(): null { return null; }
+}
+
+export class DeleteTextInHeaderFooterCommand implements EditCommand {
+  readonly type = 'deleteTextInHeaderFooter';
+  readonly timestamp = Date.now();
+  private lastContext: EditContext;
+
+  constructor(
+    private target: HeaderFooterEditTarget,
+    private paraIdx: number,
+    private charOffset: number,
+    private deletedText: string,
+    /** undo(재삽입) 후 커서 오프셋 — 삭제 방향에 따라 호출부가 정한다(Backspace: charOffset+len, Delete: charOffset). */
+    private cursorBeforeOffset: number,
+  ) {
+    this.lastContext = hfEditContext(target, paraIdx, charOffset);
+  }
+
+  execute(wasm: WasmBridge): DocumentPosition {
+    wasm.deleteTextInHeaderFooter(this.target.sectionIdx, this.target.isHeader, this.target.applyTo, this.paraIdx, this.charOffset, charCount(this.deletedText));
+    this.lastContext = hfEditContext(this.target, this.paraIdx, this.charOffset);
+    return hfFnStubPosition(this.target.sectionIdx);
+  }
+
+  undo(wasm: WasmBridge): DocumentPosition {
+    wasm.insertTextInHeaderFooter(this.target.sectionIdx, this.target.isHeader, this.target.applyTo, this.paraIdx, this.charOffset, this.deletedText);
+    this.lastContext = hfEditContext(this.target, this.paraIdx, this.cursorBeforeOffset);
+    return hfFnStubPosition(this.target.sectionIdx);
+  }
+
+  editContext(): EditContext { return this.lastContext; }
+  mergeWith(): null { return null; }
+}
+
+export class SplitParagraphInHeaderFooterCommand implements EditCommand {
+  readonly type = 'splitParagraphInHeaderFooter';
+  readonly timestamp = Date.now();
+  private lastContext: EditContext;
+
+  constructor(
+    private target: HeaderFooterEditTarget,
+    private paraIdx: number,
+    private charOffset: number,
+    /** 분할로 생긴 다음 문단 인덱스(인라인 결과의 hfParaIndex). */
+    private newParaIdx: number,
+  ) {
+    this.lastContext = hfEditContext(target, newParaIdx, 0);
+  }
+
+  execute(wasm: WasmBridge): DocumentPosition {
+    wasm.splitParagraphInHeaderFooter(this.target.sectionIdx, this.target.isHeader, this.target.applyTo, this.paraIdx, this.charOffset);
+    this.lastContext = hfEditContext(this.target, this.newParaIdx, 0);
+    return hfFnStubPosition(this.target.sectionIdx);
+  }
+
+  undo(wasm: WasmBridge): DocumentPosition {
+    wasm.mergeParagraphInHeaderFooter(this.target.sectionIdx, this.target.isHeader, this.target.applyTo, this.newParaIdx);
+    this.lastContext = hfEditContext(this.target, this.paraIdx, this.charOffset);
+    return hfFnStubPosition(this.target.sectionIdx);
+  }
+
+  editContext(): EditContext { return this.lastContext; }
+  mergeWith(): null { return null; }
+}
+
+export class MergeParagraphInHeaderFooterCommand implements EditCommand {
+  readonly type = 'mergeParagraphInHeaderFooter';
+  readonly timestamp = Date.now();
+  private lastContext: EditContext;
+
+  constructor(
+    private target: HeaderFooterEditTarget,
+    /** 병합되는 문단 M (M 을 M-1 로 합침). */
+    private paraIdx: number,
+    /** 병합 후 이전 문단 인덱스(인라인 결과 hfParaIndex, = paraIdx-1). */
+    private prevParaIdx: number,
+    /** 병합 지점 오프셋(이전 문단의 원래 길이, 인라인 결과 charOffset). undo 분할점 + 병합 후 커서. */
+    private mergeOffset: number,
+    /** 병합 전 커서(undo 복원용) — Backspace: (paraIdx,0), Delete: (prevParaIdx,mergeOffset). */
+    private beforeParaIdx: number,
+    private beforeOffset: number,
+  ) {
+    this.lastContext = hfEditContext(target, prevParaIdx, mergeOffset);
+  }
+
+  execute(wasm: WasmBridge): DocumentPosition {
+    wasm.mergeParagraphInHeaderFooter(this.target.sectionIdx, this.target.isHeader, this.target.applyTo, this.paraIdx);
+    this.lastContext = hfEditContext(this.target, this.prevParaIdx, this.mergeOffset);
+    return hfFnStubPosition(this.target.sectionIdx);
+  }
+
+  undo(wasm: WasmBridge): DocumentPosition {
+    wasm.splitParagraphInHeaderFooter(this.target.sectionIdx, this.target.isHeader, this.target.applyTo, this.prevParaIdx, this.mergeOffset);
+    this.lastContext = hfEditContext(this.target, this.beforeParaIdx, this.beforeOffset);
+    return hfFnStubPosition(this.target.sectionIdx);
+  }
+
+  editContext(): EditContext { return this.lastContext; }
+  mergeWith(): null { return null; }
+}
+
+// ── 각주/미주 ──────────────────────────────────────────────
+
+export class InsertTextInFootnoteCommand implements EditCommand {
+  readonly type = 'insertTextInFootnote';
+  readonly timestamp = Date.now();
+  private lastContext: EditContext;
+
+  constructor(
+    private target: FootnoteEditTarget,
+    private innerParaIdx: number,
+    private charOffset: number,
+    private text: string,
+  ) {
+    this.lastContext = fnEditContext(target, innerParaIdx, charOffset + text.length);
+  }
+
+  execute(wasm: WasmBridge): DocumentPosition {
+    wasm.insertTextInFootnote(this.target.sectionIdx, this.target.paraIdx, this.target.controlIdx, this.innerParaIdx, this.charOffset, this.text);
+    this.lastContext = fnEditContext(this.target, this.innerParaIdx, this.charOffset + this.text.length);
+    return hfFnStubPosition(this.target.sectionIdx);
+  }
+
+  undo(wasm: WasmBridge): DocumentPosition {
+    wasm.deleteTextInFootnote(this.target.sectionIdx, this.target.paraIdx, this.target.controlIdx, this.innerParaIdx, this.charOffset, charCount(this.text));
+    this.lastContext = fnEditContext(this.target, this.innerParaIdx, this.charOffset);
+    return hfFnStubPosition(this.target.sectionIdx);
+  }
+
+  editContext(): EditContext { return this.lastContext; }
+  mergeWith(): null { return null; }
+}
+
+export class DeleteTextInFootnoteCommand implements EditCommand {
+  readonly type = 'deleteTextInFootnote';
+  readonly timestamp = Date.now();
+  private lastContext: EditContext;
+
+  constructor(
+    private target: FootnoteEditTarget,
+    private innerParaIdx: number,
+    private charOffset: number,
+    private deletedText: string,
+    private cursorBeforeOffset: number,
+  ) {
+    this.lastContext = fnEditContext(target, innerParaIdx, charOffset);
+  }
+
+  execute(wasm: WasmBridge): DocumentPosition {
+    wasm.deleteTextInFootnote(this.target.sectionIdx, this.target.paraIdx, this.target.controlIdx, this.innerParaIdx, this.charOffset, charCount(this.deletedText));
+    this.lastContext = fnEditContext(this.target, this.innerParaIdx, this.charOffset);
+    return hfFnStubPosition(this.target.sectionIdx);
+  }
+
+  undo(wasm: WasmBridge): DocumentPosition {
+    wasm.insertTextInFootnote(this.target.sectionIdx, this.target.paraIdx, this.target.controlIdx, this.innerParaIdx, this.charOffset, this.deletedText);
+    this.lastContext = fnEditContext(this.target, this.innerParaIdx, this.cursorBeforeOffset);
+    return hfFnStubPosition(this.target.sectionIdx);
+  }
+
+  editContext(): EditContext { return this.lastContext; }
+  mergeWith(): null { return null; }
+}
+
+export class SplitParagraphInFootnoteCommand implements EditCommand {
+  readonly type = 'splitParagraphInFootnote';
+  readonly timestamp = Date.now();
+  private lastContext: EditContext;
+
+  constructor(
+    private target: FootnoteEditTarget,
+    private innerParaIdx: number,
+    private charOffset: number,
+    private newInnerParaIdx: number,
+  ) {
+    this.lastContext = fnEditContext(target, newInnerParaIdx, 0);
+  }
+
+  execute(wasm: WasmBridge): DocumentPosition {
+    wasm.splitParagraphInFootnote(this.target.sectionIdx, this.target.paraIdx, this.target.controlIdx, this.innerParaIdx, this.charOffset);
+    this.lastContext = fnEditContext(this.target, this.newInnerParaIdx, 0);
+    return hfFnStubPosition(this.target.sectionIdx);
+  }
+
+  undo(wasm: WasmBridge): DocumentPosition {
+    wasm.mergeParagraphInFootnote(this.target.sectionIdx, this.target.paraIdx, this.target.controlIdx, this.newInnerParaIdx);
+    this.lastContext = fnEditContext(this.target, this.innerParaIdx, this.charOffset);
+    return hfFnStubPosition(this.target.sectionIdx);
+  }
+
+  editContext(): EditContext { return this.lastContext; }
+  mergeWith(): null { return null; }
+}
+
+export class MergeParagraphInFootnoteCommand implements EditCommand {
+  readonly type = 'mergeParagraphInFootnote';
+  readonly timestamp = Date.now();
+  private lastContext: EditContext;
+
+  constructor(
+    private target: FootnoteEditTarget,
+    private innerParaIdx: number,
+    private prevInnerParaIdx: number,
+    private mergeOffset: number,
+    /** 병합 전 커서(undo 복원) — Backspace: (innerParaIdx,0), Delete: (prevInnerParaIdx,mergeOffset). */
+    private beforeInnerParaIdx: number,
+    private beforeOffset: number,
+  ) {
+    this.lastContext = fnEditContext(target, prevInnerParaIdx, mergeOffset);
+  }
+
+  execute(wasm: WasmBridge): DocumentPosition {
+    wasm.mergeParagraphInFootnote(this.target.sectionIdx, this.target.paraIdx, this.target.controlIdx, this.innerParaIdx);
+    this.lastContext = fnEditContext(this.target, this.prevInnerParaIdx, this.mergeOffset);
+    return hfFnStubPosition(this.target.sectionIdx);
+  }
+
+  undo(wasm: WasmBridge): DocumentPosition {
+    wasm.splitParagraphInFootnote(this.target.sectionIdx, this.target.paraIdx, this.target.controlIdx, this.prevInnerParaIdx, this.mergeOffset);
+    this.lastContext = fnEditContext(this.target, this.beforeInnerParaIdx, this.beforeOffset);
+    return hfFnStubPosition(this.target.sectionIdx);
+  }
+
+  editContext(): EditContext { return this.lastContext; }
   mergeWith(): null { return null; }
 }
 

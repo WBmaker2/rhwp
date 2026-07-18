@@ -8,6 +8,10 @@ import {
   MergeNextParagraphCommand,
   MergeParagraphInCellCommand,
   MergeNextParagraphInCellCommand,
+  InsertTextInHeaderFooterCommand,
+  DeleteTextInHeaderFooterCommand,
+  MergeParagraphInHeaderFooterCommand,
+  InsertTextInFootnoteCommand,
   insertTextWithMutationEffects,
   NO_TEXT_MUTATION_EFFECTS,
 } from './command';
@@ -200,19 +204,20 @@ export function handleBackspace(this: any, pos: DocumentPosition, inCell: boolea
   if (this.cursor.isInHeaderFooter()) {
     const isHeader = this.cursor.headerFooterMode === 'header';
     const hfOff = this.cursor.hfCharOffset;
+    const target = { sectionIdx: this.cursor.hfSectionIdx, isHeader, applyTo: this.cursor.hfApplyTo };
+    const paraIdx = this.cursor.hfParaIdx;
     if (hfOff > 0) {
-      this.wasm.deleteTextInHeaderFooter(
-        this.cursor.hfSectionIdx, isHeader, this.cursor.hfApplyTo,
-        this.cursor.hfParaIdx, hfOff - 1, 1,
-      );
-      this.cursor.setHfCursorPosition(this.cursor.hfParaIdx, hfOff - 1);
+      // [Task #2337] 삭제 텍스트를 WASM 반환에서 확보해 역연산(재삽입) 기록. Backspace 이므로
+      // undo 후 커서는 hfOff(삭제 전 위치)로 복귀.
+      const res = JSON.parse(this.wasm.deleteTextInHeaderFooter(target.sectionIdx, isHeader, target.applyTo, paraIdx, hfOff - 1, 1));
+      this.executeOperation({ kind: 'record', command: new DeleteTextInHeaderFooterCommand(target, paraIdx, hfOff - 1, res.deletedText ?? '', hfOff) });
+      this.cursor.setHfCursorPosition(paraIdx, hfOff - 1);
       this.afterEdit();
-    } else if (this.cursor.hfParaIdx > 0) {
+    } else if (paraIdx > 0) {
       // 문단 시작에서 Backspace → 이전 문단과 병합
-      const result = JSON.parse(this.wasm.mergeParagraphInHeaderFooter(
-        this.cursor.hfSectionIdx, isHeader, this.cursor.hfApplyTo,
-        this.cursor.hfParaIdx,
-      ));
+      const result = JSON.parse(this.wasm.mergeParagraphInHeaderFooter(target.sectionIdx, isHeader, target.applyTo, paraIdx));
+      // Backspace 병합: 병합 전 커서는 (paraIdx, 0).
+      this.executeOperation({ kind: 'record', command: new MergeParagraphInHeaderFooterCommand(target, paraIdx, result.hfParaIndex, result.charOffset, paraIdx, 0) });
       this.cursor.setHfCursorPosition(result.hfParaIndex, result.charOffset);
       this.afterEdit();
     }
@@ -261,24 +266,20 @@ export function handleDelete(this: any, pos: DocumentPosition, inCell: boolean):
   // 머리말/꼬리말 편집 모드
   if (this.cursor.isInHeaderFooter()) {
     const isHeader = this.cursor.headerFooterMode === 'header';
+    const target = { sectionIdx: this.cursor.hfSectionIdx, isHeader, applyTo: this.cursor.hfApplyTo };
     try {
-      const info = JSON.parse(this.wasm.getHeaderFooterParaInfo(
-        this.cursor.hfSectionIdx, isHeader, this.cursor.hfApplyTo,
-        this.cursor.hfParaIdx,
-      ));
+      const paraIdx = this.cursor.hfParaIdx;
+      const info = JSON.parse(this.wasm.getHeaderFooterParaInfo(target.sectionIdx, isHeader, target.applyTo, paraIdx));
       const hfOff = this.cursor.hfCharOffset;
       if (hfOff < info.charCount) {
-        this.wasm.deleteTextInHeaderFooter(
-          this.cursor.hfSectionIdx, isHeader, this.cursor.hfApplyTo,
-          this.cursor.hfParaIdx, hfOff, 1,
-        );
+        // Delete(forward): 커서는 hfOff 유지 → undo 후에도 hfOff.
+        const res = JSON.parse(this.wasm.deleteTextInHeaderFooter(target.sectionIdx, isHeader, target.applyTo, paraIdx, hfOff, 1));
+        this.executeOperation({ kind: 'record', command: new DeleteTextInHeaderFooterCommand(target, paraIdx, hfOff, res.deletedText ?? '', hfOff) });
         this.afterEdit();
-      } else if (this.cursor.hfParaIdx + 1 < info.paraCount) {
-        // 문단 끝에서 Delete → 다음 문단과 병합 (다음 문단을 merge)
-        const result = JSON.parse(this.wasm.mergeParagraphInHeaderFooter(
-          this.cursor.hfSectionIdx, isHeader, this.cursor.hfApplyTo,
-          this.cursor.hfParaIdx + 1,
-        ));
+      } else if (paraIdx + 1 < info.paraCount) {
+        // 문단 끝에서 Delete → 다음 문단(paraIdx+1)을 현재 문단으로 병합. 병합 전 커서는 (paraIdx, 끝).
+        const result = JSON.parse(this.wasm.mergeParagraphInHeaderFooter(target.sectionIdx, isHeader, target.applyTo, paraIdx + 1));
+        this.executeOperation({ kind: 'record', command: new MergeParagraphInHeaderFooterCommand(target, paraIdx + 1, result.hfParaIndex, result.charOffset, result.hfParaIndex, result.charOffset) });
         this.cursor.setHfCursorPosition(result.hfParaIndex, result.charOffset);
         this.afterEdit();
       }
@@ -392,12 +393,32 @@ export function onCompositionEnd(this: any): void {
 
   // 조합 중 WASM 직접 호출로 이미 문서에 삽입된 텍스트를
   // Command로 기록하여 Undo 가능하게 한다.
-  // 머리말/꼬리말·각주 모드에서는 Undo 기록 생략 (별도 Undo 시스템 없음)
-  if (anchor && finalLength > 0 && !this.cursor.isInHeaderFooter() && !this.cursor.isInFootnote()) {
-    const insertedText = this.getTextAt(anchor, finalLength);
-    if (insertedText) {
-      // execute() 없이 히스토리에만 기록 (텍스트는 이미 문서에 있음)
-      this.executeOperation({ kind: 'record', command: new InsertTextCommand(anchor, insertedText) });
+  // [Task #2337] 머리말/꼬리말·각주 모드도 이제 기록한다(본문 스냅샷 undo 의 무언 파괴 차단).
+  if (anchor && finalLength > 0) {
+    if (this.cursor.isInHeaderFooter()) {
+      // HF 는 신뢰할 텍스트 read 가 없어 getTextAt(본문 리더)을 쓸 수 없으므로 조합 텍스트
+      // (_lastCompositionText)를 그대로 기록한다. anchor.charOffset = 조합 시작 오프셋,
+      // hfParaIdx 는 조합 중 불변.
+      const composed = this._lastCompositionText || '';
+      if (composed) {
+        const target = { sectionIdx: this.cursor.hfSectionIdx, isHeader: this.cursor.headerFooterMode === 'header', applyTo: this.cursor.hfApplyTo };
+        this.executeOperation({ kind: 'record', command: new InsertTextInHeaderFooterCommand(target, this.cursor.hfParaIdx, anchor.charOffset, composed) });
+      }
+    } else if (this.cursor.isInFootnote()) {
+      const composed = this._lastCompositionText || '';
+      if (composed) {
+        const target = {
+          sectionIdx: this.cursor.fnSectionIdx, paraIdx: this.cursor.fnParaIdx, controlIdx: this.cursor.fnControlIdx,
+          footnoteIndex: this.cursor.fnFootnoteIndex, pageNum: this.cursor.fnPageNum,
+        };
+        this.executeOperation({ kind: 'record', command: new InsertTextInFootnoteCommand(target, this.cursor.fnInnerParaIdx, anchor.charOffset, composed) });
+      }
+    } else {
+      const insertedText = this.getTextAt(anchor, finalLength);
+      if (insertedText) {
+        // execute() 없이 히스토리에만 기록 (텍스트는 이미 문서에 있음)
+        this.executeOperation({ kind: 'record', command: new InsertTextCommand(anchor, insertedText) });
+      }
     }
   }
 
@@ -571,11 +592,13 @@ export function onInput(this: any, e?: InputEvent): void {
   if (this.cursor.isInHeaderFooter()) {
     const isHeader = this.cursor.headerFooterMode === 'header';
     try {
-      this.wasm.insertTextInHeaderFooter(
-        this.cursor.hfSectionIdx, isHeader, this.cursor.hfApplyTo,
-        this.cursor.hfParaIdx, this.cursor.hfCharOffset, text,
-      );
-      this.cursor.setHfCursorPosition(this.cursor.hfParaIdx, this.cursor.hfCharOffset + text.length);
+      const target = { sectionIdx: this.cursor.hfSectionIdx, isHeader, applyTo: this.cursor.hfApplyTo };
+      const paraIdx = this.cursor.hfParaIdx;
+      const charOffset = this.cursor.hfCharOffset;
+      this.wasm.insertTextInHeaderFooter(target.sectionIdx, isHeader, target.applyTo, paraIdx, charOffset, text);
+      // [Task #2337] 히스토리 기록 → 본문 스냅샷 undo 가 이 편집을 무언 파괴하지 않게 한다.
+      this.executeOperation({ kind: 'record', command: new InsertTextInHeaderFooterCommand(target, paraIdx, charOffset, text) });
+      this.cursor.setHfCursorPosition(paraIdx, charOffset + text.length);
       this.afterEdit();
     } catch (err) {
       console.error('[HF-input] insertTextInHeaderFooter 실패:', err);
@@ -586,11 +609,15 @@ export function onInput(this: any, e?: InputEvent): void {
   // 각주 편집 모드
   if (this.cursor.isInFootnote()) {
     try {
-      this.wasm.insertTextInFootnote(
-        this.cursor.fnSectionIdx, this.cursor.fnParaIdx, this.cursor.fnControlIdx,
-        this.cursor.fnInnerParaIdx, this.cursor.fnCharOffset, text,
-      );
-      this.cursor.setFnCursorPosition(this.cursor.fnInnerParaIdx, this.cursor.fnCharOffset + text.length);
+      const target = {
+        sectionIdx: this.cursor.fnSectionIdx, paraIdx: this.cursor.fnParaIdx, controlIdx: this.cursor.fnControlIdx,
+        footnoteIndex: this.cursor.fnFootnoteIndex, pageNum: this.cursor.fnPageNum,
+      };
+      const innerParaIdx = this.cursor.fnInnerParaIdx;
+      const charOffset = this.cursor.fnCharOffset;
+      this.wasm.insertTextInFootnote(target.sectionIdx, target.paraIdx, target.controlIdx, innerParaIdx, charOffset, text);
+      this.executeOperation({ kind: 'record', command: new InsertTextInFootnoteCommand(target, innerParaIdx, charOffset, text) });
+      this.cursor.setFnCursorPosition(innerParaIdx, charOffset + text.length);
       this.afterEdit();
     } catch (err) {
       console.error('[FN-input] insertTextInFootnote 실패:', err);

@@ -192,6 +192,15 @@ export class CommandHistory {
   canUndo(): boolean { return this.undoStack.length > 0; }
   canRedo(): boolean { return this.redoStack.length > 0; }
 
+  /**
+   * [Task #2337] 직전 undo/redo 로 방금 이동한 커맨드를 조회한다.
+   * undo() 후 방금 되돌린 커맨드는 redoStack top(peekRedoTop), redo() 후 방금 다시
+   * 실행한 커맨드는 undoStack top(peekUndoTop). InputHandler 가 HF/FN 편집 커맨드의
+   * editContext() 를 읽어 커서 모드를 복원하는 데 쓴다(본문 커맨드면 null-컨텍스트).
+   */
+  peekUndoTop(): EditCommand | null { return this.undoStack[this.undoStack.length - 1] ?? null; }
+  peekRedoTop(): EditCommand | null { return this.redoStack[this.redoStack.length - 1] ?? null; }
+
   /** 히스토리 초기화 (문서 로드 시). wasm이 있으면 스냅샷 리소스도 해제. */
   clear(wasm?: WasmBridge): void {
     if (wasm) {
