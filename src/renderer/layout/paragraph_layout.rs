@@ -1895,12 +1895,12 @@ impl LayoutEngine {
             // compose_lines fallback (CHARS_PER_LINE=45 heuristic) 결과를 column inner width
             // 기반으로 re-split. cell paragraph (Stage 6a 의 height_measurer 호출) 와 동일
             // recompose path 사용.
-            let recomposed: Option<ComposedParagraph> = if para.line_segs.is_empty() {
+            let recomposed: Option<ComposedParagraph> = {
                 let para_style = styles.para_styles.get(comp.para_style_id as usize);
                 let margin_l = para_style.map(|s| s.margin_left).unwrap_or(0.0);
                 let margin_r = para_style.map(|s| s.margin_right).unwrap_or(0.0);
                 let column_inner_width = (col_area.width - margin_l - margin_r).max(0.0);
-                if column_inner_width > 0.0 {
+                if column_inner_width > 0.0 && para.line_segs.is_empty() {
                     let mut cloned = comp.clone();
                     // [#2279] 본문 NO_LS 는 글자모양 재분할 포함 래퍼 사용 —
                     // typeset(format_paragraph)과 동일 (측정/렌더 줄수·pitch 정합).
@@ -1914,8 +1914,6 @@ impl LayoutEngine {
                 } else {
                     None
                 }
-            } else {
-                None
             };
             let comp_ref = recomposed.as_ref().unwrap_or(comp);
             // [#2279] 전체-문단 요청(start=0, end=원본 줄수 이상)은 재래핑 후 줄수로

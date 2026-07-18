@@ -48,6 +48,20 @@ fn build_cluster_len(chars: &[char]) -> Vec<u8> {
     cluster_len
 }
 
+/// [#2279] 자간(%)의 픽셀 기여 — 한글은 자간을 **해당 글자의 진행폭 비례**로
+/// 적용한다 (fs-비례 아님). 무신축 Justify 마지막 줄 실측(36392557 pi34,
+/// 휴먼명조 '*' 14pt 자간 -9%/장평 96%: 0.44em = 0.5×0.96×0.91)으로 확정.
+/// 전각(1.0em) 글자는 fs-비례와 동일하므로 CJK 자간 동작은 불변이고,
+/// 반각/좁은 글자에서만 압축·확장이 글자폭에 비례해 정확해진다.
+/// style.letter_spacing 은 fs×% 로 저장되어 있으므로 (base/fs) 로 환산한다.
+#[inline]
+fn glyph_letter_spacing(letter_spacing_px: f64, glyph_base_px: f64, font_size: f64) -> f64 {
+    if font_size <= 0.0 {
+        return letter_spacing_px;
+    }
+    letter_spacing_px * (glyph_base_px / font_size)
+}
+
 /// 스타일에서 공통 파라미터 추출 (font_size, ratio, tab_w)
 fn style_params(style: &TextStyle) -> (f64, f64, f64) {
     let font_size = if style.font_size > 0.0 {
@@ -310,7 +324,9 @@ fn compute_char_positions_walk(
     let char_width = |i: usize| -> f64 {
         let c = chars[i];
         if c == '\u{2007}' {
-            return font_size * 0.5 * ratio + style.letter_spacing + style.extra_char_spacing;
+            return font_size * 0.5 * ratio
+                + glyph_letter_spacing(style.letter_spacing, font_size * 0.5 * ratio, font_size)
+                + style.extra_char_spacing;
         }
         // 인라인 객체 placeholder 는 실제 control node 가 따로 그리므로 텍스트 폭은 0.
         if c == '\u{FFFC}' {
@@ -328,7 +344,9 @@ fn compute_char_positions_walk(
         } else {
             char_px_raw
         };
-        let mut w = char_px * ratio + style.letter_spacing + style.extra_char_spacing;
+        let mut w = char_px * ratio
+            + glyph_letter_spacing(style.letter_spacing, char_px * ratio, font_size)
+            + style.extra_char_spacing;
         if c == ' ' {
             w += style.extra_word_spacing;
         }
@@ -443,7 +461,13 @@ impl TextMeasurer for EmbeddedTextMeasurer {
         let char_width = |i: usize| -> f64 {
             let c = chars[i];
             if c == '\u{2007}' {
-                return font_size * 0.5 * ratio + style.letter_spacing + style.extra_char_spacing;
+                return font_size * 0.5 * ratio
+                    + glyph_letter_spacing(
+                        style.letter_spacing,
+                        font_size * 0.5 * ratio,
+                        font_size,
+                    )
+                    + style.extra_char_spacing;
             }
             // 인라인 객체 placeholder 는 실제 control node 가 따로 그리므로 텍스트 폭은 0.
             if c == '\u{FFFC}' {
@@ -490,7 +514,9 @@ impl TextMeasurer for EmbeddedTextMeasurer {
             } else {
                 base_w_raw
             };
-            let mut w = base_w * ratio + style.letter_spacing + style.extra_char_spacing;
+            let mut w = base_w * ratio
+                + glyph_letter_spacing(style.letter_spacing, base_w * ratio, font_size)
+                + style.extra_char_spacing;
             if c == ' ' {
                 w += style.extra_word_spacing;
             }
@@ -1039,7 +1065,13 @@ impl TextMeasurer for WasmTextMeasurer {
         let char_width = |i: usize| -> f64 {
             let c = chars[i];
             if c == '\u{2007}' {
-                return font_size * 0.5 * ratio + style.letter_spacing + style.extra_char_spacing;
+                return font_size * 0.5 * ratio
+                    + glyph_letter_spacing(
+                        style.letter_spacing,
+                        font_size * 0.5 * ratio,
+                        font_size,
+                    )
+                    + style.extra_char_spacing;
             }
             // 인라인 객체 placeholder 는 실제 control node 가 따로 그리므로 텍스트 폭은 0.
             if c == '\u{FFFC}' {
@@ -1073,7 +1105,9 @@ impl TextMeasurer for WasmTextMeasurer {
             } else {
                 char_px_raw
             };
-            let mut w = char_px * ratio + style.letter_spacing + style.extra_char_spacing;
+            let mut w = char_px * ratio
+                + glyph_letter_spacing(style.letter_spacing, char_px * ratio, font_size)
+                + style.extra_char_spacing;
             if c == ' ' {
                 w += style.extra_word_spacing;
             }
@@ -1676,7 +1710,9 @@ pub(crate) fn estimate_text_width_unrounded(text: &str, style: &TextStyle) -> f6
     let char_width = |i: usize| -> f64 {
         let c = chars[i];
         if c == '\u{2007}' {
-            return font_size * 0.5 * ratio + style.letter_spacing + style.extra_char_spacing;
+            return font_size * 0.5 * ratio
+                + glyph_letter_spacing(style.letter_spacing, font_size * 0.5 * ratio, font_size)
+                + style.extra_char_spacing;
         }
         // 인라인 객체 placeholder 는 실제 control node 가 따로 그리므로 텍스트 폭은 0.
         if c == '\u{FFFC}' {
@@ -1710,7 +1746,9 @@ pub(crate) fn estimate_text_width_unrounded(text: &str, style: &TextStyle) -> f6
         } else {
             base_w_raw
         };
-        let mut w = base_w * ratio + style.letter_spacing + style.extra_char_spacing;
+        let mut w = base_w * ratio
+            + glyph_letter_spacing(style.letter_spacing, base_w * ratio, font_size)
+            + style.extra_char_spacing;
         if c == ' ' {
             w += style.extra_word_spacing;
         }
