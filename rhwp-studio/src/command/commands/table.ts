@@ -79,14 +79,21 @@ function blockCalcCommand(id: string, label: string, func: string, shortcut: str
         const row = cellInfo.row;
         const col = cellInfo.col;
         const formula = `=${func}(above)`;
-        const result = services.wasm.evaluateTableFormula(
-          pos.sectionIndex, pos.parentParaIndex, pos.controlIndex,
-          row, col, formula, true,
-        );
-        const parsed = JSON.parse(result);
-        if (parsed.ok) {
-          services.eventBus.emit('document-changed');
-        }
+        // [블록계산 이관] write=true 는 결과를 셀에 써서 문자 수를 바꾼다 — 미기록 시 후속
+        // undo 오프셋 오염(#2344 셀 숫자 서식과 동일 계열). dry-run(write=false)으로 ok 를
+        // 확인한 뒤 commit 을 snapshot 으로 라우팅한다(라우터가 refresh → 수동 emit 제거).
+        const check = JSON.parse(services.wasm.evaluateTableFormula(
+          pos.sectionIndex, pos.parentParaIndex, pos.controlIndex, row, col, formula, false,
+        ));
+        if (!check.ok) return;
+        safeTableOp(() => ih.executeOperation({
+          kind: 'snapshot',
+          operationType: 'tableBlockCalc',
+          operation: (wasm) => {
+            wasm.evaluateTableFormula(pos.sectionIndex, pos.parentParaIndex!, pos.controlIndex!, row, col, formula, true);
+            return pos;
+          },
+        }), '블록 계산');
       } catch (err) {
         console.warn(`[${id}] 블록 계산 실패:`, err);
       }
