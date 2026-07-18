@@ -26,11 +26,11 @@ fn page_count_of(rel: &str) -> u32 {
 fn prep_1790387_page_count_pin() {
     let pages = page_count_of("samples/issue2006/1790387_prep_final_report.hwpx");
     assert_eq!(
-        pages, 144,
-        "issue2006 1790387 핀 144쪽 (한글 2022 정답지 146쪽, 잔여 -2). \
-         141→144 는 #2279 TAC-자리차지 host 줄박스 가산 landing. 실측 {}p — \
-         130p 부근이면 tac 이미지 스택 미분할(#2006) 회귀, 144p 초과 개선 시 \
-         핀과 정답지(146)를 갱신할 것.",
+        pages, 145,
+        "issue2006 1790387 핀 145쪽 (한글 2022 정답지 146쪽, 잔여 -1). \
+         141→144 는 #2279 TAC host 가산, 144→145 는 자간 글자폭-비례 landing. \
+         실측 {}p — 130p 부근이면 tac 이미지 스택 미분할(#2006) 회귀, \
+         145p 초과 개선 시 핀과 정답지(146)를 갱신할 것.",
         pages
     );
 }

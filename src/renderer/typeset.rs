@@ -10931,11 +10931,11 @@ impl TypesetEngine {
         // 발생 (e.g. sample16 변환기 pi=417: typeset 2 lines / layout 1 line, +10.4 px gap).
         // 동일 recompose 를 typeset 측에도 적용해 paragraph height 측정 정합.
         let recomposed: Option<ComposedParagraph> = match (composed, column_width_px) {
-            (Some(c), Some(cw)) if para.line_segs.is_empty() && cw > 0.0 => {
+            (Some(c), Some(cw)) if cw > 0.0 => {
                 let margin_l = para_style.map(|s| s.margin_left).unwrap_or(0.0);
                 let margin_r = para_style.map(|s| s.margin_right).unwrap_or(0.0);
                 let inner = (cw - margin_l - margin_r).max(0.0);
-                if inner > 0.0 {
+                if inner > 0.0 && para.line_segs.is_empty() {
                     let mut cloned = c.clone();
                     // [#2279] 본문 NO_LS 는 글자모양 재분할 포함 래퍼 사용 —
                     // paragraph_layout(렌더)와 동일 (측정/렌더 줄수·pitch 정합).
