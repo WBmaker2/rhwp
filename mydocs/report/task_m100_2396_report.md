@@ -76,3 +76,14 @@ Stage 1에서 첫 테스트의 timeout을 재현하고, Stage 2 후 두 테스�
 
 수행계획서의 기능·보안·검증 완료 기준을 모두 충족했다. 로컬 브랜치는 PR 준비 상태이며, PR 초안은
 `mydocs/report/task_m100_2396_pr_draft.md`에 기록한다.
+
+## PR 생성 결과
+
+- Draft PR: [#2398](https://github.com/edwardkim/rhwp/pull/2398)
+- base / head: `edwardkim/rhwp:devel` / `postmelee:codex/issue-2396-custom-scheme-legacy-request`
+- 생성 직후 상태: open, draft, mergeable
+- CI: CI, Render Diff, CodeQL workflow가 runner 배정 전 일괄 실패
+- 공통 annotation: `The job was not started because your account is locked due to a billing issue.`
+
+CI 실패는 job step이 하나도 실행되지 않고 `runner_id=0`인 GitHub 계정 billing blocker다. 로컬 diff나
+테스트 실패로 판정하지 않으며, billing lock 해소 후 workflow rerun이 필요하다.
