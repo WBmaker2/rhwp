@@ -112,16 +112,19 @@ Per-cycle changes (including contributor credits) are recorded in [CHANGELOG_EN.
 
 ### Output
 - SVG export (CLI, legacy + layer replay)
-- PNG export (native Skia, `--features native-skia`) / PDF export (`--text-as-paths`, byte-reproducible)
+- PNG export (native Skia, `--features native-skia`)
+- PDF export: SVG compatibility by default (`--text-as-paths`, byte-reproducible), native Skia direct opt-in (`--features native-skia`, `--backend direct`)
 - Canvas rendering (WASM/Web) + CanvasKit direct replay (opt-in)
 - Save: native HWP editing, semantics-preserving HWPX/HML save, HWPX → HWP conversion
 - Debug overlay (paragraph/table boundaries + indices + y-coordinates)
 
 ### Multi-Renderer Backends
 - Shared paint IR: `PageRenderTree` → `PageLayerTree` (Rust `DocumentCore::build_page_layer_tree`, WASM `getPageLayerTree`) — `schemaVersion: 1`, compatible changes stay additive
-- Backends: legacy/layered SVG, Canvas2D (browser default), CanvasKit direct replay (`?renderer=canvaskit` opt-in with a readiness gate), native Skia PNG/PDF (`--features native-skia`)
+- Backends: legacy/layered SVG, Canvas2D (browser default), CanvasKit direct replay (`?renderer=canvaskit` opt-in with a readiness gate), native Skia PNG/direct PDF (`--features native-skia`)
 - Text IR v2: font-blob-proof-gated GlyphRun/GlyphOutline sidecars — unproven cases always fall back to `TextRun` (compatibility contract)
 - Visual regression CI: render-diff (Canvas family + report-only PDF diff), shared replay-plane ordering (background → behindText → flow → inFrontOfText) across all four backends
+- Direct PDF uses the print profile and a CSS-px-to-PDF-point `72/96` transform. Lossy gradient/pattern/shadow/connector/image-adjustment payloads fail with guidance to use the SVG backend; only Raw SVG uses the bounded `--raster-dpi` fallback.
+- Selected direct/compatibility PDF rasters are hard-gated at 2%; the broader browser/compatibility PDF comparison remains report-only.
 
 ### Web Editor
 - Text editing (insert, delete, undo/redo)

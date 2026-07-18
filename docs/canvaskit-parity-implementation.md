@@ -288,6 +288,38 @@ sweeps remain representative. The selected multi-profile sweep also collects
 verified print-profile PDF artifacts, while selected CanvasKit readiness cases
 remain the bounded visual hard gate.
 
+## Direct PDF Export Contract
+
+P37 adds a native-only, opt-in `PageLayerTree` PDF path using the same Skia
+replay-plane, inherited-layer, clip, text-variant, and resource handling as the
+PNG renderer. PDF recording applies one `72/96` transform because layer
+coordinates are CSS pixels and PDF page boxes use points. Direct export uses the
+print profile unless the caller explicitly selects another profile.
+
+The existing SVG-derived PDF APIs and CLI behavior remain the compatibility
+default. Direct export is exposed only with `native-skia` through the additive
+`render_*_pdf_direct_native` methods and `export-pdf --backend direct`; WASM,
+C/Swift, and XCFramework surfaces are unchanged. SVG-only fallback-family,
+equation-family, and text-as-path options are rejected when direct mode is
+selected instead of being silently ignored.
+
+Direct mode preflights every selected page before opening the PDF writer. Native
+Skia approximations that would lose visible semantics, including gradient,
+pattern, shadow, multi-line/arrow, connector, or unbaked
+image-adjustment payloads, return a page/op-specific error directing the caller
+to the SVG backend. Image decode and Raw SVG fallback failures also abort the
+document rather than recording a placeholder. Raw SVG is the explicit raster
+fallback in this phase and uses the requested fallback DPI; supported text,
+paths, simple shapes, clips, equations, images, and form appearances are
+recorded through the PDF canvas.
+
+Render-diff CI keeps browser Canvas versus compatibility PDF report-only. A
+separate selected corpus (`biz_plan.hwp`, `kps-ai.hwp`, and
+`tac-case-001.hwp`) rasterizes direct and compatibility PDF page 1 at the same
+DPI and hard-fails above a 2% differing-pixel ratio or on a page-size/resource
+error. Broader documents and unsupported vector subsets remain report/fallback
+work rather than being declared parity-complete.
+
 ## Non-Goals
 
 - This plan does not switch the public canvas default.
