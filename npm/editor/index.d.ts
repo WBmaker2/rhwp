@@ -85,10 +85,21 @@ export interface RendererDiagnosticsV1 {
   page: { index: number; canvaskit: CanvasKitRendererDiagnostics | null };
 }
 
+export interface LoadFileOptions {
+  /** 미저장 변경 확인 없이 문서 교체 */
+  skipUnsavedGuard?: boolean;
+  /**
+   * 로드 후 안내창(HWPX 검증, 로컬 글꼴 감지) 없이 열기.
+   * 임베드 환경에서 안내창의 사용자 선택을 기다리느라 loadFile 응답이
+   * 지연/교착되는 것을 방지한다.
+   */
+  suppressDialogs?: boolean;
+}
+
 export declare class RhwpEditor {
   private constructor();
   /** HWP 파일을 로드합니다 */
-  loadFile(data: ArrayBuffer | Uint8Array, fileName?: string): Promise<LoadResult>;
+  loadFile(data: ArrayBuffer | Uint8Array, fileName?: string, options?: LoadFileOptions): Promise<LoadResult>;
   /** 현재 문서의 페이지 수를 반환합니다 */
   pageCount(): Promise<number>;
   /** 특정 페이지를 SVG 문자열로 렌더링합니다 */
