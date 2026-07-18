@@ -617,7 +617,12 @@ pub fn corrected_line_metrics(
     if max_fs > 0.0 && raw_lh < max_fs {
         match ls_type {
             LineSpacingType::Percent => {
-                let extra = (max_fs * (ls_val - 100.0) / 100.0).max(0.0);
+                // [#2279] sub-100% 퍼센트 음수 gap 존중 (line_breaking 정합)
+                let extra = if ls_val > 0.0 {
+                    max_fs * (ls_val - 100.0) / 100.0
+                } else {
+                    0.0
+                };
                 (max_fs, extra)
             }
             LineSpacingType::Fixed => (ls_val.max(max_fs), 0.0),
