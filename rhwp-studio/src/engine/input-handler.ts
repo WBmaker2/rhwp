@@ -5,8 +5,8 @@ import { CaretRenderer } from './caret-renderer';
 import { FieldMarkerRenderer } from './field-marker-renderer';
 import { SelectionRenderer } from './selection-renderer';
 import { CommandHistory } from './history';
-import { DeleteSelectionCommand, ApplyCharFormatCommand, ApplyParaFormatCommand, SnapshotCommand, TextMutationEffectAccumulator, IMMEDIATE_TEXT_MUTATION_EFFECTS } from './command';
-import type { OperationDescriptor, ParaFormatTarget, RefreshPolicy, TextMutationEffects, EditCommand, EditContext } from './command';
+import { DeleteSelectionCommand, ApplyCharFormatCommand, ApplyParaFormatCommand, SnapshotCommand, SetFormValueCommand, TextMutationEffectAccumulator, IMMEDIATE_TEXT_MUTATION_EFFECTS } from './command';
+import type { OperationDescriptor, ParaFormatTarget, RefreshPolicy, TextMutationEffects, EditCommand, EditContext, FormValueTarget } from './command';
 import { VirtualScroll } from '@/view/virtual-scroll';
 import { ViewportManager } from '@/view/viewport-manager';
 import type {
@@ -4547,18 +4547,39 @@ export class InputHandler {
     this.applyParaFormat(props as Record<string, unknown>);
   }
 
+  /**
+   * [Task #2374] 이미 적용된 양식 값 변경을 역연산 커맨드로 기록한다(no-op 제외).
+   * 미기록 시 이후 스냅샷 undo 가 값 변경 이전 문서를 복원해 양식 값을 무언 파괴한다
+   * (#2337 계급). 양식 모드에서는 snapshot 이 게이트에서 드롭되므로 record 가 유일한
+   * 기록 경로다. before==after(이미 선택된 라디오 재클릭 등)는 유령 엔트리 방지를 위해
+   * 기록하지 않는다.
+   */
+  private recordFormValueChanges(targets: FormValueTarget[]): void {
+    const changed = targets.filter((t) => t.beforeJson !== t.afterJson);
+    if (changed.length === 0) return;
+    this.executeOperation({
+      kind: 'record',
+      command: new SetFormValueCommand(changed, this.cursor.getPosition()),
+    });
+  }
+
   /** 양식 개체 클릭 처리 */
   handleFormObjectClick(formHit: FormObjectHitResult, pageIdx: number, _zoom: number): void {
     if (!formHit.found || formHit.sec === undefined || formHit.para === undefined || formHit.ci === undefined) return;
 
     const { sec, para, ci, formType } = formHit;
 
+    // 셀 내부 컨트롤 locator (record 대상과 setFormVal 분기가 같은 조건을 공유)
+    const inCellLoc = (formHit.inCell && formHit.tablePara !== undefined && formHit.tableCi !== undefined
+        && formHit.cellIdx !== undefined && formHit.cellPara !== undefined)
+      ? { tablePara: formHit.tablePara, tableCi: formHit.tableCi, cellIdx: formHit.cellIdx, cellPara: formHit.cellPara }
+      : undefined;
+
     // 셀 내부 폼 값 설정 헬퍼
     const setFormVal = (valueJson: string) => {
-      if (formHit.inCell && formHit.tablePara !== undefined && formHit.tableCi !== undefined
-          && formHit.cellIdx !== undefined && formHit.cellPara !== undefined) {
-        this.wasm.setFormValueInCell(sec, formHit.tablePara, formHit.tableCi,
-          formHit.cellIdx, formHit.cellPara, ci, valueJson);
+      if (inCellLoc) {
+        this.wasm.setFormValueInCell(sec, inCellLoc.tablePara, inCellLoc.tableCi,
+          inCellLoc.cellIdx, inCellLoc.cellPara, ci, valueJson);
       } else {
         this.wasm.setFormValue(sec, para, ci, valueJson);
       }
@@ -4567,8 +4588,15 @@ export class InputHandler {
     switch (formType) {
       case 'CheckBox': {
         // 체크박스 토글: value 0↔1
-        const newValue = (formHit.value ?? 0) === 0 ? 1 : 0;
-        setFormVal(JSON.stringify({ value: newValue }));
+        const oldValue = formHit.value ?? 0;
+        const newValue = oldValue === 0 ? 1 : 0;
+        const afterJson = JSON.stringify({ value: newValue });
+        setFormVal(afterJson);
+        this.recordFormValueChanges([{
+          sec, para, ci, inCell: inCellLoc,
+          beforeJson: JSON.stringify({ value: oldValue }),
+          afterJson,
+        }]);
         this.afterEdit();
         break;
       }
@@ -4599,6 +4627,9 @@ export class InputHandler {
     if (!info.ok) return;
 
     const groupName = info.properties?.['GroupName'] ?? '';
+    // [Task #2374] 그룹 해제+선택은 다중 쓰기 — 이전 값을 캡처해 1 엔트리로 원자 기록
+    // (개별 기록 시 undo 가 해제만 복원하는 반쪽 상태를 만든다).
+    const changes: FormValueTarget[] = [];
 
     // 같은 문단 내 다른 라디오 버튼 찾아서 해제
     // (HWP 양식에서 라디오 버튼은 보통 같은 문단에 배치됨)
@@ -4611,11 +4642,22 @@ export class InputHandler {
       const otherGroup = otherInfo.properties?.['GroupName'] ?? '';
       if (otherGroup === groupName && otherInfo.value !== 0) {
         this.wasm.setFormValue(section, para, i, JSON.stringify({ value: 0 }));
+        changes.push({
+          sec: section, para, ci: i,
+          beforeJson: JSON.stringify({ value: otherInfo.value }),
+          afterJson: JSON.stringify({ value: 0 }),
+        });
       }
     }
 
     // 클릭된 라디오 버튼 선택
     this.wasm.setFormValue(sec, para, ci, JSON.stringify({ value: 1 }));
+    changes.push({
+      sec, para, ci,
+      beforeJson: JSON.stringify({ value: info.value ?? 0 }),
+      afterJson: JSON.stringify({ value: 1 }),
+    });
+    this.recordFormValueChanges(changes);
     this.afterEdit();
   }
 
@@ -4681,6 +4723,12 @@ export class InputHandler {
       row.addEventListener('mousedown', (e) => {
         e.preventDefault();
         this.wasm.setFormValue(sec, para, ci, JSON.stringify({ text: item }));
+        // [Task #2374] 콤보 선택 기록(동일 항목 재선택은 no-op 제외).
+        this.recordFormValueChanges([{
+          sec, para, ci,
+          beforeJson: JSON.stringify({ text: currentText }),
+          afterJson: JSON.stringify({ text: item }),
+        }]);
         this.removeFormOverlay();
         this.afterEdit();
       });
@@ -4721,8 +4769,18 @@ export class InputHandler {
     input.style.height = `${rect.height}px`;
     input.style.fontSize = `${rect.height * 0.6}px`;
 
+    // Enter 커밋의 오버레이 제거가 blur 커밋을 재유발해도 이중 적용·이중 기록되지 않게 1회 가드.
+    let committed = false;
     const commit = () => {
+      if (committed) return;
+      committed = true;
       this.wasm.setFormValue(sec, para, ci, JSON.stringify({ text: input.value }));
+      // [Task #2374] 편집 필드 커밋 기록(동일 텍스트는 no-op 제외).
+      this.recordFormValueChanges([{
+        sec, para, ci,
+        beforeJson: JSON.stringify({ text: formHit.text ?? '' }),
+        afterJson: JSON.stringify({ text: input.value }),
+      }]);
       this.removeFormOverlay();
       this.afterEdit();
     };

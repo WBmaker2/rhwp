@@ -1526,6 +1526,60 @@ export class ResizeObjectCommand implements EditCommand {
   mergeWith(): null { return null; }
 }
 
+/**
+ * [Task #2374] 양식 값 변경 대상 — 본문 또는 표 셀 내 컨트롤 locator + 전/후 값 JSON.
+ * before/after 는 setFormValue(InCell) 에 그대로 전달되는 JSON 문자열이다.
+ */
+export interface FormValueTarget {
+  sec: number;
+  para: number;
+  ci: number;
+  inCell?: { tablePara: number; tableCi: number; cellIdx: number; cellPara: number };
+  beforeJson: string;
+  afterJson: string;
+}
+
+/**
+ * [Task #2374] 양식 컨트롤 값 변경의 경량 역연산 명령 (kind:'record' 용, #2337 계열).
+ *
+ * 뮤테이션은 클릭 핸들러가 직접 적용하고 이 명령은 기록만 담당한다(재실행 안 함).
+ * 라디오 버튼처럼 다중 쓰기(그룹 해제 + 선택)인 조작은 targets 배열로 묶어 undo/redo 가
+ * 그룹 상태를 원자적으로 왕복하게 한다 — 양식 모드에서는 snapshot 이 게이트에서 드롭되므로
+ * record 가 유일한 기록 경로다.
+ */
+export class SetFormValueCommand implements EditCommand {
+  readonly type = 'setFormValue';
+  readonly timestamp: number;
+
+  constructor(
+    private targets: FormValueTarget[],
+    private pos: DocumentPosition,
+    timestamp?: number,
+  ) {
+    this.timestamp = timestamp ?? Date.now();
+  }
+
+  private apply(wasm: WasmBridge, t: FormValueTarget, json: string): void {
+    if (t.inCell) {
+      wasm.setFormValueInCell(t.sec, t.inCell.tablePara, t.inCell.tableCi, t.inCell.cellIdx, t.inCell.cellPara, t.ci, json);
+    } else {
+      wasm.setFormValue(t.sec, t.para, t.ci, json);
+    }
+  }
+
+  execute(wasm: WasmBridge): DocumentPosition {
+    for (const t of this.targets) this.apply(wasm, t, t.afterJson);
+    return this.pos;
+  }
+
+  undo(wasm: WasmBridge): DocumentPosition {
+    for (let i = this.targets.length - 1; i >= 0; i--) this.apply(wasm, this.targets[i], this.targets[i].beforeJson);
+    return this.pos;
+  }
+
+  mergeWith(): null { return null; }
+}
+
 // ─── 스냅샷 기반 명령 (복잡한 작업의 Undo/Redo) ─────
 
 /**
