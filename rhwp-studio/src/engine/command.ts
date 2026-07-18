@@ -588,11 +588,13 @@ export class DeleteSelectionCommand implements EditCommand {
         for (let i = 1; i < this.savedTexts.length; i++) {
           wasm.splitParagraph(sec, currentPara, currentOffset);
           currentPara++;
-          currentOffset = 0;
           const text = this.savedTexts[i];
           if (text) {
             wasm.insertText(sec, currentPara, 0, text);
           }
+          // 다음 분할점은 방금 복원한 텍스트 "뒤" 다. 0 으로 두면 이미 복원된 텍스트 앞을
+          // 잘라 빈 문단이 끼어들고 내용이 다음 문단으로 밀린다(문단 3개 이상 선택 삭제 undo).
+          currentOffset = text ? text.length : 0;
         }
       }
     }
