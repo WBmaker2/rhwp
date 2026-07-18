@@ -9,7 +9,7 @@
 - 마일스톤: M100 / v1.0.0
 - 브랜치: `issue-2392-picture-props-apply-pipeline`
 - 기준 브랜치: `upstream/devel`
-- 기준 커밋: `eb9c7f1feb85ce6efc724d524e6a8a2b92894ae7`
+- 기준 커밋: `1cfb42734f57094be5f3c2c43096ce52d0675ce5`
 - 작성일: 2026-07-19
 - 단계: 구현 계획서
 - 승인 상태: 작업지시자 승인 완료
@@ -58,21 +58,21 @@ dialog 종료를 분리한다.
 
 ## 3. 최신 upstream과 병행 작업 처리
 
-작성 시점 열린 PR은 #2370, #2394, #2395다.
+Stage 1 최신 통합 시점의 관련 PR은 #2370, #2394와 merge된 #2395다.
 
 | PR | #2392 영향 | 처리 |
 |----|------------|------|
-| #2370 | 현재 `picture-props-dialog.ts` 미변경 | Stage 시작 전 files 재확인 |
+| #2370 | OPEN. `insert.ts`의 회전/대칭 중복 emit만 제거, dialog 생성 경로 미변경 | Stage 시작 전 files 재확인 |
 | #2394 | 대상 dialog 미변경. `core/types.ts`, `wasm-bridge.ts`와 전역 metrics 변화 가능 | merge 시 최신 base 통합 후 pre metrics 재생성 |
-| #2395 | source 미변경. `mydocs/orders/20260719.md` 동일 경로 추가 | merge 시 upstream 행·이월 내용을 보존하고 #2392 행을 병합 |
+| #2395 | MERGED `b507c1d0`. CI·문서만 변경, 제품 metrics 모집단 미변경 | upstream #2393·이월 내용과 #2392 행 병합 완료 |
 
-현재 numeric baseline 12,369/4,297은 `eb9c7f1f`에만 적용한다. source 구현 전 또는 PR 직전 upstream이
-바뀌면 target file 수치가 동일한지 먼저 확인하고 global pre 값을 최신 base에서 다시 고정한다. upstream
-누적 delta를 #2392 개선으로 계상하지 않는다.
+현재 numeric baseline 12,369/4,297은 `1cfb4273` pre snapshot에 적용한다. source 구현 전 또는 PR 직전
+upstream이 바뀌면 target file 수치가 동일한지 먼저 확인하고 global pre 값을 최신 base에서 다시 고정한다.
+upstream 누적 delta를 #2392 개선으로 계상하지 않는다.
 
-#2395가 먼저 merge되면 untracked orders 파일을 덮어쓰지 않는다. 승인된 계획 문서를 docs commit으로 고정한
-뒤 사용자 승인 하에 latest upstream을 통합하고, orders conflict는 upstream의 #2393·이월 항목과 #2392 행을
-모두 남기는 방향으로 해결한다.
+#2395 통합에서는 승인된 계획 문서를 먼저 commit한 뒤 사용자 승인 하에 rebase했다. orders add/add conflict는
+upstream의 #2393·이월 항목과 #2392 행을 모두 남겨 해결했다. `eb9c7f1f..1cfb4273`의 frontend 제품 모집단
+diff가 없음을 확인하고 pre metrics를 최신 commit metadata로 재생성했다.
 
 ## 4. 변경 파일과 경로
 
@@ -247,7 +247,8 @@ read만 수행한다. patch comparison이나 WASM call을 capture method에 넣�
 - InputHandler 존재: `executeOperation({ kind: 'snapshot', operationType: 'objectProps', operation })`
 - operation: `applyPropertyPatchToWasm` 실행 후 `ih.getCursorPosition()` 반환
 - InputHandler 부재: `applyPropertyPatchToWasm` 직접 실행 후 `document-changed` 1회 emit
-- empty patch: `applyPropertyPatch`를 호출하지 않음
+- empty patch: `applyPropertyPatch`를 호출하지 않음. 정상 UI에서는 type별 always-send group 때문에 보통
+  non-empty이며, 이 분기는 control group이 없는 방어적 입력 fixture로 검증
 - `hide()`: `handleOk` 끝에서 1회
 
 공용 command/router 추출이나 error policy 변경은 하지 않는다.
@@ -260,7 +261,8 @@ read만 수행한다. patch comparison이나 WASM call을 capture method에 넣�
 
 | 범주 | case |
 |------|------|
-| no-op | unchanged image/shape 입력은 empty patch |
+| unchanged | image/OLE은 `hasCaption`, shape/line/group은 shadow always-send key를 유지하고 changed-only key는 추가하지 않음 |
+| empty | always-send control group도 없는 방어적 snapshot은 empty patch |
 | size | `sizeProtect` 변경, true일 때 width/height 억제 |
 | position | treat-as-char true일 때 wrap/position 억제 |
 | wrap | `TakePlace` -> `TopAndBottom`, horizontal relative omit, `Through` 보존 |
@@ -476,7 +478,7 @@ node scripts/frontend-metrics.mjs \
 
 직접 완료 기준:
 
-| 지표 | `eb9c7f1f` baseline | target |
+| 지표 | `1cfb4273` baseline | target |
 |------|---------------------:|--------|
 | file Total CC | 647 | <647 |
 | file Max CC | 348 | <348. preferred 212(`populateFromProps`) |
