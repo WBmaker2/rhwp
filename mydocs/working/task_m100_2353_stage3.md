@@ -27,3 +27,13 @@
 - `check_markdown_links` / `check_document_metadata` green
 - 대표 e2e 3종(text-flow·undo-contracts·undo-object-selection) 0 FAIL —
   관리 변경이 실행에 무영향. 개명된 debug 스크립트 기동 확인
+
+## 3단계 보완 (작업지시자 파싱 팁 반영)
+
+- 파서를 느슨한 regex(중간 열 `.*` 흡수)에서 **7열 명시 파싱**으로 교체 —
+  셀 strip() 후 원문 보존(`—`/`/` 기호 파괴 없음), 열 수 불일치 행은
+  malformed FAIL (조용한 건너뜀 → 가짜 미등재 오류 방지)
+- 결손 처리: 빈칸·`—` 를 플레이스홀더로 유연 인지 + **용도 결손 집계**
+  (정보 출력, 비-FAIL) → 즉시 6건 검출·채움
+- 전 열 파싱으로 열린 신규 검증: **배선 열 ↔ 실제 배선 양방향 교차 대조** —
+  즉시 실불일치 1건 검출·정정 (run-render-diff: CI → npm+CI)

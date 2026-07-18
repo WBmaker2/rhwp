@@ -16,7 +16,10 @@ e2e 76개(디스크) 스크립트에 단일 권위 목록과 생명주기·드�
 1. **MANIFEST.md 72행 전수** (git tracked 기준) — 분류(상시 60/진단 6/유틸 7
    중 tracked 조정분)·상태(active/hold)·용도·샘플·배선·비고
 2. **대조 검사기** — 양방향 대조(미등재/유령 FAIL) + 명명 정합(신규 강제,
-   legacy-name 면제) + 배선 실재 검증 + 열거값. npm `e2e:manifest-check`
+   legacy-name 면제) + 배선 실재 검증 + 열거값 + **7열 명시 파싱**(셀 원문
+   보존·malformed 행 FAIL·결손 집계) + **배선 열 양방향 교차 대조**
+   (작업지시자 파싱 팁 반영 — 즉시 실불일치 1건·용도 결손 6건 검출·정정).
+   npm `e2e:manifest-check`
 3. **정리**: debug 3건 개명(비-test 접미), 폐기 3건(해소 완료 프로브·임시
    검증·중복 host 변형 — git history = archive), `.check.mjs` 관례 폐지
 4. **e2e-cdp.md** 목록 절 → MANIFEST 참조 (매뉴얼 = 실행 가이드로 역할 분리)
