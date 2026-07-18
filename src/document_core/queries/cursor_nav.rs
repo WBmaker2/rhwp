@@ -37,6 +37,47 @@ pub(crate) struct LineCursorHit {
     pub rect: Option<(u32, f64, f64, f64)>,
 }
 
+/// 셀 선택 rect 조회에 사용할 host page 계획.
+///
+/// #2215 Stage 3-A에서는 후보 계약을 production 계산과 분리해 먼저 고정한다.
+/// Stage 3-B에서 `get_selection_rects_native`가 이 계획을 소비한다.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) enum SelectionPagePlan {
+    Hinted(Vec<u32>),
+    FullFallback(Vec<u32>),
+}
+
+pub(crate) fn plan_selection_pages(
+    host_pages: &[u32],
+    start_page_hint: Option<u32>,
+    end_page_hint: Option<u32>,
+) -> SelectionPagePlan {
+    let Some(start_page) = start_page_hint else {
+        return SelectionPagePlan::FullFallback(host_pages.to_vec());
+    };
+    let Some(end_page) = end_page_hint else {
+        return SelectionPagePlan::FullFallback(host_pages.to_vec());
+    };
+
+    if !host_pages.contains(&start_page) || !host_pages.contains(&end_page) {
+        return SelectionPagePlan::FullFallback(host_pages.to_vec());
+    }
+
+    let range_start = start_page.min(end_page);
+    let range_end = start_page.max(end_page);
+    let candidates = host_pages
+        .iter()
+        .copied()
+        .filter(|page| (range_start..=range_end).contains(page))
+        .collect::<Vec<_>>();
+
+    if candidates.is_empty() {
+        SelectionPagePlan::FullFallback(host_pages.to_vec())
+    } else {
+        SelectionPagePlan::Hinted(candidates)
+    }
+}
+
 impl DocumentCore {
     pub(crate) fn get_line_info_native(
         &self,
@@ -2137,5 +2178,55 @@ impl DocumentCore {
         }
 
         Ok(format!("[{}]", rects.join(",")))
+    }
+}
+
+#[cfg(test)]
+mod issue_2215_selection_page_plan_tests {
+    use super::{plan_selection_pages, SelectionPagePlan};
+
+    fn host_pages() -> Vec<u32> {
+        (0..115).collect()
+    }
+
+    #[test]
+    fn same_page_hint_limits_the_plan_to_one_page() {
+        assert_eq!(
+            plan_selection_pages(&host_pages(), Some(54), Some(54)),
+            SelectionPagePlan::Hinted(vec![54])
+        );
+    }
+
+    #[test]
+    fn cross_page_hints_keep_only_the_inclusive_host_range() {
+        assert_eq!(
+            plan_selection_pages(&host_pages(), Some(54), Some(55)),
+            SelectionPagePlan::Hinted(vec![54, 55])
+        );
+        assert_eq!(
+            plan_selection_pages(&host_pages(), Some(55), Some(54)),
+            SelectionPagePlan::Hinted(vec![54, 55])
+        );
+    }
+
+    #[test]
+    fn missing_or_invalid_hints_preserve_the_full_fallback() {
+        let pages = host_pages();
+        for plan in [
+            plan_selection_pages(&pages, None, None),
+            plan_selection_pages(&pages, Some(54), None),
+            plan_selection_pages(&pages, None, Some(54)),
+            plan_selection_pages(&pages, Some(54), Some(999)),
+        ] {
+            assert_eq!(plan, SelectionPagePlan::FullFallback(pages.clone()));
+        }
+    }
+
+    #[test]
+    fn sparse_host_pages_do_not_invent_pages_inside_the_hint_range() {
+        assert_eq!(
+            plan_selection_pages(&[2, 4, 9, 10], Some(4), Some(10)),
+            SelectionPagePlan::Hinted(vec![4, 9, 10])
+        );
     }
 }
