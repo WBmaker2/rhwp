@@ -57,7 +57,7 @@ fn direct_backend_reports_missing_native_skia_feature() {
         .output()
         .expect("run direct PDF CLI without native-skia");
 
-    assert!(output.status.success());
+    assert_eq!(output.status.code(), Some(1));
     assert!(String::from_utf8_lossy(&output.stderr)
         .contains("direct PDF backend requires a build with the native-skia feature"));
     assert!(!output_path.exists());

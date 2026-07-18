@@ -1119,16 +1119,19 @@ impl SkiaLayerRenderer {
                                     )));
                                 }
                             } else {
-                                if image.transform.has_transform() {
-                                    canvas.restore();
-                                }
                                 if strict_resource_failures {
+                                    if image.transform.has_transform() {
+                                        canvas.restore();
+                                    }
                                     return Err(HwpError::RenderError(format!(
                                         "Skia image data is missing for binData {}",
                                         image.bin_data_id
                                     )));
                                 }
                                 draw_placeholder(effective_bbox, "image");
+                                if image.transform.has_transform() {
+                                    canvas.restore();
+                                }
                             }
                         }
                         PaintOp::Equation { bbox, equation } => {
@@ -2464,6 +2467,36 @@ mod tests {
         let rendered = decode_rgba(&output.bytes);
 
         assert_channel(*rendered.get_pixel(6, 9), 2, 220, 255);
+        assert_eq!(rendered.get_pixel(10, 5)[3], 0);
+    }
+
+    #[test]
+    fn missing_perpendicular_image_placeholder_uses_transformed_bounds() {
+        let mut image = ImageNode::new(1, None);
+        image.transform = crate::renderer::render_tree::ShapeTransform {
+            rotation: 90.0,
+            ..Default::default()
+        };
+        let tree = PageLayerTree::new(
+            20.0,
+            20.0,
+            LayerNode::leaf(
+                BoundingBox::new(0.0, 0.0, 20.0, 20.0),
+                None,
+                vec![PaintOp::image(
+                    BoundingBox::new(5.0, 7.0, 10.0, 4.0),
+                    image,
+                    None,
+                )],
+            ),
+        );
+
+        let output = SkiaLayerRenderer::new()
+            .render_raster_with_options(&tree, RasterRenderOptions::default())
+            .expect("render transformed missing image placeholder");
+        let rendered = decode_rgba(&output.bytes);
+
+        assert!(rendered.get_pixel(6, 9)[3] > 0);
         assert_eq!(rendered.get_pixel(10, 5)[3], 0);
     }
 

@@ -145,6 +145,30 @@ fn validate_direct_pdf_tree(
         Ok(())
     }
 
+    fn validate_image_payload(data: &[u8], page_index: usize, context: &str) -> Result<(), String> {
+        let format = match crate::renderer::image_resolver::detect_image_mime_type(data) {
+            "image/png" => image::ImageFormat::Png,
+            "image/jpeg" => image::ImageFormat::Jpeg,
+            "image/gif" => image::ImageFormat::Gif,
+            "image/bmp" => image::ImageFormat::Bmp,
+            "image/tiff" => image::ImageFormat::Tiff,
+            format => {
+                return Err(format!(
+                    "direct PDF page {} does not support {context} payload format {format}; use the svg backend",
+                    page_index + 1
+                ));
+            }
+        };
+        image::load_from_memory_with_format(data, format)
+            .map(|_| ())
+            .map_err(|error| {
+                format!(
+                    "direct PDF page {} cannot decode {context} payload: {error}",
+                    page_index + 1
+                )
+            })
+    }
+
     fn validate_node(node: &LayerNode, page_index: usize) -> Result<(), String> {
         validate_bbox(node.bounds, page_index, "layer")?;
         match &node.kind {
@@ -178,6 +202,11 @@ fn validate_direct_pdf_tree(
                                 ));
                             }
                             if let Some(image) = &background.image {
+                                validate_image_payload(
+                                    &image.data,
+                                    page_index,
+                                    "page background image",
+                                )?;
                                 if image.brightness != 0 || image.contrast != 0 {
                                     return Err(unsupported(
                                         page_index,
@@ -285,6 +314,13 @@ fn validate_direct_pdf_tree(
                             image, resolved, ..
                         } => {
                             validate_transform(image.transform, page_index, "image")?;
+                            if let Some(data) = resolved
+                                .as_deref()
+                                .map(|payload| payload.data.as_slice())
+                                .or(image.data.as_deref())
+                            {
+                                validate_image_payload(data, page_index, "image")?;
+                            }
                             let effects_are_baked = resolved
                                 .as_deref()
                                 .is_some_and(|payload| payload.suppress_effects);
@@ -1028,6 +1064,103 @@ mod tests {
         assert!(layer_trees_to_pdf(&[oversized_layer])
             .unwrap_err()
             .contains("invalid layer bounds"));
+    }
+
+    #[cfg(feature = "native-skia")]
+    #[test]
+    fn skia_direct_pdf_rejects_corrupt_and_unvalidated_images() {
+        use crate::paint::{LayerNode, PaintOp, RenderProfile};
+        use crate::renderer::render_tree::{BoundingBox, ImageNode};
+        use image::{ImageFormat, Rgb, RgbImage};
+        use std::io::Cursor;
+
+        let image = RgbImage::from_fn(64, 64, |x, y| {
+            Rgb([
+                (x.wrapping_mul(17) ^ y.wrapping_mul(31)) as u8,
+                (x.wrapping_mul(47).wrapping_add(y.wrapping_mul(13))) as u8,
+                (x.wrapping_mul(7) ^ y.wrapping_mul(53)) as u8,
+            ])
+        });
+        let mut cursor = Cursor::new(Vec::new());
+        image
+            .write_to(&mut cursor, ImageFormat::Png)
+            .expect("encode test PNG");
+        let mut corrupt_png = cursor.into_inner();
+        let idat_type_offset = corrupt_png
+            .windows(4)
+            .position(|window| window == b"IDAT")
+            .expect("encoded PNG must contain IDAT");
+        corrupt_png[idat_type_offset + 4] ^= 0xff;
+        assert!(
+            skia_safe::Image::from_encoded(skia_safe::Data::new_copy(&corrupt_png)).is_some(),
+            "fixture must pass Skia's encoded-header check"
+        );
+        assert!(
+            image::load_from_memory_with_format(&corrupt_png, ImageFormat::Png).is_err(),
+            "fixture must fail strict PNG decoding"
+        );
+
+        let page_bounds = BoundingBox::new(0.0, 0.0, 96.0, 96.0);
+        let tree = crate::paint::PageLayerTree::with_profile(
+            96.0,
+            96.0,
+            LayerNode::leaf(
+                page_bounds,
+                None,
+                vec![PaintOp::image(
+                    BoundingBox::new(8.0, 8.0, 32.0, 32.0),
+                    ImageNode::new(1, Some(corrupt_png)),
+                    None,
+                )],
+            ),
+            RenderProfile::Print,
+        );
+
+        let error = layer_trees_to_pdf(&[tree]).unwrap_err();
+        assert!(
+            error.contains("cannot decode image payload"),
+            "unexpected error: {error}"
+        );
+
+        let malformed_gif = crate::paint::PageLayerTree::with_profile(
+            96.0,
+            96.0,
+            LayerNode::leaf(
+                page_bounds,
+                None,
+                vec![PaintOp::image(
+                    BoundingBox::new(8.0, 8.0, 32.0, 32.0),
+                    ImageNode::new(2, Some(b"GIF89a\x01\x00\x01\x00\x80\x00\x00".to_vec())),
+                    None,
+                )],
+            ),
+            RenderProfile::Print,
+        );
+        let error = layer_trees_to_pdf(&[malformed_gif]).unwrap_err();
+        assert!(
+            error.contains("cannot decode image payload"),
+            "unexpected error: {error}"
+        );
+
+        let unsupported = crate::paint::PageLayerTree::with_profile(
+            96.0,
+            96.0,
+            LayerNode::leaf(
+                page_bounds,
+                None,
+                vec![PaintOp::image(
+                    BoundingBox::new(8.0, 8.0, 32.0, 32.0),
+                    ImageNode::new(3, Some(b"unrecognized image payload".to_vec())),
+                    None,
+                )],
+            ),
+            RenderProfile::Print,
+        );
+        let error = layer_trees_to_pdf(&[unsupported]).unwrap_err();
+        assert!(
+            error.contains("does not support image payload format application/octet-stream"),
+            "unexpected error: {error}"
+        );
     }
 
     #[cfg(feature = "native-skia")]

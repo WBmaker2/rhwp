@@ -58,6 +58,9 @@ fn document_core_direct_pdf_exports_page_selection_and_document() {
     assert_complete_pdf(&page);
     assert_complete_pdf(&selected);
     assert_complete_pdf(&document);
+    assert!(selected
+        .windows(b"rhwp direct PDF integration".len())
+        .any(|window| window == b"rhwp direct PDF integration"));
 }
 
 #[test]
@@ -87,7 +90,7 @@ fn export_pdf_cli_selects_direct_backend_explicitly() {
     let output = Command::new(env!("CARGO_BIN_EXE_rhwp"))
         .arg("export-pdf")
         .arg(sample_path())
-        .args(["--backend", "direct", "--profile", "print"])
+        .args(["--backend", "direct"])
         .args(["--raster-dpi", "96", "--output"])
         .arg(&output_path)
         .output()
@@ -106,27 +109,50 @@ fn export_pdf_cli_selects_direct_backend_explicitly() {
     let pdf = std::fs::read(&output_path).expect("read direct CLI PDF");
     let _ = std::fs::remove_file(&output_path);
     assert_complete_pdf(&pdf);
+
+    let explicit_print_path = unique_pdf_path();
+    let explicit_print = Command::new(env!("CARGO_BIN_EXE_rhwp"))
+        .arg("export-pdf")
+        .arg(sample_path())
+        .args(["--backend", "direct", "--profile", "print"])
+        .args(["--raster-dpi", "96", "--output"])
+        .arg(&explicit_print_path)
+        .output()
+        .expect("run explicit print direct PDF CLI");
+    assert!(explicit_print.status.success());
+    let explicit_print_pdf =
+        std::fs::read(&explicit_print_path).expect("read explicit print direct PDF");
+    let _ = std::fs::remove_file(&explicit_print_path);
+    assert_eq!(pdf, explicit_print_pdf);
 }
 
 #[test]
 fn export_pdf_cli_rejects_backend_specific_option_mismatches() {
+    let direct_output_path = unique_pdf_path();
     let direct_with_svg_option = Command::new(env!("CARGO_BIN_EXE_rhwp"))
         .arg("export-pdf")
         .arg(sample_path())
         .args(["--backend", "direct", "--fallback-serif", "serif"])
+        .arg("--output")
+        .arg(&direct_output_path)
         .output()
         .expect("run direct PDF CLI with compatibility option");
-    assert!(direct_with_svg_option.status.success());
+    assert_eq!(direct_with_svg_option.status.code(), Some(2));
     assert!(String::from_utf8_lossy(&direct_with_svg_option.stderr)
         .contains("SVG 호환 옵션을 지원하지 않습니다"));
+    assert!(!direct_output_path.exists());
 
+    let compatibility_output_path = unique_pdf_path();
     let svg_with_direct_option = Command::new(env!("CARGO_BIN_EXE_rhwp"))
         .arg("export-pdf")
         .arg(sample_path())
         .args(["--backend", "svg", "--raster-dpi", "96"])
+        .arg("--output")
+        .arg(&compatibility_output_path)
         .output()
         .expect("run compatibility PDF CLI with direct option");
-    assert!(svg_with_direct_option.status.success());
+    assert_eq!(svg_with_direct_option.status.code(), Some(2));
     assert!(String::from_utf8_lossy(&svg_with_direct_option.stderr)
         .contains("direct PDF backend에서만"));
+    assert!(!compatibility_output_path.exists());
 }

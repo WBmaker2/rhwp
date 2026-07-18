@@ -15,7 +15,12 @@ fn main() {
         Some("export-render-tree") => export_render_tree(&args[2..]),
         Some("export-structure") => export_structure(&args[2..]),
         Some("export-png") => export_png(&args[2..]),
-        Some("export-pdf") => export_pdf(&args[2..]),
+        Some("export-pdf") => {
+            let exit_code = export_pdf(&args[2..]);
+            if exit_code != 0 {
+                process::exit(exit_code);
+            }
+        }
         Some("export-text") => export_text(&args[2..]),
         Some("export-markdown") => export_markdown(&args[2..]),
         Some("export-hwpx") => export_hwpx(&args[2..]),
@@ -1206,21 +1211,21 @@ fn export_png(args: &[String]) {
     );
 }
 
-fn export_pdf(args: &[String]) {
+fn export_pdf(args: &[String]) -> i32 {
     if args.is_empty() {
         eprintln!("오류: 문서 파일 경로를 지정해주세요.");
         print_export_pdf_usage();
-        return;
+        return 2;
     }
     if args[0] == "--help" || args[0] == "-h" {
         print_export_pdf_usage();
-        return;
+        return 0;
     }
 
     #[cfg(target_arch = "wasm32")]
     {
         eprintln!("오류: PDF 내보내기는 native 빌드에서만 지원됩니다.");
-        return;
+        return 1;
     }
 
     #[cfg(not(target_arch = "wasm32"))]
@@ -1244,7 +1249,7 @@ fn export_pdf(args: &[String]) {
                         i += 2;
                     } else {
                         eprintln!("오류: --output 뒤에 파일 경로가 필요합니다.");
-                        return;
+                        return 2;
                     }
                 }
                 "--page" | "-p" => {
@@ -1253,13 +1258,13 @@ fn export_pdf(args: &[String]) {
                             Ok(n) => target_page = Some(n),
                             Err(_) => {
                                 eprintln!("오류: 페이지 번호가 올바르지 않습니다.");
-                                return;
+                                return 2;
                             }
                         }
                         i += 2;
                     } else {
                         eprintln!("오류: --page 뒤에 페이지 번호가 필요합니다.");
-                        return;
+                        return 2;
                     }
                 }
                 "--profile" => {
@@ -1269,12 +1274,12 @@ fn export_pdf(args: &[String]) {
                             eprintln!(
                                 "오류: --profile 값이 올바르지 않습니다 (screen|print|high-quality|fast-preview)."
                             );
-                            return;
+                            return 2;
                         }
                         i += 2;
                     } else {
                         eprintln!("오류: --profile 뒤에 프로필 이름이 필요합니다.");
-                        return;
+                        return 2;
                     }
                 }
                 "--backend" => {
@@ -1282,13 +1287,13 @@ fn export_pdf(args: &[String]) {
                         let Some(backend) = rhwp::renderer::pdf::PdfBackend::parse(&args[i + 1])
                         else {
                             eprintln!("오류: --backend 값이 올바르지 않습니다 (svg|direct).");
-                            return;
+                            return 2;
                         };
                         pdf_backend = backend;
                         i += 2;
                     } else {
                         eprintln!("오류: --backend 뒤에 backend 이름이 필요합니다.");
-                        return;
+                        return 2;
                     }
                 }
                 arg if arg.starts_with("--backend=") => {
@@ -1296,7 +1301,7 @@ fn export_pdf(args: &[String]) {
                         arg.trim_start_matches("--backend="),
                     ) else {
                         eprintln!("오류: --backend 값이 올바르지 않습니다 (svg|direct).");
-                        return;
+                        return 2;
                     };
                     pdf_backend = backend;
                     i += 1;
@@ -1305,29 +1310,29 @@ fn export_pdf(args: &[String]) {
                     if i + 1 < args.len() {
                         let Ok(raster_dpi) = args[i + 1].parse::<f32>() else {
                             eprintln!("오류: --raster-dpi 값은 양수여야 합니다.");
-                            return;
+                            return 2;
                         };
                         if !raster_dpi.is_finite() || raster_dpi <= 0.0 {
                             eprintln!("오류: --raster-dpi 값은 양수여야 합니다.");
-                            return;
+                            return 2;
                         }
                         direct_pdf_options.raster_dpi = raster_dpi;
                         direct_raster_dpi_was_set = true;
                         i += 2;
                     } else {
                         eprintln!("오류: --raster-dpi 뒤에 DPI 값이 필요합니다.");
-                        return;
+                        return 2;
                     }
                 }
                 arg if arg.starts_with("--raster-dpi=") => {
                     let Ok(raster_dpi) = arg.trim_start_matches("--raster-dpi=").parse::<f32>()
                     else {
                         eprintln!("오류: --raster-dpi 값은 양수여야 합니다.");
-                        return;
+                        return 2;
                     };
                     if !raster_dpi.is_finite() || raster_dpi <= 0.0 {
                         eprintln!("오류: --raster-dpi 값은 양수여야 합니다.");
-                        return;
+                        return 2;
                     }
                     direct_pdf_options.raster_dpi = raster_dpi;
                     direct_raster_dpi_was_set = true;
@@ -1341,7 +1346,7 @@ fn export_pdf(args: &[String]) {
                         i += 2;
                     } else {
                         eprintln!("오류: --font-path 뒤에 경로가 필요합니다.");
-                        return;
+                        return 2;
                     }
                 }
                 "--fallback-serif" => {
@@ -1351,7 +1356,7 @@ fn export_pdf(args: &[String]) {
                         i += 2;
                     } else {
                         eprintln!("오류: --fallback-serif 뒤에 폰트 family가 필요합니다.");
-                        return;
+                        return 2;
                     }
                 }
                 arg if arg.starts_with("--fallback-serif=") => {
@@ -1367,7 +1372,7 @@ fn export_pdf(args: &[String]) {
                         i += 2;
                     } else {
                         eprintln!("오류: --fallback-sans 뒤에 폰트 family가 필요합니다.");
-                        return;
+                        return 2;
                     }
                 }
                 arg if arg.starts_with("--fallback-sans=")
@@ -1388,7 +1393,7 @@ fn export_pdf(args: &[String]) {
                         i += 2;
                     } else {
                         eprintln!("오류: --fallback-mono 뒤에 폰트 family가 필요합니다.");
-                        return;
+                        return 2;
                     }
                 }
                 arg if arg.starts_with("--fallback-mono=")
@@ -1417,7 +1422,7 @@ fn export_pdf(args: &[String]) {
                         i += 2;
                     } else {
                         eprintln!("오류: --equation-font 뒤에 폰트 family가 필요합니다.");
-                        return;
+                        return 2;
                     }
                 }
                 arg if arg.starts_with("--equation-font=")
@@ -1435,7 +1440,7 @@ fn export_pdf(args: &[String]) {
                 _ => {
                     eprintln!("알 수 없는 옵션: {}", args[i]);
                     print_export_pdf_usage();
-                    return;
+                    return 2;
                 }
             }
         }
@@ -1449,13 +1454,13 @@ fn export_pdf(args: &[String]) {
                 "오류: direct PDF backend는 다음 SVG 호환 옵션을 지원하지 않습니다: {}",
                 compatibility_only_options.join(", ")
             );
-            return;
+            return 2;
         }
         if pdf_backend == rhwp::renderer::pdf::PdfBackend::CompatibilitySvg
             && direct_raster_dpi_was_set
         {
             eprintln!("오류: --raster-dpi는 direct PDF backend에서만 사용할 수 있습니다.");
-            return;
+            return 2;
         }
 
         // 기본 출력 파일명
@@ -1471,7 +1476,7 @@ fn export_pdf(args: &[String]) {
             Ok(d) => d,
             Err(e) => {
                 eprintln!("오류: 파일을 읽을 수 없습니다 - {}: {}", file_path, e);
-                return;
+                return 1;
             }
         };
 
@@ -1479,19 +1484,23 @@ fn export_pdf(args: &[String]) {
             Ok(d) => d,
             Err(e) => {
                 eprintln!("오류: 문서 파싱 실패 - {}", e);
-                return;
+                return 1;
             }
         };
 
         let page_count = doc.page_count();
         println!("문서 로드 완료: {} ({}페이지)", file_path, page_count);
+        if page_count == 0 {
+            eprintln!("오류: PDF로 내보낼 페이지가 없습니다.");
+            return 1;
+        }
 
         // 출력 디렉토리 생성
         if let Some(parent) = Path::new(&output_file).parent() {
             if !parent.exists() {
                 if let Err(e) = fs::create_dir_all(parent) {
                     eprintln!("오류: 출력 디렉토리를 만들 수 없습니다 - {}", e);
-                    return;
+                    return 1;
                 }
             }
         }
@@ -1504,7 +1513,7 @@ fn export_pdf(args: &[String]) {
                         "오류: 페이지 번호가 범위를 벗어났습니다 (0~{})",
                         page_count - 1
                     );
-                    return;
+                    return 2;
                 }
                 vec![p]
             }
@@ -1543,12 +1552,12 @@ fn export_pdf(args: &[String]) {
             Ok(bytes) => bytes,
             Err(e) => {
                 eprintln!("오류: PDF 변환 실패 - {}", e);
-                return;
+                return 1;
             }
         };
         if let Err(e) = fs::write(&output_file, &pdf_bytes) {
             eprintln!("오류: PDF 저장 실패 - {}", e);
-            return;
+            return 1;
         }
         println!(
             "  → {} ({}KB, {}페이지)",
@@ -1560,6 +1569,7 @@ fn export_pdf(args: &[String]) {
             println!("PDF backend: direct");
         }
         println!("PDF 내보내기 완료");
+        0
     }
 }
 
