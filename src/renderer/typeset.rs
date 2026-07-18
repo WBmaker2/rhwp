@@ -409,6 +409,10 @@ struct TypesetState {
     /// 렌더러(layout)와 한글은 이 성분을 가산하므로, footer(발신명의) fit 판정의
     /// 렌더-정합 좌표 복원용. 단 advance 시 0.
     flow_underrun: f64,
+    /// [#2279 pi78] 이 문서에서 저장 ladder 의 host spacing 누락 서명(OMIT)이
+    /// 검출됐는가 — 기계생성 압축 ladder 문서군 판별(문서 단위, 리셋 없음).
+    /// 분할 진입 첫 줄 full-advance 요구는 이 문서군에만 적용한다.
+    stored_ladder_spacing_omitted: bool,
     /// 현재 단 인덱스
     current_column: u16,
     /// 단 수
@@ -1747,6 +1751,7 @@ impl TypesetState {
             current_endnote_flow: false,
             prev_body_bottom_vpos: None,
             flow_underrun: 0.0,
+            stored_ladder_spacing_omitted: false,
             current_column: 0,
             col_count,
             layout,
@@ -2106,6 +2111,7 @@ impl FormattedParagraph {
         col_count: u16,
         allow_spacing_before_only: bool,
         ladder_dirty: bool,
+        lazy_base: bool,
     ) -> f64 {
         if col_count > 1 {
             return self.height_for_fit;
@@ -2121,11 +2127,28 @@ impl FormattedParagraph {
         let has_authoritative_seg = para.line_segs.iter().any(|seg| {
             seg.tag & crate::model::paragraph::LineSeg::TAG_IMPLEMENTATION_PROPERTY == 0
         });
+        // [#2279 ①-4] lazy-base(page_base 미확립) 사다리에서는 sb-형 트림의
+        // 복원(스냅)이 성립하지 않는다 — sb-형만 차단, sa-형 트림은 유지
+        // (36398700 pi31/35 −13.5px 미복원 실측 vs issue_1853 캡션 문서의
+        // sa-형 트림은 정상 복원되어 전면 차단 시 +1쪽 과다 반증).
+        let sa_trim = self.spacing_after > 0.5;
+        let sb_trim =
+            allow_spacing_before_only && self.spacing_before > 0.5 && !(lazy_base && !sa_trim);
+        if std::env::var("RHWP_DIAG_LAZYBLK").is_ok()
+            && allow_spacing_before_only
+            && self.spacing_before > 0.5
+            && lazy_base
+            && !sa_trim
+        {
+            eprintln!(
+                "DIAG_LAZYBLK sb={:.1} total={:.1} h4f={:.1}",
+                self.spacing_before, self.total_height, self.height_for_fit
+            );
+        }
         if para.controls.is_empty()
             && has_authoritative_seg
             && !ladder_dirty
-            && (self.spacing_after > 0.5
-                || (allow_spacing_before_only && self.spacing_before > 0.5))
+            && (sa_trim || sb_trim)
             && self.height_for_fit > 0.0
             && self.height_for_fit + 0.5 < self.total_height
         {
@@ -10904,10 +10927,11 @@ impl TypesetEngine {
             y = st.current_height;
         }
         // [#2279 ladder-sb] 후방 스냅량이 이 문단의 spacing_before 와 정확히
-        // 일치(±2px)하면 생성기 ladder 의 sb-누락이다 — 한글 fresh 는 sb 를
-        // 가산하므로(서브픽셀 하니스 실측: 36398709 본문 문단당 −5.0pt 균일
-        // = sb 6.7px) 스냅으로 되감지 않는다. ladder 가 sb 를 포함하는 정상
-        // 문서는 후방 스냅량이 sb 와 일치하지 않아 불변.
+        // 일치(±2px)하고, **저장 ladder 스텝 자체가 sb 를 누락**했으면 생성기
+        // ladder 의 sb-누락이다 — 한글 fresh 는 sb 를 가산하므로(서브픽셀
+        // 하니스 실측: 36398709 문단당 −5.0pt 균일 = sb 6.7px) 스냅으로 되감지
+        // 않는다. 스텝-검사 없이 ±2px 우연 일치만으로 스킵하면 sb-포함 정상
+        // ladder 에서 이중 가산(+1쪽 과다, issue_1853 실측 반증)이 난다.
         if st.is_hwpx_source
             && spacing_before_px > 0.5
             && y < st.current_height
@@ -11675,6 +11699,7 @@ impl TypesetEngine {
                 st.col_count,
                 trim_spacing_before_for_flow,
                 st.vpos_ladder_dirty || !spacing_trim_restorable(paragraphs, para_idx),
+                st.vpos_page_base.is_none() && st.vpos_lazy_base.is_some(),
             );
             if std::env::var("RHWP_DIAG_ADV").is_ok() {
                 eprintln!(
@@ -11741,6 +11766,7 @@ impl TypesetEngine {
                     st.col_count,
                     trim_spacing_before_for_flow,
                     st.vpos_ladder_dirty || !spacing_trim_restorable(paragraphs, para_idx),
+                    false,
                 );
                 st.current_height += advance;
                 st.flow_underrun += (fmt.total_height - advance).max(0.0);
@@ -11855,6 +11881,7 @@ impl TypesetEngine {
                 st.col_count,
                 trim_spacing_before_for_flow,
                 st.vpos_ladder_dirty || !spacing_trim_restorable(paragraphs, para_idx),
+                false,
             );
             st.current_height += advance;
             st.flow_underrun += (fmt.total_height - advance).max(0.0);
@@ -11868,7 +11895,20 @@ impl TypesetEngine {
         let base_available = (st.base_available_height() - layout_drift_safety_px).max(0.0);
 
         // 남은 공간이 없거나 첫 줄도 못 넣으면 먼저 다음 단/페이지로
-        let first_line_h = fmt.line_heights[0];
+        // [#2279 pi78] 다중 줄 문단의 분할 진입 첫 줄은 full advance(lh+ls)를
+        // 요구한다 — 한글 COM 하단여백 18단 사다리 실측(36399374 pi78):
+        // 슬랙 < lh+ls(22.5pt)면 첫 줄을 넣지 않고 통째 이월, [lh+ls, h4f)
+        // 구간 1+1 분할, ≥ h4f 전체 수용 — 곡선 전체가 이 규칙과 일치.
+        // 트레일링 ls 트림(#359 h4f)은 문단 마지막 줄에만 해당하므로 단일 줄
+        // 문단은 종전 lh-만 유지.
+        let first_line_h = if line_count > 1 && st.stored_ladder_spacing_omitted {
+            // 적용 대상은 spacing-누락 서명이 검출된 기계생성 문서군뿐이다 —
+            // 전역/HWPX-전체 적용은 각각 2572521 별지6(HWP5, 한글 6쪽 +1)과
+            // 1733 국제고속선기준(한글-저장 HWPX, 242쪽 +2) 회귀 실측.
+            fmt.line_advance(0)
+        } else {
+            fmt.line_heights[0]
+        };
         let remaining = (available - st.current_height).max(0.0);
         // [Task #1086] 단일 단에서도 HWP가 paragraph 내부 page reset 을
         // LINE_SEG(vpos=0) 로 인코딩하는 케이스가 있다(k-water-rfp pi=66).
@@ -13153,7 +13193,6 @@ impl TypesetEngine {
             && !para.line_segs.is_empty()
             && st.pages.len() == page_count_before
         {
-            let height_added = st.current_height - height_before;
             // tac_seg_total 계산: 각 TAC 표의 max(seg.lh, 실측높이) + ls/2
             let mut tac_seg_total = 0.0;
             let mut tac_idx = 0;
@@ -13192,8 +13231,96 @@ impl TypesetEngine {
             } else {
                 fmt.total_height
             };
-            if height_added > cap {
-                st.current_height = height_before + cap;
+            // [#2279 누적Δ] 저장 ladder 가 host paraPr spacing 을 누락한 기계생성
+            // 결재문서(HWPX, 빈 host TAC 표): 저장 스텝(다음 문단 vpos−현 vpos)이
+            // fmt.total_height(sb+lh+ls+sa)보다 짧으면 생성기가 sa/sb 를 좌표에
+            // 반영하지 않은 것이다 — 한글 fresh 는 전량 순수 가산(36399374 재저장
+            // 오라클: pi4 +500(sa)+300(sb), pi5 +300(sb), fmt.total 과 HU 단위
+            // 일치). 이때 cap 을 fmt.total 로 올리고 ladder 를 dirty 로 표시해
+            // 후속 스냅이 성장분을 압축 anchor 로 되감지 못하게 한다. 스텝이
+            // fmt.total 과 일치(±1px)하는 정상 생성기 ladder 는 불변.
+            let stored_step_px = if st.is_hwpx_source && para.text.is_empty() {
+                para.line_segs
+                    .first()
+                    .filter(|s| {
+                        s.tag & crate::model::paragraph::LineSeg::TAG_IMPLEMENTATION_PROPERTY == 0
+                    })
+                    .zip(next_para.and_then(|np| np.line_segs.first()).filter(|s| {
+                        s.tag & crate::model::paragraph::LineSeg::TAG_IMPLEMENTATION_PROPERTY == 0
+                    }))
+                    .map(|(cur, next)| {
+                        hwpunit_to_px(
+                            (next.vertical_pos as i64 - cur.vertical_pos as i64) as i32,
+                            self.dpi,
+                        )
+                    })
+                    .filter(|&s| s > 0.0)
+            } else {
+                None
+            };
+            // 저장 스텝이 fmt.total(sb+lh+ls+sa)보다 짧고 그 부족분이 host
+            // paraPr spacing(sb+sa)과 정확히 일치하면, 생성기가 sb/sa 를 좌표에
+            // 반영하지 않은 ladder 다 — 한글 fresh 는 전량 순수 가산한다
+            // (36399374 재저장 오라클: pi4 부족분 6.7px=sa, pi5 4.0px=sb, HU
+            // 단위 일치). cap 을 fmt.total 로 올리고 ladder 를 dirty 로 표시해
+            // 후속 스냅이 성장분을 압축 anchor 로 되감지 못하게 한다.
+            // 부족분이 sb/sa 서명과 다른 ladder(#2352 host 줄박스 계열,
+            // 36392557 pi27 부족분 13.3px)는 대상이 아니다 — 그 경로의 별도
+            // 가산과 이중 성장(+1쪽 회귀 실측)한다.
+            let ladder_omits_spacing = stored_step_px
+                .filter(|&step| step + 1.0 < fmt.total_height && cap + 1.0 < fmt.total_height)
+                .map(|step| {
+                    let shortfall = fmt.total_height - step;
+                    let sig = fmt.spacing_before + fmt.spacing_after;
+                    sig > 0.5 && (shortfall - sig).abs() < 2.0
+                })
+                .unwrap_or(false);
+            if ladder_omits_spacing {
+                st.stored_ladder_spacing_omitted = true;
+                if std::env::var("RHWP_DIAG_LADSP").is_ok() {
+                    eprintln!(
+                        "DIAG_LADSP pi={} OMIT step={:.1} cap={:.1} fmt_total={:.1} sb={:.1} sa={:.1}",
+                        para_idx,
+                        stored_step_px.unwrap_or(0.0),
+                        cap,
+                        fmt.total_height,
+                        fmt.spacing_before,
+                        fmt.spacing_after
+                    );
+                }
+                st.vpos_ladder_dirty = true;
+            }
+            // 성장 전에 저장 anchor 로 전방 사전-스냅 — 직전 표들이 cap
+            // (lh+ls/2)으로 ladder 보다 짧게 전진한 잔차(36399374 pi3 −3.1px)를
+            // 표→표 연쇄(스냅 부재 구간)에서 회수한다. 전방·소폭 한정.
+            let snapped_base = if ladder_omits_spacing {
+                para.line_segs
+                    .first()
+                    .zip(st.vpos_page_base)
+                    .map(|(seg0, base)| {
+                        let implied = st.vpos_col_anchor
+                            + hwpunit_to_px(
+                                (seg0.vertical_pos as i64 - base as i64) as i32,
+                                self.dpi,
+                            );
+                        let delta = implied - height_before;
+                        if delta > 0.0 && delta < 24.0 {
+                            implied
+                        } else {
+                            height_before
+                        }
+                    })
+                    .unwrap_or(height_before)
+            } else {
+                height_before
+            };
+            let cap = if ladder_omits_spacing {
+                fmt.total_height
+            } else {
+                cap
+            };
+            if st.current_height - snapped_base > cap {
+                st.current_height = snapped_base + cap;
             }
         }
     }
@@ -13960,6 +14087,7 @@ impl TypesetEngine {
                 st.col_count,
                 trim_sb,
                 st.vpos_ladder_dirty || !spacing_trim_restorable(paragraphs_all, next_idx),
+                false,
             );
             st.prefilled_paras.insert(next_idx);
         }

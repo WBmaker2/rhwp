@@ -4099,7 +4099,7 @@ impl LayoutEngine {
             // 지오메트리를 신뢰한다: 정렬 기준 콘텐츠 높이를 저장 extent 로
             // 바꾸고, 문단 배치도 저장 vpos 스냅을 강제한다 (한컴 실측:
             // 가사 top = 셀 top + pad + 센터 오프셋(저장 extent 기준) + vpos).
-            let stored_flow_extent = if !has_nested_table
+            let (stored_flow_extent, stored_flow_line_sum) = if !has_nested_table
                 && !cell.paragraphs.is_empty()
                 && cell.paragraphs.iter().all(|p| !p.line_segs.is_empty())
             {
@@ -4107,10 +4107,15 @@ impl LayoutEngine {
                     .iter()
                     .flat_map(|p| p.line_segs.iter())
                     .filter(|s| s.vertical_pos >= 0 && s.line_height > 0)
-                    .map(|s| hwpunit_to_px(s.vertical_pos + s.line_height, self.dpi))
-                    .fold(0.0f64, f64::max)
+                    .map(|s| {
+                        (
+                            hwpunit_to_px(s.vertical_pos + s.line_height, self.dpi),
+                            hwpunit_to_px(s.line_height, self.dpi),
+                        )
+                    })
+                    .fold((0.0f64, 0.0f64), |(ext, sum), (e, h)| (ext.max(e), sum + h))
             } else {
-                0.0
+                (0.0, 0.0)
             };
             // Square/중첩 표 등 비-flow 개체의 시각 bottom 은 저장 LINE_SEG 흐름에
             // 포함되지 않으므로(#1486 p19 Square 그림), 그런 개체가 저장 extent 를
@@ -4119,10 +4124,17 @@ impl LayoutEngine {
             let non_flow_object_extent = self
                 .calc_nested_controls_bottom_height(&cell.paragraphs, styles)
                 .max(self.calc_cell_wrap_objects_bottom_height(&cell.paragraphs));
+            // [#2148 #2279] 저장 vpos 흐름이 물리적으로 줄들을 담지 못하는 퇴화
+            // 형상(다문단 전부 vpos=0 등, 36399374 pi=79 병합 셀: extent 35px vs
+            // 줄높이 합 260px)은 신뢰 대상이 아니다 — 전 문단이 셀 상단 한 y 에
+            // 겹쳐 그려진다(한글은 fresh 재적층). 음수 line_spacing 누적 보정용
+            // 정상 vpos 스냅(조직도형·악보 셀)은 extent ≈ 줄높이 합이므로 0.5
+            // 비율 가드에 걸리지 않는다.
             let trust_stored_cell_flow = (depth > 0 || table.common.treat_as_char)
                 && stored_flow_extent > 0.0
                 && stored_flow_extent + 0.5 < total_content_height
-                && non_flow_object_extent <= stored_flow_extent + 0.5;
+                && non_flow_object_extent <= stored_flow_extent + 0.5
+                && stored_flow_extent + 0.5 >= 0.5 * stored_flow_line_sum;
             let total_content_height = if trust_stored_cell_flow {
                 stored_flow_extent
             } else {
