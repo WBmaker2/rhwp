@@ -2106,6 +2106,7 @@ impl FormattedParagraph {
         col_count: u16,
         allow_spacing_before_only: bool,
         ladder_dirty: bool,
+        lazy_base: bool,
     ) -> f64 {
         if col_count > 1 {
             return self.height_for_fit;
@@ -2121,11 +2122,28 @@ impl FormattedParagraph {
         let has_authoritative_seg = para.line_segs.iter().any(|seg| {
             seg.tag & crate::model::paragraph::LineSeg::TAG_IMPLEMENTATION_PROPERTY == 0
         });
+        // [#2279 ①-4] lazy-base(page_base 미확립) 사다리에서는 sb-형 트림의
+        // 복원(스냅)이 성립하지 않는다 — sb-형만 차단, sa-형 트림은 유지
+        // (36398700 pi31/35 −13.5px 미복원 실측 vs issue_1853 캡션 문서의
+        // sa-형 트림은 정상 복원되어 전면 차단 시 +1쪽 과다 반증).
+        let sa_trim = self.spacing_after > 0.5;
+        let sb_trim =
+            allow_spacing_before_only && self.spacing_before > 0.5 && !(lazy_base && !sa_trim);
+        if std::env::var("RHWP_DIAG_LAZYBLK").is_ok()
+            && allow_spacing_before_only
+            && self.spacing_before > 0.5
+            && lazy_base
+            && !sa_trim
+        {
+            eprintln!(
+                "DIAG_LAZYBLK sb={:.1} total={:.1} h4f={:.1}",
+                self.spacing_before, self.total_height, self.height_for_fit
+            );
+        }
         if para.controls.is_empty()
             && has_authoritative_seg
             && !ladder_dirty
-            && (self.spacing_after > 0.5
-                || (allow_spacing_before_only && self.spacing_before > 0.5))
+            && (sa_trim || sb_trim)
             && self.height_for_fit > 0.0
             && self.height_for_fit + 0.5 < self.total_height
         {
@@ -10904,10 +10922,11 @@ impl TypesetEngine {
             y = st.current_height;
         }
         // [#2279 ladder-sb] 후방 스냅량이 이 문단의 spacing_before 와 정확히
-        // 일치(±2px)하면 생성기 ladder 의 sb-누락이다 — 한글 fresh 는 sb 를
-        // 가산하므로(서브픽셀 하니스 실측: 36398709 본문 문단당 −5.0pt 균일
-        // = sb 6.7px) 스냅으로 되감지 않는다. ladder 가 sb 를 포함하는 정상
-        // 문서는 후방 스냅량이 sb 와 일치하지 않아 불변.
+        // 일치(±2px)하고, **저장 ladder 스텝 자체가 sb 를 누락**했으면 생성기
+        // ladder 의 sb-누락이다 — 한글 fresh 는 sb 를 가산하므로(서브픽셀
+        // 하니스 실측: 36398709 문단당 −5.0pt 균일 = sb 6.7px) 스냅으로 되감지
+        // 않는다. 스텝-검사 없이 ±2px 우연 일치만으로 스킵하면 sb-포함 정상
+        // ladder 에서 이중 가산(+1쪽 과다, issue_1853 실측 반증)이 난다.
         if st.is_hwpx_source
             && spacing_before_px > 0.5
             && y < st.current_height
@@ -11675,6 +11694,7 @@ impl TypesetEngine {
                 st.col_count,
                 trim_spacing_before_for_flow,
                 st.vpos_ladder_dirty || !spacing_trim_restorable(paragraphs, para_idx),
+                st.vpos_page_base.is_none() && st.vpos_lazy_base.is_some(),
             );
             if std::env::var("RHWP_DIAG_ADV").is_ok() {
                 eprintln!(
@@ -11741,6 +11761,7 @@ impl TypesetEngine {
                     st.col_count,
                     trim_spacing_before_for_flow,
                     st.vpos_ladder_dirty || !spacing_trim_restorable(paragraphs, para_idx),
+                    false,
                 );
                 st.current_height += advance;
                 st.flow_underrun += (fmt.total_height - advance).max(0.0);
@@ -11855,6 +11876,7 @@ impl TypesetEngine {
                 st.col_count,
                 trim_spacing_before_for_flow,
                 st.vpos_ladder_dirty || !spacing_trim_restorable(paragraphs, para_idx),
+                false,
             );
             st.current_height += advance;
             st.flow_underrun += (fmt.total_height - advance).max(0.0);
@@ -13960,6 +13982,7 @@ impl TypesetEngine {
                 st.col_count,
                 trim_sb,
                 st.vpos_ladder_dirty || !spacing_trim_restorable(paragraphs_all, next_idx),
+                false,
             );
             st.prefilled_paras.insert(next_idx);
         }
