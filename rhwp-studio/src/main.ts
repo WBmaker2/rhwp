@@ -766,7 +766,11 @@ function applySavedTextMarkSettings(): void {
   syncClipMenu(clipEnabled);
 }
 
-async function initializeDocument(docInfo: DocumentInfo, displayName: string): Promise<void> {
+async function initializeDocument(
+  docInfo: DocumentInfo,
+  displayName: string,
+  options: { suppressDialogs?: boolean } = {},
+): Promise<void> {
   const msg = sbMessage();
   let normalizedDuringLoad = false;
   try {
@@ -804,8 +808,12 @@ async function initializeDocument(docInfo: DocumentInfo, displayName: string): P
         const report = wasm.getValidationWarnings();
         console.log(`[validation] ${report.count} warnings`, report.summary);
         if (report.count > 0) {
-          const choice = await showValidationModalIfNeeded(report);
-          console.log(`[validation] user choice: ${choice}`);
+          // embed 등 비대화형 로드에서는 모달 없이 '그대로 열기'로 진행한다 —
+          // 모달 await가 loadFile 응답을 막아 임베더가 교착되는 것을 방지 (suppressDialogs).
+          const choice = options.suppressDialogs
+            ? 'as-is'
+            : await showValidationModalIfNeeded(report);
+          console.log(`[validation] user choice: ${choice}${options.suppressDialogs ? ' (dialogs suppressed)' : ''}`);
           if (choice === 'auto-fix') {
             const n = wasm.reflowLinesegs();
             console.log(`[validation] reflowed ${n} paragraphs`);
@@ -825,7 +833,9 @@ async function initializeDocument(docInfo: DocumentInfo, displayName: string): P
       console.warn('[validation] 감지/보정 실패 (치명적이지 않음):', e);
     }
 
-    await promptLocalFontsIfNeeded(docInfo, displayName);
+    if (!options.suppressDialogs) {
+      await promptLocalFontsIfNeeded(docInfo, displayName);
+    }
 
     // 로컬 글꼴 감지 결과가 뷰를 갱신한 뒤에 캐럿을 연결해야 입력 포커스가 재설정과 경합하지 않는다.
     console.log('[initDoc] 8. inputHandler activateWithCaretPosition');
@@ -914,7 +924,7 @@ async function loadBytes(
   fileName: string,
   fileHandle: typeof wasm.currentFileHandle,
   startTime = performance.now(),
-  options: { dataReadProgressShown?: boolean; skipRecent?: boolean } = {},
+  options: { dataReadProgressShown?: boolean; skipRecent?: boolean; suppressDialogs?: boolean } = {},
 ): Promise<void> {
   if (!options.dataReadProgressShown) {
     await updateLoadProgress(0, '문서 데이터 준비 중...');
@@ -944,7 +954,9 @@ async function loadBytes(
   );
   await updateLoadProgress(50, '문서 초기화 중...');
   const elapsed = performance.now() - startTime;
-  await initializeDocument(docInfo, `${fileName} — ${docInfo.pageCount}페이지 (${elapsed.toFixed(1)}ms)`);
+  await initializeDocument(docInfo, `${fileName} — ${docInfo.pageCount}페이지 (${elapsed.toFixed(1)}ms)`, {
+    suppressDialogs: options.suppressDialogs,
+  });
 }
 
 /** 파일 메뉴 "최근 문서" 서브패널을 최신 목록으로 다시 렌더한다(메뉴 open 시 호출). */
@@ -1253,12 +1265,12 @@ installEmbedRuntime({
       await initPromise;
       return true;
     },
-    async loadFile(data, fileName, skipUnsavedGuard) {
+    async loadFile(data, fileName, skipUnsavedGuard, suppressDialogs) {
       await initPromise;
       if (!await canReplaceCurrentDocument(skipUnsavedGuard)) {
         throw new Error('문서 열기가 취소되었습니다.');
       }
-      await loadBytes(data, fileName, null);
+      await loadBytes(data, fileName, null, undefined, { suppressDialogs });
       return { pageCount: wasm.pageCount };
     },
     async pageCount() {
