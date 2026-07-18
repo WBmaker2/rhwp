@@ -1561,10 +1561,15 @@ fn haansoft_latin_override(primary_name: &str, c: char) -> Option<f64> {
 /// 명조(HY견명조 치환) 등 여타 = 반각 (80168 개정안{{7}} p9/p13 '시ㆍ도조례'
 /// 1줄 오라클, 개정안{{1}} P21 마크와 반각 양립 검증). embedded 메트릭
 /// (HY견명조 수록분)이 전각이라 룩업보다 앞서 판정하되, 함초롬(HCR) 계열은
-/// embedded 메트릭을 신뢰한다 (None 반환).
+/// embedded 메트릭을 신뢰한다 (None 반환). [#2279] 한컴바탕/한컴돋움
+/// (Haansoft 실메트릭, ㆍ=1.0em)도 동일하게 embedded 메트릭을 신뢰한다.
 pub(crate) fn area_dot_fallback_width(font_family: &str, font_size: f64) -> Option<f64> {
     let fam = font_family.split(',').next().unwrap_or("").trim();
-    if fam.contains("함초롬") || fam.contains("HCR") {
+    if fam.contains("함초롬")
+        || fam.contains("HCR")
+        || fam.contains("한컴")
+        || fam.contains("Haansoft")
+    {
         return None;
     }
     Some(if fam.contains("한양신명조") {
@@ -2094,6 +2099,58 @@ mod tests {
         assert!(haansoft_latin_override("함초롬바탕 확장", '(').is_none());
         assert!(haansoft_latin_override("HCR Batang Ext", '(').is_none());
         assert!(haansoft_latin_override("바탕", '(').is_none());
+    }
+
+    // ── #2279 한컴돋움/한컴바탕 = Haansoft 실메트릭 ──
+
+    /// 한컴돋움/한컴바탕의 실체는 Haansoft Dotum/Batang (HDOTUM.TTF/HBATANG.TTF
+    /// name table 한국어명). 한글 PDF 실측(36398599 pi35 단일줄 무신축 '*' run:
+    /// 0.583em, 한글 음절 1.0em)과 hmtx 가 일치 — HCR(함초롬) 메트릭('*' 0.498,
+    /// 음절 0.97em)으로 회귀하면 '*' 마스킹 구분선·본문 래핑 줄수가 한글 대비
+    /// ±1 이탈한다 (92 컨트롤셋 36398599/36399105 −1쪽 계열).
+    #[test]
+    fn issue_2279_hancom_dotum_batang_use_haansoft_metrics() {
+        let fs = 20.0; // 15pt
+        let w = |fam: &str, c: char| {
+            measure_char_width_embedded(fam, false, false, c, fs)
+                .unwrap_or_else(|| panic!("측정 실패: {fam} {c:?}"))
+        };
+        // 한컴돋움 = Haansoft Dotum
+        assert!(
+            (w("한컴돋움", '*') - fs * 0.583).abs() < 0.05,
+            "'*' {}",
+            w("한컴돋움", '*')
+        );
+        assert!(
+            (w("한컴돋움", '0') - fs * 0.583).abs() < 0.05,
+            "'0' {}",
+            w("한컴돋움", '0')
+        );
+        assert!(
+            (w("한컴돋움", '가') - fs * 1.0).abs() < 0.05,
+            "'가' {}",
+            w("한컴돋움", '가')
+        );
+        // 한컴바탕 = Haansoft Batang (음절 1.0em; ASCII 는 #2156 표와 동일)
+        assert!(
+            (w("한컴바탕", '가') - fs * 1.0).abs() < 0.05,
+            "'가' {}",
+            w("한컴바탕", '가')
+        );
+        assert!(
+            (w("한컴바탕", '*') - fs * 0.5).abs() < 0.05,
+            "'*' {}",
+            w("한컴바탕", '*')
+        );
+        // 함초롬돋움은 종전대로 HCR Dotum 메트릭 유지 (한글 대체 여부 미실측)
+        assert!(
+            (w("함초롬돋움", '가') - fs * 0.97).abs() < 0.05,
+            "HCR '가' {}",
+            w("함초롬돋움", '가')
+        );
+        // ㆍ(U+318D): 한컴 계열은 area_dot 폴백 대신 embedded 메트릭(1.0em) 신뢰
+        assert!(area_dot_fallback_width("한컴돋움", fs).is_none());
+        assert!(area_dot_fallback_width("한컴바탕", fs).is_none());
     }
 
     // ── MockTextMeasurer 테스트 ──
