@@ -41,3 +41,10 @@ fast-pass 는 마지막 docs 커밋에서 실작동 확인. artifact 액션 v7/v
 - 타 워크플로(render-diff·npm-publish·full-renderer-sweep) artifact v4 잔존
   — 별도 보수 후보
 - 5분대가 필요해지면 native-skia job rust-cache 화가 다음 지렛대
+
+## 추가 — 캐시 예산 차단·정리 (2026-07-19, 옵션 A 승인)
+
+devel 첫 run 에서 캐시 저장 거부(계정 예산 도달·읽기 전용) 발견 — 총량
+10.48GB 로 무료 쿼터 초과가 원인. 스테일 14건 삭제로 4.79GB 확보(활성 키
+보존: native-skia cargo 최근 2세대, codeql/frontend/wasm/node 현행). 다음
+devel push 에서 저장 재개 확인 → warm 재실측으로 10분 이내 확정 예정.
