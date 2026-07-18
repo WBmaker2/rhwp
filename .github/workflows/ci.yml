@@ -442,7 +442,7 @@ jobs:
             --archive-file tests.tar.zst
 
       - name: Upload test archive
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: test-archive-${{ github.run_id }}
           path: tests.tar.zst
@@ -476,7 +476,7 @@ jobs:
           tool: nextest
 
       - name: Download test archive
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: test-archive-${{ github.run_id }}
 
@@ -486,9 +486,14 @@ jobs:
       - name: Run shard ${{ matrix.shard }}/8
         run: |
           set -o pipefail
+          # --extract-to . : CLI 테스트의 env!("CARGO_BIN_EXE_rhwp") 는 빌드
+          # 러너 절대 경로가 컴파일 타임에 박힌다. GitHub 러너는 job 간
+          # workspace 경로가 동일하므로 워크스페이스에 풀어 target/ 경로를
+          # 그대로 복원한다 (임시 디렉터리 추출 시 NotFound — PR CI 실측).
           cargo nextest run \
             --archive-file tests.tar.zst \
             --workspace-remap . \
+            --extract-to . \
             --partition "hash:${{ matrix.shard }}/8" \
             2>&1 | tee nextest-shard.log
           summary=$(grep -E "Summary \[" nextest-shard.log | tail -1)
@@ -501,7 +506,7 @@ jobs:
           cat "shard-count-${{ matrix.shard }}.txt"
 
       - name: Upload shard count
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: shard-count-${{ matrix.shard }}
           path: shard-count-${{ matrix.shard }}.txt
@@ -712,7 +717,7 @@ jobs:
       # 테스트 수와 일치하는지 검증한다 (fast-pass 시 샤드 미실행이라 생략).
       - name: Download shard counts
         if: ${{ needs.preflight.outputs.fast_pass != 'true' }}
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           pattern: shard-count-*
           merge-multiple: true
@@ -844,7 +849,7 @@ jobs:
         run: wasm-pack build --target web --release
 
       - name: Upload WASM artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: rhwp-wasm-pkg
           path: pkg/
