@@ -724,6 +724,79 @@ impl DocumentCore {
         self.render_pages_pdf_native_with_options(&pages, options)
     }
 
+    /// Direct PageLayerTree PDF export for one page.
+    ///
+    /// This opt-in backend requires `native-skia`. The default print profile
+    /// excludes editor-only overlays from exported documents.
+    #[cfg(all(not(target_arch = "wasm32"), feature = "native-skia"))]
+    pub fn render_page_pdf_direct_native(&self, page_num: u32) -> Result<Vec<u8>, HwpError> {
+        self.render_pages_pdf_direct_native(&[page_num])
+    }
+
+    /// Direct PageLayerTree PDF export for an explicit 0-based page selection.
+    #[cfg(all(not(target_arch = "wasm32"), feature = "native-skia"))]
+    pub fn render_pages_pdf_direct_native(&self, page_nums: &[u32]) -> Result<Vec<u8>, HwpError> {
+        self.render_pages_pdf_direct_native_with_profile_and_options(
+            page_nums,
+            RenderProfile::Print,
+            &crate::renderer::pdf::DirectPdfExportOptions::default(),
+        )
+    }
+
+    /// Direct PageLayerTree PDF export with native Skia recording options.
+    #[cfg(all(not(target_arch = "wasm32"), feature = "native-skia"))]
+    pub fn render_pages_pdf_direct_native_with_options(
+        &self,
+        page_nums: &[u32],
+        options: &crate::renderer::pdf::DirectPdfExportOptions,
+    ) -> Result<Vec<u8>, HwpError> {
+        self.render_pages_pdf_direct_native_with_profile_and_options(
+            page_nums,
+            RenderProfile::Print,
+            options,
+        )
+    }
+
+    /// Direct PageLayerTree PDF export with an explicit output profile.
+    #[cfg(all(not(target_arch = "wasm32"), feature = "native-skia"))]
+    pub fn render_pages_pdf_direct_native_with_profile_and_options(
+        &self,
+        page_nums: &[u32],
+        profile: RenderProfile,
+        options: &crate::renderer::pdf::DirectPdfExportOptions,
+    ) -> Result<Vec<u8>, HwpError> {
+        if page_nums.is_empty() {
+            return Err(HwpError::RenderError(
+                "PDF export requires at least one page".to_string(),
+            ));
+        }
+
+        let mut layer_trees = Vec::with_capacity(page_nums.len());
+        for &page_num in page_nums {
+            layer_trees.push(self.build_page_layer_tree_with_profile(page_num, profile)?);
+        }
+        crate::renderer::pdf::layer_trees_to_pdf_with_options(&layer_trees, options)
+            .map_err(HwpError::RenderError)
+    }
+
+    /// Direct PageLayerTree PDF export for the full document.
+    #[cfg(all(not(target_arch = "wasm32"), feature = "native-skia"))]
+    pub fn render_document_pdf_direct_native(&self) -> Result<Vec<u8>, HwpError> {
+        self.render_document_pdf_direct_native_with_options(
+            &crate::renderer::pdf::DirectPdfExportOptions::default(),
+        )
+    }
+
+    /// Direct PageLayerTree PDF export for the full document with recording options.
+    #[cfg(all(not(target_arch = "wasm32"), feature = "native-skia"))]
+    pub fn render_document_pdf_direct_native_with_options(
+        &self,
+        options: &crate::renderer::pdf::DirectPdfExportOptions,
+    ) -> Result<Vec<u8>, HwpError> {
+        let pages: Vec<u32> = (0..self.page_count()).collect();
+        self.render_pages_pdf_direct_native_with_options(&pages, options)
+    }
+
     /// SVG 렌더링 (폰트 임베딩 옵션 포함)
     #[cfg(not(target_arch = "wasm32"))]
     pub fn render_page_svg_with_fonts(

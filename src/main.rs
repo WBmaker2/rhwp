@@ -149,13 +149,15 @@ fn print_help() {
     println!("      -p, --page <번호>       특정 페이지만 내보내기 (0부터 시작)");
     println!();
     println!("  export-pdf <파일.hwp|파일.hwpx|파일.hml> [옵션]");
-    println!("      HWP/HWPX/HML 문서를 PDF로 내보내기 (svg2pdf + pdf-writer)");
+    println!("      HWP/HWPX/HML 문서를 PDF로 내보내기 (기본: SVG 호환 backend)");
     println!();
     println!("      -o, --output <파일>      출력 PDF 파일 (기본: output/<입력명>.pdf)");
     println!("      -p, --page <번호>       특정 페이지만 내보내기 (0부터 시작)");
+    println!("      --backend <svg|direct>  PDF backend (기본값: svg)");
     println!(
         "      --profile <프로필>      layer 출력 프로필: screen|print|high-quality|fast-preview"
     );
+    println!("      --raster-dpi <DPI>      direct backend fallback raster DPI (기본값: 144)");
     println!("      --font-path <경로>      폰트 파일 탐색 경로 (여러 번 지정 가능)");
     println!("      --fallback-serif <명>   PDF serif generic fallback family");
     println!("      --fallback-sans <명>    PDF sans-serif generic fallback family");
@@ -1226,8 +1228,12 @@ fn export_pdf(args: &[String]) {
         let file_path = &args[0];
         let mut output_file = String::new();
         let mut target_page: Option<u32> = None;
+        let mut pdf_backend = rhwp::renderer::pdf::PdfBackend::default();
         let mut pdf_options = rhwp::renderer::pdf::PdfExportOptions::default();
+        let mut direct_pdf_options = rhwp::renderer::pdf::DirectPdfExportOptions::default();
         let mut render_profile: Option<rhwp::paint::RenderProfile> = None;
+        let mut compatibility_only_options = Vec::new();
+        let mut direct_raster_dpi_was_set = false;
 
         let mut i = 1;
         while i < args.len() {
@@ -1271,6 +1277,62 @@ fn export_pdf(args: &[String]) {
                         return;
                     }
                 }
+                "--backend" => {
+                    if i + 1 < args.len() {
+                        let Some(backend) = rhwp::renderer::pdf::PdfBackend::parse(&args[i + 1])
+                        else {
+                            eprintln!("오류: --backend 값이 올바르지 않습니다 (svg|direct).");
+                            return;
+                        };
+                        pdf_backend = backend;
+                        i += 2;
+                    } else {
+                        eprintln!("오류: --backend 뒤에 backend 이름이 필요합니다.");
+                        return;
+                    }
+                }
+                arg if arg.starts_with("--backend=") => {
+                    let Some(backend) = rhwp::renderer::pdf::PdfBackend::parse(
+                        arg.trim_start_matches("--backend="),
+                    ) else {
+                        eprintln!("오류: --backend 값이 올바르지 않습니다 (svg|direct).");
+                        return;
+                    };
+                    pdf_backend = backend;
+                    i += 1;
+                }
+                "--raster-dpi" => {
+                    if i + 1 < args.len() {
+                        let Ok(raster_dpi) = args[i + 1].parse::<f32>() else {
+                            eprintln!("오류: --raster-dpi 값은 양수여야 합니다.");
+                            return;
+                        };
+                        if !raster_dpi.is_finite() || raster_dpi <= 0.0 {
+                            eprintln!("오류: --raster-dpi 값은 양수여야 합니다.");
+                            return;
+                        }
+                        direct_pdf_options.raster_dpi = raster_dpi;
+                        direct_raster_dpi_was_set = true;
+                        i += 2;
+                    } else {
+                        eprintln!("오류: --raster-dpi 뒤에 DPI 값이 필요합니다.");
+                        return;
+                    }
+                }
+                arg if arg.starts_with("--raster-dpi=") => {
+                    let Ok(raster_dpi) = arg.trim_start_matches("--raster-dpi=").parse::<f32>()
+                    else {
+                        eprintln!("오류: --raster-dpi 값은 양수여야 합니다.");
+                        return;
+                    };
+                    if !raster_dpi.is_finite() || raster_dpi <= 0.0 {
+                        eprintln!("오류: --raster-dpi 값은 양수여야 합니다.");
+                        return;
+                    }
+                    direct_pdf_options.raster_dpi = raster_dpi;
+                    direct_raster_dpi_was_set = true;
+                    i += 1;
+                }
                 "--font-path" => {
                     if i + 1 < args.len() {
                         pdf_options
@@ -1283,6 +1345,7 @@ fn export_pdf(args: &[String]) {
                     }
                 }
                 "--fallback-serif" => {
+                    compatibility_only_options.push("--fallback-serif");
                     if i + 1 < args.len() {
                         pdf_options.fallback_serif = args[i + 1].clone();
                         i += 2;
@@ -1292,11 +1355,13 @@ fn export_pdf(args: &[String]) {
                     }
                 }
                 arg if arg.starts_with("--fallback-serif=") => {
+                    compatibility_only_options.push("--fallback-serif");
                     pdf_options.fallback_serif =
                         arg.trim_start_matches("--fallback-serif=").to_string();
                     i += 1;
                 }
                 "--fallback-sans" | "--fallback-sans-serif" => {
+                    compatibility_only_options.push("--fallback-sans");
                     if i + 1 < args.len() {
                         pdf_options.fallback_sans = args[i + 1].clone();
                         i += 2;
@@ -1308,6 +1373,7 @@ fn export_pdf(args: &[String]) {
                 arg if arg.starts_with("--fallback-sans=")
                     || arg.starts_with("--fallback-sans-serif=") =>
                 {
+                    compatibility_only_options.push("--fallback-sans");
                     pdf_options.fallback_sans = arg
                         .strip_prefix("--fallback-sans=")
                         .or_else(|| arg.strip_prefix("--fallback-sans-serif="))
@@ -1316,6 +1382,7 @@ fn export_pdf(args: &[String]) {
                     i += 1;
                 }
                 "--fallback-mono" | "--fallback-monospace" => {
+                    compatibility_only_options.push("--fallback-mono");
                     if i + 1 < args.len() {
                         pdf_options.fallback_mono = args[i + 1].clone();
                         i += 2;
@@ -1327,6 +1394,7 @@ fn export_pdf(args: &[String]) {
                 arg if arg.starts_with("--fallback-mono=")
                     || arg.starts_with("--fallback-monospace=") =>
                 {
+                    compatibility_only_options.push("--fallback-mono");
                     pdf_options.fallback_mono = arg
                         .strip_prefix("--fallback-mono=")
                         .or_else(|| arg.strip_prefix("--fallback-monospace="))
@@ -1338,10 +1406,12 @@ fn export_pdf(args: &[String]) {
                 // 폰트 서브셋 경로를 건너뛰어 메모리를 크게 줄이는 대신,
                 // PDF 의 텍스트 선택·검색 기능을 잃는다 (시각적 출력은 동일).
                 "--text-as-paths" => {
+                    compatibility_only_options.push("--text-as-paths");
                     pdf_options.embed_text = false;
                     i += 1;
                 }
                 "--equation-font" | "--equation-font-family" => {
+                    compatibility_only_options.push("--equation-font");
                     if i + 1 < args.len() {
                         pdf_options.equation_font = Some(args[i + 1].clone());
                         i += 2;
@@ -1353,6 +1423,7 @@ fn export_pdf(args: &[String]) {
                 arg if arg.starts_with("--equation-font=")
                     || arg.starts_with("--equation-font-family=") =>
                 {
+                    compatibility_only_options.push("--equation-font");
                     pdf_options.equation_font = Some(
                         arg.strip_prefix("--equation-font=")
                             .or_else(|| arg.strip_prefix("--equation-font-family="))
@@ -1367,6 +1438,24 @@ fn export_pdf(args: &[String]) {
                     return;
                 }
             }
+        }
+
+        compatibility_only_options.sort_unstable();
+        compatibility_only_options.dedup();
+        if pdf_backend == rhwp::renderer::pdf::PdfBackend::DirectLayer
+            && !compatibility_only_options.is_empty()
+        {
+            eprintln!(
+                "오류: direct PDF backend는 다음 SVG 호환 옵션을 지원하지 않습니다: {}",
+                compatibility_only_options.join(", ")
+            );
+            return;
+        }
+        if pdf_backend == rhwp::renderer::pdf::PdfBackend::CompatibilitySvg
+            && direct_raster_dpi_was_set
+        {
+            eprintln!("오류: --raster-dpi는 direct PDF backend에서만 사용할 수 있습니다.");
+            return;
         }
 
         // 기본 출력 파일명
@@ -1422,11 +1511,33 @@ fn export_pdf(args: &[String]) {
             None => (0..page_count).collect(),
         };
 
-        let pdf_result = match render_profile {
-            Some(profile) => {
-                doc.render_pages_pdf_native_with_profile_and_options(&pages, profile, &pdf_options)
+        let pdf_result = match pdf_backend {
+            rhwp::renderer::pdf::PdfBackend::CompatibilitySvg => match render_profile {
+                Some(profile) => doc.render_pages_pdf_native_with_profile_and_options(
+                    &pages,
+                    profile,
+                    &pdf_options,
+                ),
+                None => doc.render_pages_pdf_native_with_options(&pages, &pdf_options),
+            },
+            rhwp::renderer::pdf::PdfBackend::DirectLayer => {
+                #[cfg(feature = "native-skia")]
+                {
+                    direct_pdf_options.font_paths = pdf_options.font_paths.clone();
+                    doc.render_pages_pdf_direct_native_with_profile_and_options(
+                        &pages,
+                        render_profile.unwrap_or(rhwp::paint::RenderProfile::Print),
+                        &direct_pdf_options,
+                    )
+                }
+                #[cfg(not(feature = "native-skia"))]
+                {
+                    Err(rhwp::error::HwpError::RenderError(
+                        "direct PDF backend requires a build with the native-skia feature"
+                            .to_string(),
+                    ))
+                }
             }
-            None => doc.render_pages_pdf_native_with_options(&pages, &pdf_options),
         };
         let pdf_bytes = match pdf_result {
             Ok(bytes) => bytes,
@@ -1445,6 +1556,9 @@ fn export_pdf(args: &[String]) {
             pdf_bytes.len() / 1024,
             pages.len()
         );
+        if pdf_backend == rhwp::renderer::pdf::PdfBackend::DirectLayer {
+            println!("PDF backend: direct");
+        }
         println!("PDF 내보내기 완료");
     }
 }
@@ -1453,14 +1567,17 @@ fn print_export_pdf_usage() {
     eprintln!("사용법: rhwp export-pdf <파일.hwp|파일.hwpx|파일.hml> [옵션]");
     eprintln!("  -o, --output <파일>       출력 PDF 파일");
     eprintln!("  -p, --page <번호>        특정 페이지만 내보내기 (0부터 시작)");
+    eprintln!("      --backend <svg|direct> PDF backend (기본값: svg)");
     eprintln!(
         "      --profile <프로필>   layer 출력 프로필 (screen|print|high-quality|fast-preview)"
     );
+    eprintln!("      --raster-dpi <DPI>    direct backend fallback raster DPI (기본값: 144)");
     eprintln!("      --font-path <경로>   폰트 파일 탐색 경로 (여러 번 지정 가능)");
     eprintln!("      --fallback-serif <명>");
     eprintln!("      --fallback-sans <명>");
     eprintln!("      --fallback-mono <명>");
     eprintln!("      --equation-font <명>");
+    eprintln!("  direct backend는 native-skia feature로 빌드한 native CLI가 필요합니다.");
     eprintln!("  참고: <...>는 자리표시자이며, 실제 입력에는 꺾쇠괄호를 쓰지 않습니다.");
     eprintln!("        공백 없는 값: --font-path ./ttfs");
     eprintln!(
