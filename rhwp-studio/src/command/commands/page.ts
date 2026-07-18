@@ -297,7 +297,7 @@ export const pageCommands: CommandDef[] = [
       if (!wasm || !eventBus) return;
       const dlg = new NewNumberDialog(wasm, eventBus, {
         sec: pos.sectionIndex, para: pos.paragraphIndex, offset: pos.charOffset,
-      });
+      }, services);
       dlg.show();
     },
   },

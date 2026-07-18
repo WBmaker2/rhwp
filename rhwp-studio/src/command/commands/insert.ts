@@ -277,7 +277,7 @@ export const insertCommands: CommandDef[] = [
     execute(services) {
       const pos = services.getInputHandler()?.getPosition();
       const sectionIdx = pos?.sectionIndex ?? 0;
-      endnoteShapeDialog = new EndnoteShapeDialog(services.wasm, services.eventBus, sectionIdx);
+      endnoteShapeDialog = new EndnoteShapeDialog(services.wasm, services.eventBus, sectionIdx, services);
       endnoteShapeDialog.show();
     },
   },
