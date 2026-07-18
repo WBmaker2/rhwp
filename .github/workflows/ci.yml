@@ -392,6 +392,7 @@ jobs:
       contents: read
     outputs:
       cargo_profile: ${{ steps.profile.outputs.cargo_profile }}
+      runnable_tests: ${{ steps.count.outputs.runnable_tests }}
 
     steps:
       - uses: actions/checkout@v5
@@ -440,6 +441,22 @@ jobs:
           cargo nextest archive \
             --cargo-profile "${{ steps.profile.outputs.cargo_profile }}" \
             --archive-file tests.tar.zst
+
+      # [#2393] 샤드 합계 대조의 기대치 — 비-ignored(runnable) 테스트 수.
+      # nextest Summary 의 skipped 는 파티션 제외분과 #[ignore] 를 합산하므로
+      # run 합계의 기준은 total 이 아니라 runnable 이다 (3차 PR CI 실측: 23 ignored).
+      - name: Count runnable tests
+        id: count
+        run: |
+          runnable=$(cargo nextest list \
+            --cargo-profile "${{ steps.profile.outputs.cargo_profile }}" \
+            --message-format json \
+            | jq '[."rust-suites"[].testcases | to_entries[] | select(.value.ignored | not)] | length')
+          if [[ -z "$runnable" || "$runnable" == "0" ]]; then
+            echo "::error::runnable test count unavailable"; exit 1
+          fi
+          echo "runnable_tests=$runnable" >> "$GITHUB_OUTPUT"
+          echo "runnable_tests=$runnable"
 
       - name: Upload test archive
         uses: actions/upload-artifact@v7
@@ -726,10 +743,16 @@ jobs:
 
       - name: Verify shard totals
         if: ${{ needs.preflight.outputs.fast_pass != 'true' }}
+        env:
+          EXPECTED_RUNNABLE: ${{ needs['build-test-archive'].outputs.runnable_tests }}
         run: |
           shards=$(ls shard-count-*.txt 2>/dev/null | wc -l)
           if [[ "$shards" != "8" ]]; then
             echo "::error::expected 8 shard count files, found ${shards}"
+            exit 1
+          fi
+          if [[ -z "${EXPECTED_RUNNABLE}" ]]; then
+            echo "::error::expected runnable test count missing from build-test-archive"
             exit 1
           fi
           sum=0; total=""
@@ -743,9 +766,11 @@ jobs:
             fi
             echo "${f}: run=${run} total=${t}"
           done
-          echo "sum(run)=${sum} expected total=${total}"
-          if [[ "$sum" != "$total" ]]; then
-            echo "::error::shard run sum ${sum} != total tests ${total} (누락 또는 중복)"
+          # 기대치는 runnable(비-ignored) — Summary 의 skipped 는 파티션 제외분과
+          # #[ignore] 합산이라 total 과의 직접 비교는 성립하지 않는다 (3차 실측).
+          echo "sum(run)=${sum} expected runnable=${EXPECTED_RUNNABLE} (listed total=${total})"
+          if [[ "$sum" != "${EXPECTED_RUNNABLE}" ]]; then
+            echo "::error::shard run sum ${sum} != runnable tests ${EXPECTED_RUNNABLE} (누락 또는 중복)"
             exit 1
           fi
 
