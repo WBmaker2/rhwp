@@ -604,3 +604,34 @@ test('embed runtime은 거부되거나 정리된 모든 transferred port의 소�
   assert.equal(bound.closed, true);
   assert.equal(bound.onmessage, null);
 });
+
+test('embed router는 suppressDialogs 파라미터를 핸들러로 전달한다 (기본 false)', async () => {
+  const calls: Array<{ skipUnsavedGuard: boolean; suppressDialogs: boolean }> = [];
+  const handlers: EmbedRpcHandlers = {
+    ready: async () => true,
+    loadFile: async (_data, _fileName, skipUnsavedGuard, suppressDialogs) => {
+      calls.push({ skipUnsavedGuard, suppressDialogs });
+      return { pageCount: 1 };
+    },
+    pageCount: async () => 1,
+    getRendererDiagnostics: async () => { throw new Error('unused'); },
+    getPageSvg: async () => '<svg/>',
+    exportHwp: async () => new Uint8Array(),
+    exportHwpx: async () => new Uint8Array(),
+    exportHml: async () => new Uint8Array(),
+    getHmlSaveState: async () => ({ sourceFormat: 'hml', hmlSavable: true, blockers: [] }),
+    exportHwpVerify: async () => ({}),
+  };
+
+  await routeEmbedRequest('loadFile', { data: new Uint8Array([1]) }, handlers);
+  await routeEmbedRequest(
+    'loadFile',
+    { data: new Uint8Array([1]), skipUnsavedGuard: true, suppressDialogs: true },
+    handlers,
+  );
+
+  assert.deepEqual(calls, [
+    { skipUnsavedGuard: false, suppressDialogs: false },
+    { skipUnsavedGuard: true, suppressDialogs: true },
+  ]);
+});

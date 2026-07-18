@@ -108,6 +108,11 @@ export class RhwpEditor {
    *
    * @param data - HWP 파일의 ArrayBuffer 또는 Uint8Array
    * @param fileName - 파일 이름 (선택)
+   * @param options - 로드 옵션 (선택)
+   * @param options.skipUnsavedGuard - 미저장 변경 확인 없이 문서 교체
+   * @param options.suppressDialogs - 로드 후 안내창(HWPX 검증, 로컬 글꼴 감지) 없이 열기.
+   *   임베드 환경에서 안내창의 사용자 선택을 기다리느라 loadFile 응답이 지연/교착되는
+   *   것을 방지한다. 검증 경고는 '그대로 열기'로 처리되고, 글꼴은 웹 대체 글꼴로 표시된다.
    * @returns { pageCount: number }
    *
    * @example
@@ -118,8 +123,13 @@ export class RhwpEditor {
    * console.log(`${result.pageCount}페이지`);
    * ```
    */
-  async loadFile(data, fileName = 'document.hwp') {
-    return this._request('loadFile', { data, fileName });
+  async loadFile(data, fileName = 'document.hwp', options = {}) {
+    return this._request('loadFile', {
+      data,
+      fileName,
+      skipUnsavedGuard: options.skipUnsavedGuard === true,
+      suppressDialogs: options.suppressDialogs === true,
+    });
   }
 
   /**

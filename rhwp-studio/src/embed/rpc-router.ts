@@ -6,6 +6,7 @@ export interface EmbedRpcHandlers {
     data: Uint8Array,
     fileName: string,
     skipUnsavedGuard: boolean,
+    suppressDialogs: boolean,
   ): Promise<{ pageCount: number }>;
   pageCount(): Promise<number>;
   getRendererDiagnostics(page: number): Promise<EmbedRendererDiagnosticsV1>;
@@ -52,6 +53,7 @@ export async function routeEmbedRequest(
         asBytes(params.data, allowLegacyArray),
         typeof params.fileName === 'string' ? params.fileName : 'document.hwp',
         params.skipUnsavedGuard === true,
+        params.suppressDialogs === true,
       );
     case 'pageCount': return handlers.pageCount();
     case 'getRendererDiagnostics': {
