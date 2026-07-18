@@ -28,8 +28,11 @@ const helpersPath = path.join(studioRoot, 'e2e/helpers.mjs');
 const mainPath = path.join(studioRoot, 'src/main.ts');
 const embedRpcRouterPath = path.join(studioRoot, 'src/embed/rpc-router.ts');
 const renderBackendPath = path.join(studioRoot, 'src/view/render-backend.ts');
+const rendererSessionPath = path.join(studioRoot, 'src/view/renderer-session.ts');
 const pageRendererPath = path.join(studioRoot, 'src/view/page-renderer.ts');
 const canvasViewPath = path.join(studioRoot, 'src/view/canvas-view.ts');
+const vscodeViewerPath = path.join(repoRoot, 'rhwp-vscode/src/webview/viewer.ts');
+const vscodeWebpackPath = path.join(repoRoot, 'rhwp-vscode/webpack.config.js');
 const renderDiffWorkflowPath = path.join(repoRoot, '.github/workflows/render-diff.yml');
 const fullRendererSweepWorkflowPath = path.join(
   repoRoot,
@@ -49,8 +52,11 @@ const helpersSource = fs.readFileSync(helpersPath, 'utf8');
 const mainSource = fs.readFileSync(mainPath, 'utf8');
 const embedRpcRouterSource = fs.readFileSync(embedRpcRouterPath, 'utf8');
 const renderBackendSource = fs.readFileSync(renderBackendPath, 'utf8');
+const rendererSessionSource = fs.readFileSync(rendererSessionPath, 'utf8');
 const pageRendererSource = fs.readFileSync(pageRendererPath, 'utf8');
 const canvasViewSource = fs.readFileSync(canvasViewPath, 'utf8');
+const vscodeViewerSource = fs.readFileSync(vscodeViewerPath, 'utf8');
+const vscodeWebpackSource = fs.readFileSync(vscodeWebpackPath, 'utf8');
 const renderDiffWorkflowSource = fs.readFileSync(renderDiffWorkflowPath, 'utf8');
 const fullRendererSweepWorkflowSource = fs.readFileSync(fullRendererSweepWorkflowPath, 'utf8');
 const normalizedCanvaskitParityPlanDocSource = canvaskitParityPlanDocSource.replace(/\s+/g, ' ');
@@ -359,9 +365,134 @@ requireSnippet(
   'CanvasView should expose page-scoped CanvasKit diagnostics',
 );
 requireSnippet(
+  vscodeViewerSource,
+  /new RendererSession\([\s\S]*?backend: "auto"[\s\S]*?import\("@\/view\/canvaskit-renderer"\)/,
+  'VS Code should share document-scoped auto selection and lazily load CanvasKit',
+);
+requireSnippet(
+  vscodeViewerSource,
+  /async function loadDocument\([\s\S]*?rendererSession\.beginDocument\(digest\)[\s\S]*?await rendererSession\.resolve\([\s\S]*?applyRendererSelection\(selection\)[\s\S]*?buildPageLayout\(\)/,
+  'VS Code should resolve one backend before laying out and rendering the document',
+);
+requireSnippet(
+  vscodeViewerSource,
+  /resolveCanvasKitFontPlan[\s\S]*?transformCanvasKitPreflight[\s\S]*?withCanvasKitSurfaceBlockers[\s\S]*?prepareCanvasKitDocument[\s\S]*?prepareBundledFonts/,
+  'VS Code auto selection should validate and prepare document fonts before first replay',
+);
+requireSnippet(
+  vscodeViewerSource,
+  /updateVisiblePages\(\);[\s\S]*?await Promise\.resolve\(\);[\s\S]*?const activeSelection = rendererSelection \?\? selection;[\s\S]*?renderer: activeSelection\.diagnostics/,
+  'VS Code loaded diagnostics should report a first-render fallback instead of stale CanvasKit selection',
+);
+requireSnippet(
+  vscodeViewerSource,
+  /function scheduleRendererFallback\([\s\S]*?fallbackFromResourceFailure[\s\S]*?fallbackFromRuntimeFailure[\s\S]*?queueMicrotask[\s\S]*?releasePage\(pageNum\)[\s\S]*?updateVisiblePages\(\)/,
+  'VS Code CanvasKit failures should trigger one whole-document Canvas2D replay',
+);
+requireSnippet(
+  vscodeWebpackSource,
+  /resourceQuery: \/url\/[\s\S]*?type: "asset\/resource"/,
+  'VS Code should emit the lazily loaded CanvasKit WASM asset',
+);
+requireSnippet(
+  vscodeWebpackSource,
+  /path: path\.resolve\(__dirname, "dist", "webview"\)[\s\S]*?clean: true/,
+  'VS Code webview builds should remove obsolete lazy chunks and assets',
+);
+requireSnippet(
   mainSource,
-  /async getRendererDiagnostics\(pageIndex\)[\s\S]*?initialized: rendererInitialized[\s\S]*?initializationError:[\s\S]*?effectiveBackend: rendererInitialized \?[\s\S]*?backendFallbackReason:[\s\S]*?getCanvasKitRenderDiagnostics\(pageIndex\)/,
+  /async getRendererDiagnostics\(pageIndex\)[\s\S]*?getRendererSessionDiagnostics\(\)[\s\S]*?initialized: rendererInitialized[\s\S]*?initializationError:[\s\S]*?effectiveBackend: selection\?\.effectiveBackend[\s\S]*?backendFallbackReason:[\s\S]*?selection,[\s\S]*?getCanvasKitRenderDiagnostics\(pageIndex\)/,
   'Studio iframe API should expose backend selection and page-scoped renderer diagnostics',
+);
+requireSnippet(
+  rendererSessionSource,
+  /beginDocument\(documentDigest: string \| null\)[\s\S]*?documentRevision \+= 1;[\s\S]*?resourceGeneration \+= 1;[\s\S]*?invalidateDocument\(\)[\s\S]*?decisionKey\(\)/,
+  'RendererSession should invalidate document-scoped decisions by revision and resource generation',
+);
+requireSnippet(
+  rendererSessionSource,
+  /pinAutoMutationRevision\(\)[\s\S]*?invalidateDocument\(\)[\s\S]*?'autoRevisionPending'[\s\S]*?'canvaskitRevisionInvalidated'/,
+  'Auto edits should pin an invalidated revision to Canvas2D without a synchronous document rescan',
+);
+requireSnippet(
+  canvasViewSource,
+  /scheduleAutoRendererReselection\(\)[\s\S]*?setTimeout\([\s\S]*?selectNextDocumentRevision\(\)\.then[\s\S]*?AUTO_RENDERER_RESELECTION_DELAY_MS/,
+  'Auto edit revisions should coalesce one bounded capability re-evaluation after input settles',
+);
+requireSnippet(
+  canvasViewSource,
+  /prepareDocumentLoad\(\)[\s\S]*?rendererSelectionEpoch \+= 1;[\s\S]*?rendererSession\.beginDocument[\s\S]*?this\.reset\(\)/,
+  'Document replacement should synchronously detach the previous renderer decision and canvases',
+);
+requireSnippet(
+  helpersSource,
+  /await window\.__canvasView\?\.loadDocument\?\.\(\)/,
+  'Cold renderer timing should include preflight, lazy CanvasKit initialization, and initial replay',
+);
+requireSnippet(
+  rendererSessionSource,
+  /dispose\(\): void[\s\S]*?this\.canvaskitRenderer = null;[\s\S]*?renderer\?\.dispose\(\)/,
+  'RendererSession should own and dispose the shared CanvasKit renderer',
+);
+assert.doesNotMatch(
+  extractMethodBody(pageRendererSource, 'dispose'),
+  /canvaskitRenderer\?\.dispose/,
+  'PageRenderer must not dispose the RendererSession-owned CanvasKit instance',
+);
+requireSnippet(
+  rendererSessionSource,
+  /this\.request\.backend === 'auto'[\s\S]*?this\.readPreflight\(source\)[\s\S]*?!preflight\.complete \|\| preflight\.status === 'incomplete'[\s\S]*?!preflight\.eligible \|\| preflight\.status !== 'eligible'[\s\S]*?ensureCanvasKitRenderer\(\)/,
+  'Auto backend selection should fail closed before lazily initializing CanvasKit',
+);
+requireSnippet(
+  rendererSessionSource,
+  /readPreflight\(source: RendererPreflightSource\)[\s\S]*?source\.getCanvasKitDocumentPreflight\([\s\S]*?preflight\.schemaVersion !== 1[\s\S]*?preflight\.mode !== this\.canvaskitMode\.mode[\s\S]*?preflight\.profile !== this\.renderProfile/,
+  'RendererSession should validate the bounded document preflight contract',
+);
+requireSnippet(
+  rendererSessionSource,
+  /transformCanvasKitPreflight[\s\S]*?prepareCanvasKitDocument[\s\S]*?await this\.options\.prepareCanvasKitDocument\(renderer, preflight\)[\s\S]*?'canvaskitResourcePreparationFailed'/,
+  'RendererSession should apply surface capability blockers before initialization and prepare resources before selection',
+);
+requireSnippet(
+  rendererSessionSource,
+  /invalidateDocument\(options:[\s\S]*?resetResources[\s\S]*?this\.canvaskitRenderer\?\.resetDocumentResources\(\)[\s\S]*?this\.decisionKey\(\) !== key[\s\S]*?'superseded'/,
+  'RendererSession should cancel stale resource preparation and reset native resources on document mutations',
+);
+requireSnippet(
+  canvaskitSource,
+  /catch \(error\) \{[\s\S]*?!this\.disposed && generation === this\.documentGeneration[\s\S]*?this\.bundledTypefaceLoadFailures\.add\(source\.url\)/,
+  'Document replacement cancellation must not poison the next CanvasKit font preparation attempt',
+);
+requireSnippet(
+  rendererSessionSource,
+  /fallbackFromResourceFailure\([\s\S]*?expectedDecisionKey: string[\s\S]*?'canvaskitResourcePreparationFailed'[\s\S]*?fallbackForCurrentDecision\([\s\S]*?'canvas2d'/,
+  'CanvasKit resource preparation failures should pin the document to Canvas2D',
+);
+requireSnippet(
+  rendererSessionSource,
+  /fallbackFromRuntimeFailure\([\s\S]*?if \(!this\.isAutoRequest\(\)\) return null;[\s\S]*?'canvaskitRuntimeFailed'/,
+  'Auto CanvasKit runtime failures should pin the document to Canvas2D without changing explicit requests',
+);
+requireSnippet(
+  canvasViewSource,
+  /activeRendererDecisionKey[\s\S]*?getCanvasKitRenderDiagnostics\(pageIdx\)\?\.lastRenderError[\s\S]*?scheduleCanvasKitFallback\([\s\S]*?'runtime'[\s\S]*?fallbackFromRuntimeFailure\(error, expectedDecisionKey\)/,
+  'CanvasView should promote auto CanvasKit runtime failures through the current document decision only',
+);
+requireSnippet(
+  pageRendererSource,
+  /invalidateDocumentRevision\(\)[\s\S]*?releaseAllPageDiagnostics\(\);[\s\S]*?layerSummaryCache\.clear\(\)/,
+  'PageRenderer should drop revision-scoped diagnostics and layer summaries before replaying a new decision',
+);
+requireSnippet(
+  renderBackendSource,
+  /if \(!normalized\) return \{ backend: 'auto', source: 'default' \}/,
+  'Browser rendering should request document-scoped auto selection by default',
+);
+requireSnippet(
+  rendererBaselineSource,
+  /if \(options\.readinessOnly\) \{[\s\S]*?\?canvaskitMode=default&renderProfile=[\s\S]*?runtime\.request\?\.backend\?\.backend !== 'auto'[\s\S]*?runtime\.selection\?\.selectionReason !== 'autoEligible'[\s\S]*?autoPreflightNotEligible/,
+  'Selected readiness should measure the no-parameter default auto candidate and its preflight decision',
 );
 requireSnippet(
   embedRpcRouterSource,
@@ -375,8 +506,13 @@ assert.doesNotMatch(
 );
 requireSnippet(
   mainSource,
-  /CanvasKit 초기화 실패[\s\S]*?renderBackend = 'canvas2d';[\s\S]*?renderBackendFallbackReason = 'canvaskitInitializationFailed';/,
-  'CanvasKit initialization failure should remain an observable Canvas2D fallback',
+  /new RendererSession\([\s\S]*?async \(mode, surface\) => \{[\s\S]*?import\('\@\/view\/canvaskit-renderer'\)[\s\S]*?CanvasKitLayerRenderer\.create\(mode, surface,[\s\S]*?requirePreparedFontFamilies:[\s\S]*?transformCanvasKitPreflight[\s\S]*?prepareBundledFonts/,
+  'Studio should load CanvasKit only after the renderer session selects it',
+);
+requireSnippet(
+  canvaskitSource,
+  /prepareBundledFonts\([\s\S]*?MAX_BUNDLED_FONT_BYTES[\s\S]*?bundledTypefaceAliases\.set[\s\S]*?CanvasKit font family가 준비되지 않았습니다/,
+  'CanvasKit should bound bundled font parsing and reject unprepared explicit families',
 );
 assert.doesNotMatch(
   renderBackendSource,
@@ -909,8 +1045,8 @@ requireSnippet(
 );
 requireSnippet(
   renderFormObjectBody,
-  /op\.formType === 'checkbox' \|\| op\.formType === 'radio'[\s\S]*?canvas\.drawLine[\s\S]*?const label = op\.caption \|\| op\.text[\s\S]*?this\.renderTextRun/,
-  'form object replay should keep checkbox/radio mark and caption text branches explicit',
+  /op\.formType === 'checkBox'[\s\S]*?op\.formType === 'radioButton'[\s\S]*?op\.formType === 'checkbox'[\s\S]*?op\.formType === 'radio'[\s\S]*?canvas\.drawLine[\s\S]*?const label = op\.caption \|\| op\.text[\s\S]*?this\.renderTextRun/,
+  'form object replay should keep canonical and compatibility checkbox/radio mark names explicit',
 );
 for (const [label, body, baselinePattern] of [
   ['footnote marker', extractSwitchCaseClusterBody(renderOpBody, 'footnoteMarker'), /baseline: op\.fontSize \?\? 7/],
@@ -1477,7 +1613,11 @@ requireSnippet(
 );
 for (const readinessGuard of [
   'backendNotActive',
-  'explicitCanvasKitRequestMissing',
+  'defaultAutoRequestMissing',
+  'autoSelectionMismatch',
+  'autoPreflightNotEligible',
+  'autoDocumentDigestMissing',
+  'autoDecisionGenerationMissing',
   'canvaskitModeRequestMismatch',
   'canvaskitSurfaceRequestMismatch',
   'canvaskitModeMismatch',
