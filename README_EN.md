@@ -20,6 +20,12 @@
 </p>
 
 <p align="center">
+  <a href="https://chromewebstore.google.com/detail/pgakpjflombjmehnebnbpnalhegaanag"><img src="https://img.shields.io/chrome-web-store/v/pgakpjflombjmehnebnbpnalhegaanag?label=Chrome%20Web%20Store&logo=googlechrome&logoColor=white" alt="Chrome Web Store" /></a>
+  <a href="https://microsoftedge.microsoft.com/addons/detail/rhwp/nfkdfobhmanddlhdbclkpoanbccpigcn"><img src="https://img.shields.io/badge/Edge%20Add--ons-Store-0078D7" alt="Edge Add-ons" /></a>
+  <a href="https://addons.mozilla.org/firefox/addon/rhwp-free-hwp-editor/"><img src="https://img.shields.io/amo/v/rhwp-free-hwp-editor?label=Firefox%20Add-ons&logo=firefoxbrowser&logoColor=white" alt="Firefox Add-ons" /></a>
+</p>
+
+<p align="center">
   <a href="README.md">한국어</a> | <strong>English</strong>
 </p>
 
