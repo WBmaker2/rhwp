@@ -937,9 +937,18 @@ export const tableCommands: CommandDef[] = [
           result = sign + formatted + decPart;
         }
         if (result === text) return;
-        services.wasm.deleteTextInCell(sec, ppi, ci, cei, cpi, 0, len);
-        services.wasm.insertTextInCell(sec, ppi, ci, cei, cpi, 0, result);
-        services.eventBus.emit('document-changed');
+        // [#2344] delete+insert 를 하나의 snapshot 으로 원자화해 라우팅 — 미기록 시 셀 문자
+        // 수가 바뀌어 후속 undo 오프셋이 오염되고 텍스트가 손상된다("1234567"→쉼표→Ctrl+Z="67").
+        // 라우터가 refresh 하므로 수동 document-changed emit 은 제거.
+        safeTableOp(() => ih.executeOperation({
+          kind: 'snapshot',
+          operationType: 'cellNumberFormat',
+          operation: (wasm) => {
+            wasm.deleteTextInCell(sec, ppi, ci, cei, cpi, 0, len);
+            wasm.insertTextInCell(sec, ppi, ci, cei, cpi, 0, result);
+            return pos;
+          },
+        }), '셀 숫자 서식');
       } catch (err) {
         console.warn('[table:thousand-sep] 구분 쉼표 변환 실패:', err);
       }
@@ -970,9 +979,18 @@ export const tableCommands: CommandDef[] = [
         const fmtInt = hasCommas ? intPart.replace(/\B(?=(\d{3})+(?!\d))/g, ',') : intPart;
         const result = sign + fmtInt + '.' + newDecimals;
         if (result === text) return;
-        services.wasm.deleteTextInCell(sec, ppi, ci, cei, cpi, 0, len);
-        services.wasm.insertTextInCell(sec, ppi, ci, cei, cpi, 0, result);
-        services.eventBus.emit('document-changed');
+        // [#2344] delete+insert 를 하나의 snapshot 으로 원자화해 라우팅 — 미기록 시 셀 문자
+        // 수가 바뀌어 후속 undo 오프셋이 오염되고 텍스트가 손상된다("1234567"→쉼표→Ctrl+Z="67").
+        // 라우터가 refresh 하므로 수동 document-changed emit 은 제거.
+        safeTableOp(() => ih.executeOperation({
+          kind: 'snapshot',
+          operationType: 'cellNumberFormat',
+          operation: (wasm) => {
+            wasm.deleteTextInCell(sec, ppi, ci, cei, cpi, 0, len);
+            wasm.insertTextInCell(sec, ppi, ci, cei, cpi, 0, result);
+            return pos;
+          },
+        }), '셀 숫자 서식');
       } catch (err) {
         console.warn('[table:decimal-add] 자릿점 넣기 실패:', err);
       }
@@ -1003,9 +1021,18 @@ export const tableCommands: CommandDef[] = [
         const newDecimals = decimals.slice(0, -1);
         const result = newDecimals ? sign + fmtInt + '.' + newDecimals : sign + fmtInt;
         if (result === text) return;
-        services.wasm.deleteTextInCell(sec, ppi, ci, cei, cpi, 0, len);
-        services.wasm.insertTextInCell(sec, ppi, ci, cei, cpi, 0, result);
-        services.eventBus.emit('document-changed');
+        // [#2344] delete+insert 를 하나의 snapshot 으로 원자화해 라우팅 — 미기록 시 셀 문자
+        // 수가 바뀌어 후속 undo 오프셋이 오염되고 텍스트가 손상된다("1234567"→쉼표→Ctrl+Z="67").
+        // 라우터가 refresh 하므로 수동 document-changed emit 은 제거.
+        safeTableOp(() => ih.executeOperation({
+          kind: 'snapshot',
+          operationType: 'cellNumberFormat',
+          operation: (wasm) => {
+            wasm.deleteTextInCell(sec, ppi, ci, cei, cpi, 0, len);
+            wasm.insertTextInCell(sec, ppi, ci, cei, cpi, 0, result);
+            return pos;
+          },
+        }), '셀 숫자 서식');
       } catch (err) {
         console.warn('[table:decimal-remove] 자릿점 빼기 실패:', err);
       }
