@@ -7,7 +7,7 @@ VSCode에서 HWP/HWPX 문서를 바로 열어볼 수 있는 확장 프로그램�
 ## 기능
 
 - HWP/HWPX 파일 클릭 또는 드래그 & 드롭으로 바로 열기
-- Canvas 2D 기반 고품질 문서 렌더링
+- 문서 capability와 번들 폰트 가용성을 확인하는 CanvasKit 자동 선택 및 Canvas2D 호환 fallback
 - 가상 스크롤 (대용량 문서 지원)
 - 줌 인/아웃 (Ctrl+마우스 휠 또는 상태 표시줄 버튼)
 - 페이지 네비게이션 (상태 표시줄에 현재 쪽 표시)
@@ -67,7 +67,7 @@ npm run compile
 
 전체 목록: [THIRD_PARTY_LICENSES.md](https://github.com/edwardkim/rhwp/blob/main/THIRD_PARTY_LICENSES.md)
 
-### npm 패키지 (빌드 도구)
+### npm 패키지
 
 | 패키지 | 라이선스 |
 |--------|---------|
@@ -75,6 +75,8 @@ npm run compile
 | typescript | Apache-2.0 |
 | ts-loader | MIT |
 | copy-webpack-plugin | MIT |
+| @noble/hashes | MIT |
+| canvaskit-wasm | BSD-3-Clause |
 
 ### 웹 폰트 (렌더링 폴백)
 
