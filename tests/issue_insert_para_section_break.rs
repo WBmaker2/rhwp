@@ -77,7 +77,10 @@ fn insert_paragraph_at_zero_moves_section_break_to_new_first() {
         paras[0].raw_break_type, 0x03,
         "raw_break_type 도 함께 이관되어야 한다 (직렬화에 쓰인다)"
     );
-    assert_eq!(paras[1].raw_break_type, 0x00, "밀려난 문단의 raw_break_type 은 비어야 한다");
+    assert_eq!(
+        paras[1].raw_break_type, 0x00,
+        "밀려난 문단의 raw_break_type 은 비어야 한다"
+    );
 }
 
 /// 0번이 아닌 자리의 표식은 문단을 따라간다.
