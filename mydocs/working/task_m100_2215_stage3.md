@@ -295,3 +295,142 @@ Stage 3-D에서는 production 정책을 더 바꾸지 않고 실제 pointer drag
 3. HWP/HWPX 복사 문자열을 기존 oracle과 비교
 4. warm selection rAF callback p50/p95, long task, pagination 및 Canvas refresh 호출 수 기록
 5. 완료 조건 미달 시 원인을 분리하고 구현 범위 확대 전 다시 승인 요청
+
+---
+
+## 18. Stage 3-D 실제 pointer E2E 결론
+
+최신 worktree WASM을 새로 빌드하고 실제 mouse event 기반으로 HWP/HWPX를 검증했다.
+
+- in-app browser에서 HWP 첫·중간·후반 페이지를 직접 드래그해 하이라이트와 mouseup 후
+  선택 유지, clipboard 문자열을 확인했다.
+- headless Chrome에서 HWP/HWPX 각각 전·중·후반 same-page를 6회씩 반복했다.
+- p54→p55 cross-page는 두 endpoint를 edge 밖에 동시에 표시해 정확한 endpoint와 copy
+  oracle을 검증했다.
+- 별도 edge drag는 1.2초 동안 auto-scroll을 유지해 실제 rAF 반복 경로를 검증했다.
+- 기존 `drag-selection-autoscroll.test.mjs`도 별도로 GREEN을 확인했다.
+
+측정 환경:
+
+```text
+macOS arm64
+Google Chrome 150.0.7871.128
+Node.js v24.15.0
+rustc 1.93.1
+viewport: same-page/auto-scroll 1280×900
+cross-page exact: 1280×3600 (두 endpoint를 edge 구역 밖에 배치)
+```
+
+## 19. same-page warm 성능과 정확성
+
+각 반복은 실제 `mouse.down → 8회 mouse.move → mouse.up`으로 수행했다. `drag callback`은
+`updateTextSelectionDragFromPointer()` 전체, `rect`는 Studio bridge의
+`getSelectionRectsInCell()` 호출 시간을 뜻한다.
+
+| 형식·위치 | drag callback p50 / p95 | rect p95 | copy | warm long task |
+|------|------:|------:|------|------:|
+| HWP first p0 | 1.0 / 1.2ms | 0.2ms | `1.1.1 수면비행` | 0 |
+| HWP middle p54 | 0.7 / 0.9ms | 0.2ms | `8` | 0 |
+| HWP late split p114 | 0.5 / 0.9ms | 0.2ms | `설비가 ` | 0 |
+| HWPX first p0 | 0.8 / 1.1ms | 0.2ms | `1.1.1 수면비행` | 0 |
+| HWPX middle p54 | 0.6 / 0.9ms | 0.2ms | `8` | 0 |
+| HWPX late split p114 | 0.5 / 1.0ms | 0.2ms | `설비가 ` | 0 |
+
+모든 36회 반복에서 visible highlight와 mouseup 후 선택이 유지됐다. 실제 Studio 호출에서
+관측한 hint도 각 위치의 `[0,0]`, `[54,54]`, `[114,114]`뿐이어서 same-page가 115쪽 full
+range로 되돌아가지 않음을 확인했다.
+
+새로운 중간·후반 page를 처음 보이게 한 첫 반복에서는 각각 약 1.1–1.2초 long task가 한 번
+관측됐다. 그러나 같은 구간의 selection callback 최대값은 1.8ms 이하였고 이후 5회 warm
+반복의 long task는 0회였다. 따라서 이는 selection page-range 경로의 반복 지연이 아니라
+새 visible page의 최초 Canvas 렌더 준비 비용으로 분리한다. #2215의 warm drag 완료 조건에는
+영향이 없지만 일반 page render 성능 후속에서 참고할 finding이다.
+
+late split에서는 기존 `getCursorRectInCell()`이 p113 fragment를 먼저 반환해
+`CursorState`가 pointer `hitTest`의 p114 rect로 복구한다는 경고가 관측됐다. 실제 선택 rect,
+highlight, copy 및 성능은 정상이다. page-hinted selection rect 수정과 별개인 cursor-rect
+fragment 문제이므로 #2215 범위를 확대하지 않는다.
+
+## 20. cross-page 정확성
+
+p54 `cellPara=1250, offset=0`에서 p55 `cellPara=1275, offset=1`까지 실제 pointer drag했다.
+caret/selection rect 경계 자체는 다음 문단과 맞닿으므로 자동화는 `hitTest`가 목표 endpoint를
+반환하는 픽셀 영역의 중앙을 사용했다.
+
+| 항목 | HWP | HWPX |
+|------|------:|------:|
+| endpoint | p54:1250/0 → p55:1275/1 | 동일 |
+| visible highlight | 45개 | 45개 |
+| copy 길이 | 1,517자 | 1,517자 |
+| drag callback p50 / p95 | 1.5 / 2.9ms | 1.7 / 3.0ms |
+| rect p95 | 2.4ms | 2.2ms |
+| long task | 0회 | 0회 |
+
+copy는 두 형식 모두 `8.3.2.4 거주구역`으로 시작하고 다음으로 끝나 native oracle과
+일치했다.
+
+```text
+나. 방화문은 어느 쪽에서도 한 사람이 충분히 개폐할 수 있어야 한다.
+다
+```
+
+## 21. edge auto-scroll
+
+p54에서 container 하단 edge로 실제 pointer를 유지한 뒤 p55 endpoint에서 mouseup했다.
+
+| 항목 | HWP | HWPX |
+|------|------:|------:|
+| scroll delta | +2,328px | +2,328px |
+| 최종 focus | p55 / cellPara 1273 / offset 41 | 동일 |
+| visible highlight | 39개 | 39개 |
+| copy | 1,351자 | 1,351자, byte 동등 |
+| drag callback p50 / p95 | 2.3 / 3.1ms | 2.3 / 3.4ms |
+| rect p95 | 2.4ms | 2.7ms |
+| long task | 0회 | 0회 |
+
+auto-scroll 중 focus가 p54→p57까지 이동하며 `[54,endPage]` hint가 함께 확장됐고, mouseup
+시 p55 선택과 하이라이트가 유지됐다. edge scroll 정책 자체는 변경하지 않았다.
+
+기존 일반 문서 회귀도 다음 결과로 통과했다.
+
+```text
+npm run e2e:drag-autoscroll -- --mode=headless
+scrollTop 0 → 1529
+selection paragraph 0 → 69
+highlight 70개
+5 assertions passed
+```
+
+## 22. selection 중 무효화와 잔여 경계
+
+모든 same-page, exact cross-page, auto-scroll 측정 구간에서 다음은 HWP/HWPX 모두 0회였다.
+
+- `WasmBridge.refreshLayout()`
+- `CanvasView.refreshPages()`
+- `document-changed` event
+
+따라서 드래그가 pagination 또는 full Canvas refresh를 유발하지 않는다는 Stage 1 판단도 실제
+UI 경로에서 유지됐다.
+
+로컬 probe와 raw JSON은 각각 다음에 두었다. CI 계약보다는 이번 성능 자격 검증용으로 작성한
+임시 산출물이며 PR에는 포함하지 않는다.
+
+```text
+/private/tmp/issue2215_stage3d_probe.mjs
+/private/tmp/issue2215_stage3d_results.json
+```
+
+## 23. Stage 3-D 판정과 다음 승인 단계
+
+#2215의 구현 목표는 충족했다.
+
+- same-page warm callback p95 50ms 미만: 최대 1.2ms
+- exact cross-page/auto-scroll callback p95 50ms 미만: 최대 3.4ms
+- warm 반복 long task: 0회
+- HWP/HWPX rect·copy oracle: 유지
+- mouseup 선택·visible highlight·auto-scroll: 유지
+- pagination 및 Canvas full refresh: 0회
+
+다음 단계는 Stage 4 PR 준비다. 최신 upstream rebase, 전체 변경 diff 감사, 승인된 전체 회귀
+실행, 이슈 코멘트용 전후 결과 요약과 PR 본문 준비를 수행한다. 최초 visible page cold render와
+cursor-rect split fragment finding은 #2215 완료를 막지 않고 후속 후보로 분리한다.
