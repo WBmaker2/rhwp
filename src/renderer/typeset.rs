@@ -13982,32 +13982,46 @@ impl TypesetEngine {
             }
         } else if tac_wrap_split {
             st.current_height += table_total_height;
-        } else if let Some(host_line_px) = if st.profile.hwpx_stored_layout()
+        } else if let Some(host_spacing_px) = if st.profile.hwpx_stored_layout()
             && is_last_placed
             && total_lines <= pre_table_end_line + 1
+            && fmt.spacing_before + fmt.spacing_after > 0.5
+            && self
+                .tac_topbottom_conflict_host_line_px(para, table, styles)
+                .is_some()
         {
-            // [#2279 10k] host 빈 줄박스는 **문단당 1개** — 다중 표 문단에서
+            // [#2279 10k] host spacing 가산은 **문단당 1회** — 다중 표 문단에서
             // 표마다 가산하면 중간 표 배치의 fit 이 과대해져 후속 표가 조기
             // 개행된다 (156767148 보도자료 pi7: 표2개 문단, 한글 1쪽 vs +1쪽,
-            // 10k 회귀 +29건 군집의 지배 형상). 마지막 표 배치 시점으로 이연
-            // — 단일 표 문단(36392557 pi27 장제목)은 종전과 동일.
+            // 10k 회귀 +29건 군집의 지배 형상). 마지막 표 배치 시점으로 이연.
             // [#2279 sec0] host 문단에 표 줄 외 추가 줄박스(트레일러 빈 줄)가
-            // 이미 있으면 host 줄박스가 그 줄로 실체화된 것 — 별도 가산하면
-            // 이중 계상으로 분할 유발(36392557 sec0 표지: 표 892.5 + 트레일러
-            // 25.6 = 918.1 로 한글 1쪽인데 +16 가산 시 934.1 > 930.5 분할).
-            self.tac_topbottom_conflict_host_line_px(para, table, styles)
+            // 이미 있으면 그 줄의 fmt 가 spacing 을 계상하므로 제외(36392557
+            // sec0 표지: 표 892.5 + 트레일러 25.6 = 918.1 로 한글 1쪽).
+            Some(fmt.spacing_before + fmt.spacing_after)
         } else {
             None
         } {
-            // [#2279 TAC host] 기계생성 결재문서의 모순 조합(treat_as_char=true +
-            // wrap=자리차지) 장제목/결재표: 한글 fresh 는 host 빈 줄박스(호스트
-            // CS 크기)를 표 **위에** 별도 배치한다 — 36392557 pi27 한글 PDF
-            // 괘선 실측: 표 top = 흐름 + om_top(1.9px) + host 줄박스(20px=15pt).
-            // rhwp 는 lh-포함형(host lh = 표+om)으로만 소비해 표당 ~20px 과소
-            // (92셋 −1쪽 계열의 "TAC host +15~21px" 성분). 가산 후에는 생성기
-            // 압축 anchor 로의 후방 스냅이 성장분을 되돌리지 못하게 dirty 처리.
-            st.current_height += host_line_px + pre_height + table_total_height;
+            // [#2279 sb+α 종결] 기계생성 문서의 TAC-모순(treat_as_char=true +
+            // wrap=자리차지) host 표: 한글 fresh 는 host CS 크기의 "빈 줄박스"가
+            // 아니라 host paraPr 의 **sb+sa 를 순수 가산**한다(α=0) — 재저장
+            // ladder 실측: 36399374 pi4→5 = bare + (pi4.sa 500 + pi5.sb 300)
+            // 정확, pi3(sb/sa=0)→4 = bare, 계열X 보도자료 156745609 host 4개
+            // 전부 bare. 종전 font_size 근사(#2352 CS-근사)는 2557 pi27
+            // (sb 1000)에서 우연히 ±2px 로 맞았던 것. 가산 후에는 생성기 압축
+            // anchor 로의 후방 스냅이 성장분을 되돌리지 못하게 dirty 처리.
+            st.current_height += host_spacing_px + pre_height + table_total_height;
             st.vpos_ladder_dirty = true;
+            // [#2279 sb+α 진단] host spacing 가산 내역. 동작 불변.
+            if std::env::var("RHWP_DIAG_TAC").is_ok() {
+                eprintln!(
+                    "DIAG_HOSTBOX pi={} add={:.1} host_sb={:.1} host_sa={:.1} stored_gap_hu={}",
+                    para_idx,
+                    host_spacing_px,
+                    fmt.spacing_before,
+                    fmt.spacing_after,
+                    para.line_segs.first().map(|s| s.line_spacing).unwrap_or(-1),
+                );
+            }
         } else {
             // [#2097 프로브 기록] 빈 host 자리차지 float(v_off>0)의 흐름 전진에
             // v_off + outer_bottom 을 더하는 기하 정합(82802 pi75: 저장 322.6 =
