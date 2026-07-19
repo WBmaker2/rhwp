@@ -24825,3 +24825,62 @@ fn issue2214_scoped_cache_coherence_preserves_transient_pagination() {
         assert_eq!(doc.page_count(), 115, "{label}: page count");
     }
 }
+
+#[test]
+fn update_style_dirties_docinfo_for_hwp5_save() {
+    use crate::model::style::Style;
+    let mut doc = HwpDocument::create_empty();
+    if doc.document.doc_info.styles.is_empty() {
+        doc.document.doc_info.styles.push(Style::default());
+    }
+    doc.document.doc_info.styles.push(Style {
+        local_name: "OLD".to_string(),
+        ..Default::default()
+    });
+    let sid = (doc.document.doc_info.styles.len() - 1) as u32;
+    // parsed 문서처럼 DocInfo 원본 스트림을 채운다(clean 상태): 무효화가 없으면 저장이 원본 반환.
+    doc.document.doc_info.raw_stream = Some(vec![0xAB; 64]);
+    doc.document.doc_info.raw_stream_dirty = false;
+
+    assert!(doc.update_style(sid, r#"{"name":"NEW"}"#));
+
+    assert!(
+        doc.document.doc_info.raw_stream_dirty,
+        "update_style 후 raw_stream_dirty=true 여야 이름 변경이 .hwp 저장에 반영된다"
+    );
+    let bytes = crate::serializer::doc_info::serialize_doc_info(
+        &doc.document.doc_info,
+        &doc.document.doc_properties,
+    );
+    assert_ne!(
+        bytes,
+        vec![0xAB; 64],
+        "serialize_doc_info 가 여전히 원본 스트림을 반환"
+    );
+}
+
+#[test]
+fn delete_style_invalidates_docinfo_and_sections() {
+    use crate::model::style::Style;
+    let mut doc = HwpDocument::create_empty();
+    if doc.document.doc_info.styles.is_empty() {
+        doc.document.doc_info.styles.push(Style::default());
+    }
+    doc.document.doc_info.styles.push(Style::default());
+    let sid = (doc.document.doc_info.styles.len() - 1) as u32;
+    doc.document.sections[0].paragraphs[0].style_id = sid as u8;
+    doc.document.doc_info.raw_stream = Some(vec![0xAB; 64]);
+    doc.document.doc_info.raw_stream_dirty = false;
+    doc.document.sections[0].raw_stream = Some(vec![0xCD; 64]);
+
+    assert!(doc.delete_style(sid));
+
+    assert!(
+        doc.document.doc_info.raw_stream_dirty,
+        "delete_style 후 DocInfo raw_stream_dirty=true 여야 한다"
+    );
+    assert!(
+        doc.document.sections[0].raw_stream.is_none(),
+        "문단 style_id 재배정이 반영되도록 섹션 raw_stream 이 무효화돼야 한다"
+    );
+}
