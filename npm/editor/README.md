@@ -81,6 +81,7 @@ const editor = await createEditor(document.getElementById('editor'));
 | `studioUrl` | `https://edwardkim.github.io/rhwp/` | rhwp-studio HTTP(S) URL. opaque origin은 지원하지 않음 |
 | `width` | `'100%'` | iframe 너비 |
 | `height` | `'100%'` | iframe 높이 |
+| `renderer` | `'canvas2d'` | 문서 단위 renderer 요청. `auto`, `canvas2d`, `canvaskit` 중 하나 |
 | `requestTimeoutMs` | method별 기본값 | 모든 method 제한 시간 override(ms). 일반 10초, load/export 60초 |
 | `handshakeTimeoutMs` | `1000` | v1 협상 후 legacy 전환까지의 제한 시간(ms) |
 
@@ -129,6 +130,14 @@ const svg = await editor.getPageSvg(0); // 첫 페이지
 
 선택된 renderer와 0부터 시작하는 페이지별 readiness 진단을 반환합니다.
 Studio가 `renderer-diagnostics-v1` capability를 제공하지 않으면 명시적으로 실패합니다.
+`auto`에서는 문서 capability preflight, 실제 선택 이유, fallback 이유, 문서 revision과
+resource generation을 `selection`에서 확인할 수 있습니다. 현재 Studio는 `selection`을
+반환하지만, 같은 v1 capability를 제공하는 이전 Studio와의 additive 호환을 위해 이 필드는
+없을 수도 있습니다. `selectionError`는 preflight/리소스/replay 실패를, top-level
+`initializationError`는 Studio 앱 초기화 실패를 나타냅니다. preflight의
+`requiredFontFamilies`는 자동 선택에서 첫 replay 전에 준비해야 하는 문서 폰트 목록입니다.
+기존 v1 소비자 호환을 위해 top-level `request.backend.backend`는 계속 `canvas2d` 또는
+`canvaskit`만 반환하며, `auto` 요청과 실제 선택 과정은 additive `selection`에서 확인합니다.
 
 ```javascript
 const diagnostics = await editor.getRendererDiagnostics(0);

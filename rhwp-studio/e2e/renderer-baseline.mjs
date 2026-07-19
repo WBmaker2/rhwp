@@ -91,6 +91,9 @@ const BACKENDS = [
       const surfaceQuery = options.canvaskitSurface === 'auto'
         ? ''
         : `&canvaskitSurface=${encodeURIComponent(options.canvaskitSurface)}`;
+      if (options.readinessOnly) {
+        return `?renderer=auto&canvaskitMode=default&renderProfile=${encodeURIComponent(profile)}${surfaceQuery}`;
+      }
       return `?renderer=canvaskit&canvaskitMode=default&renderProfile=${encodeURIComponent(profile)}${surfaceQuery}`;
     },
     filenameForProfile(profile) {
@@ -402,6 +405,7 @@ async function readRendererDiagnostics(page, pageIndex, backendKey, profile) {
     const surfaceDiagnostics = pageRenderer?.canvaskitRenderer?.getSurfaceDiagnostics?.() ?? null;
     const canvaskitRender = window.__canvasView
       ?.getCanvasKitRenderDiagnostics?.(targetPageIndex) ?? null;
+    const selection = window.__canvasView?.getRendererSessionDiagnostics?.() ?? null;
     const trackedCanvas = window.__canvasView?.canvasPool?.getCanvas?.(targetPageIndex) ?? null;
     let replayPlan = null;
     let replayPlanError = null;
@@ -423,6 +427,7 @@ async function readRendererDiagnostics(page, pageIndex, backendKey, profile) {
         activeBackend: window.__renderBackend ?? null,
         request: window.__rendererRuntimeRequest ?? null,
         backendFallbackReason: window.__renderBackendFallbackReason ?? null,
+        selection,
         canvasOwnershipTracked: trackedCanvas instanceof HTMLCanvasElement && trackedCanvas.isConnected,
       },
       imageEffects: {
@@ -1273,9 +1278,29 @@ for (const result of results.filter((entry) => entry.readinessGateRequired)) {
   if (runtime.activeBackend !== 'canvaskit') {
     blockers.push('backendNotActive');
   }
-  if (runtime.request?.backend?.backend !== 'canvaskit'
+  if (runtime.request?.backend?.backend !== 'canvas2d'
     || runtime.request?.backend?.source !== 'url') {
-    blockers.push('explicitCanvasKitRequestMissing');
+    blockers.push('legacyRequestProjectionMismatch');
+  }
+  if (runtime.selection?.requestedBackend !== 'auto'
+    || runtime.selection?.request?.backend !== 'auto'
+    || runtime.selection?.request?.source !== 'url'
+    || runtime.selection?.effectiveBackend !== 'canvaskit'
+    || runtime.selection?.selectionReason !== 'autoEligible') {
+    blockers.push('autoSelectionMismatch');
+  }
+  if (runtime.selection?.preflight?.status !== 'eligible'
+    || runtime.selection?.preflight?.complete !== true
+    || runtime.selection?.preflight?.eligible !== true) {
+    blockers.push('autoPreflightNotEligible');
+  }
+  if (typeof runtime.selection?.documentDigest !== 'string'
+    || !runtime.selection.documentDigest.startsWith('blake3:')) {
+    blockers.push('autoDocumentDigestMissing');
+  }
+  if (!Number.isSafeInteger(runtime.selection?.documentRevision)
+    || !Number.isSafeInteger(runtime.selection?.resourceGeneration)) {
+    blockers.push('autoDecisionGenerationMissing');
   }
   if (runtime.request?.canvaskitMode?.mode !== 'default'
     || runtime.request?.canvaskitMode?.source !== 'url') {
@@ -1371,6 +1396,7 @@ for (const result of results.filter((entry) => entry.readinessGateRequired)) {
     activeBackend: runtime.activeBackend ?? null,
     canvasOwnershipTracked: runtime.canvasOwnershipTracked === true,
     request: runtime.request ?? null,
+    selection: runtime.selection ?? null,
     backendFallbackReason: runtime.backendFallbackReason ?? null,
     expectedUnsupportedOps: renderDiagnostics?.lastExpectedUnsupportedOps ?? [],
     unexpectedUnsupportedOps: renderDiagnostics?.lastUnexpectedUnsupportedOps ?? [],
@@ -1401,7 +1427,7 @@ const canvaskitReadinessGate = {
   criteria: {
     sampleFlag: 'canvaskitReadinessGate',
     profile: 'screen',
-    targetBackend: 'canvaskit-default',
+    targetBackend: 'canvaskit-default (explicit auto request)',
     canvaskitSurface: 'auto',
     requireActiveBackend: true,
     requireRuntimeReadiness: true,

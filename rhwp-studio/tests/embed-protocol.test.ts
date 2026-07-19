@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 
 import {
   EMBED_CAPABILITIES,
@@ -9,6 +10,18 @@ import {
 } from '../src/embed/protocol.ts';
 import { routeEmbedRequest, type EmbedRpcHandlers } from '../src/embed/rpc-router.ts';
 import { installEmbedRuntime } from '../src/embed/runtime.ts';
+
+test('renderer diagnostics v1 keeps auto intent in the additive selection field', () => {
+  const source = readFileSync(new URL('../src/main.ts', import.meta.url), 'utf8');
+  assert.match(
+    source,
+    /renderBackendRequest\.backend === 'auto'[\s\S]*?backend: 'canvas2d'[\s\S]*?backend: diagnosticsBackendRequest/,
+  );
+  assert.match(
+    source,
+    /getRendererDiagnostics\(pageIndex\)[\s\S]*?request: rendererRuntimeRequest[\s\S]*?selection,/,
+  );
+});
 
 test('embed protocol은 capability를 포함한 v1 connect와 session-bound request만 허용한다', () => {
   assert.equal(isConnectMessage({
@@ -405,6 +418,7 @@ function rendererDiagnostics(page: number) {
     initializationError: null,
     effectiveBackend: 'canvaskit' as const,
     backendFallbackReason: null,
+    selection: null,
     page: { index: page, canvaskit: null },
   };
 }
