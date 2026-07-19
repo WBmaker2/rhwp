@@ -38,6 +38,7 @@ import * as _picture from './input-handler-picture';
 import { computeHangingIndentPx } from './hanging-indent';
 import { isPageLocalTextEditCommand, type PageLocalTextEditOptions } from './input-edit-invalidation';
 import type { NavigationKeyInput } from './navigation-keymap';
+import { isPointNearBoxBorder } from './table-border-hit';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 const DRAG_SCROLL_EDGE_PX = 48;
@@ -1521,21 +1522,13 @@ export class InputHandler {
 
   /** 클릭 좌표가 표 외곽 경계선 위인지 판별한다 (페이지 좌표 기준) */
   private isTableBorderClick(
+    pageIdx: number,
     pageX: number, pageY: number,
     sec: number, ppi: number, ci: number,
   ): boolean {
     try {
-      const bbox = this.wasm.getTableBBox(sec, ppi, ci);
-      const tolerance = 5; // 페이지 좌표 기준 px
-      const nearLeft = Math.abs(pageX - bbox.x) <= tolerance;
-      const nearRight = Math.abs(pageX - (bbox.x + bbox.width)) <= tolerance;
-      const nearTop = Math.abs(pageY - bbox.y) <= tolerance;
-      const nearBottom = Math.abs(pageY - (bbox.y + bbox.height)) <= tolerance;
-      // 세로 범위 내 좌/우 경계, 가로 범위 내 상/하 경계
-      const inVertRange = pageY >= bbox.y - tolerance && pageY <= bbox.y + bbox.height + tolerance;
-      const inHorzRange = pageX >= bbox.x - tolerance && pageX <= bbox.x + bbox.width + tolerance;
-      return (nearLeft && inVertRange) || (nearRight && inVertRange) ||
-             (nearTop && inHorzRange) || (nearBottom && inHorzRange);
+      const bbox = this.wasm.getTableBBoxAtPage(sec, ppi, ci, pageIdx);
+      return isPointNearBoxBorder(pageX, pageY, bbox);
     } catch {
       return false;
     }
@@ -1598,16 +1591,8 @@ export class InputHandler {
   ): { sec: number; ppi: number; ci: number } | null {
     try {
       const layout = this.wasm.getPageControlLayout(pageIdx);
-      const tolerance = 5;
       const isNearBorder = (x: number, y: number, w: number, h: number): boolean => {
-        const nearLeft = Math.abs(pageX - x) <= tolerance;
-        const nearRight = Math.abs(pageX - (x + w)) <= tolerance;
-        const nearTop = Math.abs(pageY - y) <= tolerance;
-        const nearBottom = Math.abs(pageY - (y + h)) <= tolerance;
-        const inVertRange = pageY >= y - tolerance && pageY <= y + h + tolerance;
-        const inHorzRange = pageX >= x - tolerance && pageX <= x + w + tolerance;
-        return (nearLeft && inVertRange) || (nearRight && inVertRange) ||
-               (nearTop && inHorzRange) || (nearBottom && inHorzRange);
+        return isPointNearBoxBorder(pageX, pageY, { x, y, width: w, height: h });
       };
 
       for (const item of layout.controls) {
@@ -1629,7 +1614,7 @@ export class InputHandler {
       for (const ppi of candidates) {
         if (ppi < 0) continue;
         for (let ci = 0; ci < 10; ci++) {
-          if (this.isTableBorderClick(pageX, pageY, sec, ppi, ci)) {
+          if (this.isTableBorderClick(pageIdx, pageX, pageY, sec, ppi, ci)) {
             return { sec, ppi, ci };
           }
         }

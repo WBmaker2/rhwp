@@ -399,11 +399,11 @@ export function onClick(this: any, e: MouseEvent): void {
                 hit.sectionIndex === ref.sec &&
                 hit.parentParaIndex === ref.ppi &&
                 hit.controlIndex === ref.ci &&
-                !this.isTableBorderClick(px, py, hit.sectionIndex, hit.parentParaIndex, hit.controlIndex)) {
+                !this.isTableBorderClick(pi, px, py, hit.sectionIndex, hit.parentParaIndex, hit.controlIndex)) {
               enterCellHit = hit;
             }
           }
-          const bbox = this.wasm.getTableBBox(ref.sec, ref.ppi, ref.ci);
+          const bbox = this.wasm.getTableBBoxAtPage(ref.sec, ref.ppi, ref.ci, pi);
           if (px >= bbox.x && px <= bbox.x + bbox.width &&
               py >= bbox.y && py <= bbox.y + bbox.height) {
             clickedInsideSelectedTable = true;
@@ -943,7 +943,7 @@ export function onClick(this: any, e: MouseEvent): void {
 
     // 표 경계선 클릭 감지 → 표 객체 선택 (셀 내부에서 외곽 클릭)
     if (hit.parentParaIndex !== undefined && hit.controlIndex !== undefined && !hit.isTextBox) {
-      if (this.isTableBorderClick(pageX, pageY, hit.sectionIndex, hit.parentParaIndex, hit.controlIndex)) {
+      if (this.isTableBorderClick(pageIdx, pageX, pageY, hit.sectionIndex, hit.parentParaIndex, hit.controlIndex)) {
         this.cursor.clearSelection();
         this.cursor.moveTo(hit); // 셀 위치로 이동 (유효한 렌더링 위치)
         this.cursor.enterTableObjectSelectionDirect(hit.sectionIndex, hit.parentParaIndex, hit.controlIndex);
@@ -1714,7 +1714,7 @@ export function onMouseMove(this: any, e: MouseEvent): void {
         const px = (x - pl) / zoom;
         const py = (y - po) / zoom;
         try {
-          const bbox = this.wasm.getTableBBox(ref.sec, ref.ppi, ref.ci);
+          const bbox = this.wasm.getTableBBoxAtPage(ref.sec, ref.ppi, ref.ci, pi);
           if (px >= bbox.x && px <= bbox.x + bbox.width &&
               py >= bbox.y && py <= bbox.y + bbox.height) {
             this.container.style.cursor = 'move';

@@ -2690,6 +2690,26 @@ impl HwpDocument {
         .map_err(|e| e.into())
     }
 
+    /// 지정 page 에 배치된 표 fragment 의 바운딩박스를 반환한다 (#2400).
+    ///
+    /// 반환: JSON `{"pageIndex":<N>,"x":<f>,"y":<f>,"width":<f>,"height":<f>}`
+    #[wasm_bindgen(js_name = getTableBBoxAtPage)]
+    pub fn get_table_bbox_at_page(
+        &self,
+        section_idx: u32,
+        parent_para_idx: u32,
+        control_idx: u32,
+        page_idx: u32,
+    ) -> Result<String, JsValue> {
+        self.get_table_bbox_at_page_native(
+            section_idx as usize,
+            parent_para_idx as usize,
+            control_idx as usize,
+            page_idx as usize,
+        )
+        .map_err(|e| e.into())
+    }
+
     /// [Task #919] 글상자/도형 컨트롤의 페이지 좌표 바운딩박스를 반환한다.
     ///
     /// 반환: JSON `{"pageIndex":<N>,"x":<f>,"y":<f>,"width":<f>,"height":<f>}`
