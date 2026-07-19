@@ -179,6 +179,23 @@ function cellPathJson(pos: DocumentPosition): string {
   return JSON.stringify(pos.cellPath ?? []);
 }
 
+/**
+ * 셀 문단 인덱스 — cellPath 가 있으면 마지막(가장 안쪽) 엔트리에서 읽는다.
+ *
+ * hit-test 는 flat 필드(controlIndex/cellIndex/cellParaIndex)를 `cellPath[0]`, 즉 **최외곽**
+ * 엔트리에서 채운다(cursor_rect.rs 의 `outer = &ctx.path[0]`). 그래서 중첩 셀에서
+ * `pos.cellParaIndex` 는 바깥 셀의 문단 인덱스이고, 안쪽 셀의 값은
+ * `cellPath[last].cellParaIndex` 다. 이를 섞으면 ...ByPath API 에 바깥 축의 인덱스를 넘겨
+ * 엉뚱한 문단을 병합/분할한다.
+ *
+ * cursor.ts(:399) 와 input-handler-text.ts(:307) 의 `useCellPath` 분기와 동일한 규칙이다.
+ * depth 1 에서는 `cellPath[0]` 이 곧 최외곽이라 flat 값과 같으므로 동작 변화가 없다.
+ */
+function cellParaIndexOf(pos: DocumentPosition): number {
+  const path = pos.cellPath;
+  return (path?.length ?? 0) > 0 ? path![path!.length - 1].cellParaIndex : pos.cellParaIndex!;
+}
+
 /** 셀 문단 구조 편집 뒤 flat/path 커서 위치를 같은 문단으로 맞춘다. */
 function cellParagraphPosition(
   pos: DocumentPosition,
@@ -1163,7 +1180,7 @@ export class SplitParagraphInCellCommand implements EditCommand {
     const pos = this.position;
     const sec = pos.sectionIndex;
     const ppi = pos.parentParaIndex!;
-    const cpi = pos.cellParaIndex!;
+    const cpi = cellParaIndexOf(pos);
     if (isNestedCell(pos)) {
       wasm.splitParagraphInCellByPath(sec, ppi, cellPathJson(pos), pos.charOffset);
     } else {
@@ -1176,7 +1193,7 @@ export class SplitParagraphInCellCommand implements EditCommand {
     const pos = this.position;
     const sec = pos.sectionIndex;
     const ppi = pos.parentParaIndex!;
-    const cpi = pos.cellParaIndex!;
+    const cpi = cellParaIndexOf(pos);
     if (isNestedCell(pos)) {
       // undo: 분할된 다음 문단을 병합 → cellPath의 cellParaIndex를 +1로 변경
       const undoPath = [...pos.cellPath!];
@@ -1205,12 +1222,20 @@ export class MergeParagraphInCellCommand implements EditCommand {
     const pos = this.position;
     const sec = pos.sectionIndex;
     const ppi = pos.parentParaIndex!;
-    const cpi = pos.cellParaIndex!;
-    // 병합 전 이전 셀 문단 길이 기억
-    this.mergePointOffset = wasm.getCellParagraphLength(sec, ppi, pos.controlIndex!, pos.cellIndex!, cpi - 1);
+    const cpi = cellParaIndexOf(pos);
+    // 병합 전 이전 셀 문단 길이 기억.
+    // flat 필드(controlIndex/cellIndex)는 "외부 표 기준" 레거시 좌표라(types.ts DocumentPosition)
+    // 중첩 셀에서는 안쪽 셀을 가리키지 못한다. 뮤테이션이 ByPath 로 분기하는 만큼 길이 조회도
+    // 같은 축으로 맞춘다(cursor.ts 의 useCellPath 분기와 동형). 어긋나면 undo 가 바깥 셀에서
+    // 읽은 길이로 안쪽 셀을 분할해 문단이 엉뚱한 지점에서 잘린다.
     if (isNestedCell(pos)) {
+      const prevPath = pos.cellPath!.map((entry, index, path) =>
+        index + 1 === path.length ? { ...entry, cellParaIndex: cpi - 1 } : entry,
+      );
+      this.mergePointOffset = wasm.getCellParagraphLengthByPath(sec, ppi, JSON.stringify(prevPath));
       wasm.mergeParagraphInCellByPath(sec, ppi, cellPathJson(pos));
     } else {
+      this.mergePointOffset = wasm.getCellParagraphLength(sec, ppi, pos.controlIndex!, pos.cellIndex!, cpi - 1);
       wasm.mergeParagraphInCell(sec, ppi, pos.controlIndex!, pos.cellIndex!, cpi);
     }
     return cellParagraphPosition(pos, cpi - 1, this.mergePointOffset);
@@ -1220,7 +1245,7 @@ export class MergeParagraphInCellCommand implements EditCommand {
     const pos = this.position;
     const sec = pos.sectionIndex;
     const ppi = pos.parentParaIndex!;
-    const cpi = pos.cellParaIndex!;
+    const cpi = cellParaIndexOf(pos);
     if (isNestedCell(pos)) {
       const undoPath = [...pos.cellPath!];
       undoPath[undoPath.length - 1] = { ...undoPath[undoPath.length - 1], cellParaIndex: cpi - 1 };
@@ -1246,7 +1271,7 @@ export class MergeNextParagraphInCellCommand implements EditCommand {
     const pos = this.position;
     const sec = pos.sectionIndex;
     const ppi = pos.parentParaIndex!;
-    const cpi = pos.cellParaIndex!;
+    const cpi = cellParaIndexOf(pos);
     if (isNestedCell(pos)) {
       const nextPath = [...pos.cellPath!];
       nextPath[nextPath.length - 1] = { ...nextPath[nextPath.length - 1], cellParaIndex: cpi + 1 };
@@ -1261,7 +1286,7 @@ export class MergeNextParagraphInCellCommand implements EditCommand {
     const pos = this.position;
     const sec = pos.sectionIndex;
     const ppi = pos.parentParaIndex!;
-    const cpi = pos.cellParaIndex!;
+    const cpi = cellParaIndexOf(pos);
     if (isNestedCell(pos)) {
       wasm.splitParagraphInCellByPath(sec, ppi, cellPathJson(pos), pos.charOffset);
     } else {
