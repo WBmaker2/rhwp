@@ -527,7 +527,11 @@ pub fn serialize_char_shape(cs: &CharShape) -> Vec<u8> {
 
 pub fn serialize_tab_def(td: &TabDef) -> Vec<u8> {
     let mut w = ByteWriter::new();
-    w.write_u32(td.attr).unwrap();
+    // auto tab 비트(bit0=left, bit1=right)를 불리언에서 재인코딩한다. 파서는 이 두
+    // 불리언을 attr 하위 2비트로만 복원하므로(parser/doc_info.rs), HWPX 유래/IR 생성
+    // TabDef(attr=0 이고 불리언만 세팅)를 그대로 쓰면 자동 탭 설정이 저장 시 유실된다.
+    let attr = (td.attr & !0x03) | (td.auto_tab_left as u32) | ((td.auto_tab_right as u32) << 1);
+    w.write_u32(attr).unwrap();
     w.write_u32(td.tabs.len() as u32).unwrap();
     for tab in &td.tabs {
         w.write_u32(tab.position).unwrap();
