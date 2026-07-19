@@ -1,4 +1,11 @@
 import type { HmlSaveState } from '../core/hml-save-capability.ts';
+import type {
+  CanvasKitRenderModeRequest,
+  CanvasKitSurfaceRequest,
+  LayerRenderProfile,
+  RenderBackend,
+  RenderBackendRequest,
+} from '../view/render-backend.ts';
 
 export interface EmbedRpcHandlers {
   ready(): Promise<boolean>;
@@ -20,13 +27,20 @@ export interface EmbedRpcHandlers {
 
 export interface EmbedRendererDiagnosticsV1 {
   schemaVersion: 1;
-  request: unknown;
+  request: EmbedRendererRuntimeRequestV1 | null;
   initialized: boolean;
   initializationError: string | null;
   effectiveBackend: 'canvas2d' | 'canvaskit' | null;
   backendFallbackReason: string | null;
   selection: unknown;
   page: { index: number; canvaskit: unknown };
+}
+
+export interface EmbedRendererRuntimeRequestV1 {
+  backend: Omit<RenderBackendRequest, 'backend'> & { backend: RenderBackend };
+  canvaskitMode: CanvasKitRenderModeRequest;
+  canvaskitSurface: CanvasKitSurfaceRequest;
+  renderProfile: LayerRenderProfile;
 }
 
 function asParams(value: unknown): Record<string, unknown> {

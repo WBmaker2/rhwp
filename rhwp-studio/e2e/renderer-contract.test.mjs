@@ -401,8 +401,13 @@ requireSnippet(
 );
 requireSnippet(
   mainSource,
-  /async getRendererDiagnostics\(pageIndex\)[\s\S]*?getRendererSessionDiagnostics\(\)[\s\S]*?initialized: rendererInitialized[\s\S]*?initializationError:[\s\S]*?effectiveBackend: selection\?\.effectiveBackend[\s\S]*?backendFallbackReason:[\s\S]*?selection,[\s\S]*?getCanvasKitRenderDiagnostics\(pageIndex\)/,
+  /async getRendererDiagnostics\(pageIndex\)[\s\S]*?getRendererSessionDiagnostics\(\)[\s\S]*?request: rendererRuntimeRequest[\s\S]*?initialized: rendererInitialized[\s\S]*?initializationError:[\s\S]*?effectiveBackend: selection\?\.effectiveBackend[\s\S]*?backendFallbackReason:[\s\S]*?selection,[\s\S]*?getCanvasKitRenderDiagnostics\(pageIndex\)/,
   'Studio iframe API should expose backend selection and page-scoped renderer diagnostics',
+);
+requireSnippet(
+  mainSource,
+  /renderBackendRequest\.backend === 'auto'[\s\S]*?backend: 'canvas2d'[\s\S]*?backend: diagnosticsBackendRequest/,
+  'Studio renderer diagnostics v1 should preserve its legacy request backend enum',
 );
 requireSnippet(
   rendererSessionSource,
@@ -476,8 +481,8 @@ requireSnippet(
 );
 requireSnippet(
   canvasViewSource,
-  /activeRendererDecisionKey[\s\S]*?getCanvasKitRenderDiagnostics\(pageIdx\)\?\.lastRenderError[\s\S]*?scheduleCanvasKitFallback\([\s\S]*?'runtime'[\s\S]*?fallbackFromRuntimeFailure\(error, expectedDecisionKey\)/,
-  'CanvasView should promote auto CanvasKit runtime failures through the current document decision only',
+  /activeRendererDecisionKey[\s\S]*?getCanvasKitRenderDiagnostics\(pageIdx\)[\s\S]*?!canvaskitDiagnostics\.passesRuntimeReadinessGate[\s\S]*?rendererSession\.isAutoRequest\(\)[\s\S]*?readinessBlockers\.join[\s\S]*?scheduleCanvasKitFallback\([\s\S]*?'runtime'[\s\S]*?fallbackFromRuntimeFailure\(error, expectedDecisionKey\)/,
+  'CanvasView should promote failed auto CanvasKit readiness through the current document decision only',
 );
 requireSnippet(
   pageRendererSource,
@@ -491,7 +496,7 @@ requireSnippet(
 );
 requireSnippet(
   rendererBaselineSource,
-  /if \(options\.readinessOnly\) \{[\s\S]*?\?canvaskitMode=default&renderProfile=[\s\S]*?runtime\.request\?\.backend\?\.backend !== 'auto'[\s\S]*?runtime\.selection\?\.selectionReason !== 'autoEligible'[\s\S]*?autoPreflightNotEligible/,
+  /if \(options\.readinessOnly\) \{[\s\S]*?\?canvaskitMode=default&renderProfile=[\s\S]*?runtime\.request\?\.backend\?\.backend !== 'canvas2d'[\s\S]*?runtime\.selection\?\.request\?\.backend !== 'auto'[\s\S]*?runtime\.selection\?\.selectionReason !== 'autoEligible'[\s\S]*?autoPreflightNotEligible/,
   'Selected readiness should measure the no-parameter default auto candidate and its preflight decision',
 );
 requireSnippet(

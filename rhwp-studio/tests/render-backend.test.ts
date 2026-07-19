@@ -412,6 +412,20 @@ test('CanvasView renders visible pages before deferred prefetch work', () => {
   assert.match(source, /cancelPendingPrefetch\(\)/);
 });
 
+test('CanvasView falls back from failed CanvasKit readiness only for auto requests', () => {
+  const source = readFileSync(new URL('../src/view/canvas-view.ts', import.meta.url), 'utf8');
+  assert.match(
+    source,
+    /canvaskitDiagnostics[\s\S]*?!canvaskitDiagnostics\.passesRuntimeReadinessGate[\s\S]*?rendererSession\.isAutoRequest\(\)/,
+  );
+  assert.match(source, /readinessBlockers\.join\(','\)/);
+  assert.match(source, /lastRenderError[\s\S]*?lastUnexpectedUnsupportedOps/);
+  assert.doesNotMatch(
+    source,
+    /getCanvasKitRenderDiagnostics\(pageIdx\)\?\.lastRenderError/,
+  );
+});
+
 test('ViewportManager coalesces scroll events to one animation frame', () => {
   const source = readFileSync(new URL('../src/view/viewport-manager.ts', import.meta.url), 'utf8');
   assert.match(source, /scrollAnimationFrame: number \| null = null/);

@@ -43,9 +43,11 @@ function preflight(
 function fakeRenderer(
   onDispose: () => void = () => {},
   onReset: () => void = () => {},
+  onCancelPreparation: () => void = () => {},
 ): CanvasKitLayerRenderer {
   return {
     resetDocumentResources: onReset,
+    cancelDocumentPreparation: onCancelPreparation,
     dispose: onDispose,
   } as unknown as CanvasKitLayerRenderer;
 }
@@ -213,6 +215,7 @@ test('revision invalidation prevents stale decisions from becoming current', asy
   let releaseInitialization: ((renderer: CanvasKitLayerRenderer) => void) | null = null;
   let prepareCalls = 0;
   let resetCalls = 0;
+  let cancelPreparationCalls = 0;
   const rendererSession = session('auto', () => new Promise((resolve) => {
     releaseInitialization = resolve;
   }), {
@@ -225,9 +228,11 @@ test('revision invalidation prevents stale decisions from becoming current', asy
   rendererSession.beginDocument('document-a');
   const stalePromise = rendererSession.resolve(wasm as never);
   rendererSession.invalidateDocument();
-  releaseInitialization!(fakeRenderer(() => {}, () => {
-    resetCalls += 1;
-  }));
+  releaseInitialization!(fakeRenderer(
+    () => {},
+    () => { resetCalls += 1; },
+    () => { cancelPreparationCalls += 1; },
+  ));
   const stale = await stalePromise;
   const current = await rendererSession.resolve(wasm as never);
 
@@ -244,6 +249,34 @@ test('revision invalidation prevents stale decisions from becoming current', asy
   assert.equal(resetCalls, 1);
   rendererSession.invalidateDocument({ resetResources: false });
   assert.equal(resetCalls, 1);
+  assert.equal(cancelPreparationCalls, 1);
+});
+
+test('revision invalidation during document preparation returns a superseded Canvas2D selection', async () => {
+  for (const preparationResult of ['resolve', 'reject'] as const) {
+    let finishPreparation: (() => void) | null = null;
+    const rendererSession = session('auto', async () => fakeRenderer(), {
+      prepareCanvasKitDocument: () => new Promise<void>((resolve, reject) => {
+        finishPreparation = preparationResult === 'resolve'
+          ? resolve
+          : () => reject(new Error('stale font failure'));
+      }),
+    });
+    const wasm = { getCanvasKitDocumentPreflight: () => preflight('eligible') };
+
+    rendererSession.beginDocument(`document-prepare-${preparationResult}`);
+    const stalePromise = rendererSession.resolve(wasm as never);
+    while (!finishPreparation) await Promise.resolve();
+    rendererSession.invalidateDocument();
+    finishPreparation();
+
+    const stale = await stalePromise;
+    assert.equal(stale.backend, 'canvas2d');
+    assert.equal(stale.diagnostics.selectionReason, 'superseded');
+    assert.equal(stale.diagnostics.fallbackReason, 'canvaskitRevisionInvalidated');
+    assert.equal(stale.diagnostics.selectionError, null);
+    assert.equal(rendererSession.isCurrent(stale), false);
+  }
 });
 
 test('auto mutations pin Canvas2D without rescanning until the caller re-evaluates', async () => {

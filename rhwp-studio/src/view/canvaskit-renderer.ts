@@ -74,6 +74,7 @@ import {
 import { parseStaticSvgPathLayers, type StaticSvgPathLayer } from './static-svg-path-layers';
 import { loadLocalFontBytesFor, localFontFaceKey, resolveLocalFont, type LocalFontRecord } from '@/core/local-fonts';
 import type { CanvasKitBundledFontSource } from '@/core/font-loader';
+import { readBoundedResponseArrayBuffer } from './canvaskit/bounded-response';
 
 type CanvasKitApi = CanvasKit;
 type SkCanvas = Canvas;
@@ -182,6 +183,7 @@ export class CanvasKitLayerRenderer {
   private readonly bundledTypefaces = new Map<string, CanvasKitLocalTypeface>();
   private readonly bundledTypefaceAliases = new Map<string, CanvasKitLocalTypeface>();
   private readonly bundledTypefaceLoadFailures = new Set<string>();
+  private readonly bundledFontRequests = new Set<AbortController>();
   private readonly unsupportedOps = new Set<string>();
   private surfaceBackend: 'default' | 'software' | null = null;
   private surfaceFallbackReason: string | null = null;
@@ -228,7 +230,9 @@ export class CanvasKitLayerRenderer {
     try {
       const response = await fetch(defaultFontUrl);
       if (response.ok) {
-        const bytes = await response.arrayBuffer();
+        const bytes = await readBoundedResponseArrayBuffer(response, {
+          maxBytes: CanvasKitLayerRenderer.MAX_BUNDLED_FONT_BYTES,
+        });
         defaultTypeface = canvasKit.Typeface.MakeFreeTypeFaceFromData(bytes)
           ?? canvasKit.Typeface.MakeTypefaceFromData(bytes);
         defaultFontManager = canvasKit.FontMgr.FromData(bytes);
@@ -272,21 +276,22 @@ export class CanvasKitLayerRenderer {
         }
         let typeface: Typeface | null = null;
         let fontManager: FontMgr | null = null;
+        const request = new AbortController();
+        this.bundledFontRequests.add(request);
         try {
-          const response = await fetch(source.url);
+          if (this.disposed || generation !== this.documentGeneration) {
+            throw new Error('문서 교체로 CanvasKit font 준비가 취소되었습니다');
+          }
+          const response = await fetch(source.url, { signal: request.signal });
           if (!response.ok) {
             throw new Error(`HTTP ${response.status}`);
           }
-          const declaredLength = Number(response.headers.get('content-length') ?? 0);
-          if (Number.isFinite(declaredLength)
-            && declaredLength > CanvasKitLayerRenderer.MAX_BUNDLED_FONT_BYTES) {
-            throw new Error(`font payload가 ${CanvasKitLayerRenderer.MAX_BUNDLED_FONT_BYTES} bytes를 초과합니다`);
-          }
-          const bytes = await response.arrayBuffer();
-          if (bytes.byteLength === 0
-            || bytes.byteLength > CanvasKitLayerRenderer.MAX_BUNDLED_FONT_BYTES) {
-            throw new Error(`font payload 크기가 유효하지 않습니다: ${bytes.byteLength}`);
-          }
+          const bytes = await readBoundedResponseArrayBuffer(response, {
+            maxBytes: CanvasKitLayerRenderer.MAX_BUNDLED_FONT_BYTES,
+            signal: request.signal,
+            isCancelled: () => this.disposed || generation !== this.documentGeneration,
+            cancelledMessage: '문서 교체로 CanvasKit font 준비가 취소되었습니다',
+          });
           if (this.disposed || generation !== this.documentGeneration) {
             throw new Error('문서 교체로 CanvasKit font 준비가 취소되었습니다');
           }
@@ -307,10 +312,13 @@ export class CanvasKitLayerRenderer {
         } catch (error) {
           typeface?.delete?.();
           fontManager?.delete?.();
-          if (!this.disposed && generation === this.documentGeneration) {
+          if (!request.signal.aborted
+            && !this.disposed && generation === this.documentGeneration) {
             this.bundledTypefaceLoadFailures.add(source.url);
           }
           throw new Error(`CanvasKit font source 준비 실패 (${source.url}): ${error}`);
+        } finally {
+          this.bundledFontRequests.delete(request);
         }
       }
       for (const alias of source.aliases) {
@@ -462,6 +470,7 @@ export class CanvasKitLayerRenderer {
 
   resetDocumentResources(): void {
     this.documentGeneration += 1;
+    this.cancelDocumentPreparation();
     for (const entry of this.imageCache.values()) entry.image?.delete?.();
     this.imageCache.clear();
     this.imageCachePixels = 0;
@@ -489,6 +498,13 @@ export class CanvasKitLayerRenderer {
     this.imageCacheEvictions = 0;
     this.renderCount = 0;
     this.lastRenderDurationMs = null;
+  }
+
+  cancelDocumentPreparation(): void {
+    for (const request of this.bundledFontRequests) {
+      request.abort(new Error('문서 교체로 CanvasKit font 준비가 취소되었습니다'));
+    }
+    this.bundledFontRequests.clear();
   }
 
   diagnostics(): CanvasKitRenderDiagnostics {

@@ -54,6 +54,7 @@ import {
   type RenderBackendFallbackReason,
 } from '@/view/render-backend';
 import { installEmbedRuntime } from '@/embed/runtime';
+import type { EmbedRendererRuntimeRequestV1 } from '@/embed/rpc-router';
 
 const wasm = new WasmBridge();
 const eventBus = new EventBus();
@@ -85,12 +86,7 @@ let toolbar: Toolbar | null = null;
 let ruler: Ruler | null = null;
 let rendererSession: RendererSession | null = null;
 let editMode: EditorEditMode = 'normal';
-let rendererRuntimeRequest: {
-  backend: ReturnType<typeof resolveRenderBackendRequest>;
-  canvaskitMode: ReturnType<typeof resolveCanvasKitRenderModeRequest>;
-  canvaskitSurface: ReturnType<typeof resolveCanvasKitSurfaceRequest>;
-  renderProfile: ReturnType<typeof resolveRenderProfile>;
-} | null = null;
+let rendererRuntimeRequest: EmbedRendererRuntimeRequestV1 | null = null;
 let renderBackendFallbackReason: RenderBackendFallbackReason | null = null;
 let rendererInitializationError: string | null = null;
 let rendererInitialized = false;
@@ -287,8 +283,12 @@ async function initialize(): Promise<void> {
     const canvaskitMode = canvaskitModeRequest.mode;
     const canvaskitSurfaceRequest = resolveCanvasKitSurfaceRequest(window.location.search);
     const renderProfile = resolveRenderProfile(window.location.search);
+    const diagnosticsBackendRequest: EmbedRendererRuntimeRequestV1['backend'] =
+      renderBackendRequest.backend === 'auto'
+        ? { ...renderBackendRequest, backend: 'canvas2d' }
+        : { ...renderBackendRequest, backend: renderBackendRequest.backend };
     rendererRuntimeRequest = {
-      backend: renderBackendRequest,
+      backend: diagnosticsBackendRequest,
       canvaskitMode: canvaskitModeRequest,
       canvaskitSurface: canvaskitSurfaceRequest,
       renderProfile,

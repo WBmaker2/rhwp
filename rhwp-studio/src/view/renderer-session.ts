@@ -121,6 +121,8 @@ export class RendererSession {
     this.pending = null;
     if (options.resetResources !== false) {
       this.canvaskitRenderer?.resetDocumentResources();
+    } else {
+      this.canvaskitRenderer?.cancelDocumentPreparation?.();
     }
   }
 
@@ -324,13 +326,24 @@ export class RendererSession {
       try {
         await this.options.prepareCanvasKitDocument(renderer, preflight);
       } catch (error) {
+        if (this.decisionKey() === key) {
+          return this.selection(
+            key,
+            'canvas2d',
+            'canvaskitResourcePreparationFailed',
+            'canvaskitResourcePreparationFailed',
+            preflight,
+            errorText(error),
+          );
+        }
+      }
+      if (this.decisionKey() !== key) {
         return this.selection(
           key,
           'canvas2d',
-          'canvaskitResourcePreparationFailed',
-          'canvaskitResourcePreparationFailed',
+          'superseded',
+          'canvaskitRevisionInvalidated',
           preflight,
-          errorText(error),
         );
       }
     }

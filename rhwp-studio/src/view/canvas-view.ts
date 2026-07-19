@@ -407,14 +407,28 @@ export class CanvasView {
         renderedCanvas = renderResult.renderedCanvas;
         this.canvasPool.replace(pageIdx, canvas, renderedCanvas);
       }
-      const canvaskitFailure = this.pageRenderer.getBackend() === 'canvaskit'
-        ? this.pageRenderer.getCanvasKitRenderDiagnostics(pageIdx)?.lastRenderError ?? null
+      const canvaskitDiagnostics = this.pageRenderer.getBackend() === 'canvaskit'
+        ? this.pageRenderer.getCanvasKitRenderDiagnostics(pageIdx)
         : null;
-      if (canvaskitFailure && rendererDecisionKey && this.rendererSession.isAutoRequest()) {
+      if (
+        canvaskitDiagnostics
+        && !canvaskitDiagnostics.passesRuntimeReadinessGate
+        && rendererDecisionKey
+        && this.rendererSession.isAutoRequest()
+      ) {
+        const details = [
+          `blockers=${canvaskitDiagnostics.readinessBlockers.join(',') || 'unknown'}`,
+          canvaskitDiagnostics.lastRenderError
+            ? `error=${canvaskitDiagnostics.lastRenderError}`
+            : null,
+          canvaskitDiagnostics.lastUnexpectedUnsupportedOps.length > 0
+            ? `unexpectedOps=${canvaskitDiagnostics.lastUnexpectedUnsupportedOps.join(',')}`
+            : null,
+        ].filter((detail): detail is string => detail !== null).join('; ');
         this.pageRenderer.removePageLayers(this.scrollContent, pageIdx);
         this.removeGridOverlay(pageIdx);
         this.scheduleCanvasKitFallback(
-          new Error(canvaskitFailure),
+          new Error(`CanvasKit runtime readiness gate failed (${details})`),
           rendererDecisionKey,
           'runtime',
         );

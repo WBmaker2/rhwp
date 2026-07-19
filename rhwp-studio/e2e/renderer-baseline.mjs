@@ -1278,11 +1278,13 @@ for (const result of results.filter((entry) => entry.readinessGateRequired)) {
   if (runtime.activeBackend !== 'canvaskit') {
     blockers.push('backendNotActive');
   }
-  if (runtime.request?.backend?.backend !== 'auto'
+  if (runtime.request?.backend?.backend !== 'canvas2d'
     || runtime.request?.backend?.source !== 'default') {
-    blockers.push('defaultAutoRequestMissing');
+    blockers.push('legacyDefaultRequestMismatch');
   }
   if (runtime.selection?.requestedBackend !== 'auto'
+    || runtime.selection?.request?.backend !== 'auto'
+    || runtime.selection?.request?.source !== 'default'
     || runtime.selection?.effectiveBackend !== 'canvaskit'
     || runtime.selection?.selectionReason !== 'autoEligible') {
     blockers.push('autoSelectionMismatch');
