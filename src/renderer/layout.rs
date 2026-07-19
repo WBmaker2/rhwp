@@ -5025,11 +5025,20 @@ impl LayoutEngine {
                     }
                 };
                 let mut jump_to = y_offset;
+                let same_owner_table_precedes =
+                    col_content.items[..item_ordinal].iter().any(|previous| {
+                        matches!(previous,
+                            PageItem::Table { para_index, .. }
+                                | PageItem::PartialTable { para_index, .. }
+                                if *para_index == item_para)
+                    });
                 for zone in &visible_float_exclusions {
                     // [Issue #1549] 자기 문단에 앵커된 float 표는 그 문단의 텍스트(제목)를
                     // 밀어내지 않는다 — 제목은 앵커(표 위)에 남아야 한다. owner 가 다른 후속
                     // 문단은 그대로 표 아래로 밀린다.
-                    if zone.owner_para == item_para {
+                    // [#2439] 단, 같은 문단의 표 항목 뒤에 emit 된 post-text(서명란)는
+                    // 이미 표 뒤 순서로 확정된 것이므로 자기 exclusion 도 소비해야 한다.
+                    if zone.owner_para == item_para && !same_owner_table_precedes {
                         continue;
                     }
                     let starts_in_zone = jump_to + 0.5 >= zone.top && jump_to < zone.bottom;
@@ -6530,12 +6539,22 @@ impl LayoutEngine {
                 } else {
                     table_visual_end
                 };
+                let signed_vertical_offset = signed_hwpunit(t.common.vertical_offset);
+                let zero_offset_has_following_coanchored_float = signed_vertical_offset == 0
+                    && para.controls.iter().skip(control_index + 1).any(|control| {
+                        matches!(control, Control::Table(following)
+                            if is_para_topbottom_float(&following.common))
+                    });
                 if is_current_visible_para_float
-                    && signed_hwpunit(t.common.vertical_offset) > 0
+                    && (signed_vertical_offset > 0 || zero_offset_has_following_coanchored_float)
                     && table_visual_height > 0.0
                 {
                     let table_visual_top = table_visual_end - table_visual_height;
                     if table_visual_end > table_visual_top + 0.5 {
+                        // [#2439] offset=0 인 첫 co-anchored 표도 후행 float 가 있으면
+                        // exclusion 을 남겨야 한다. 그렇지 않으면 후행 양수-offset 표의
+                        // 자연 상단이 첫 표 안에 있어도 #1535 충돌 회피가 보지 못해 두
+                        // 표가 겹친다. 단독 zero-offset 표는 기존 flow 누적만 유지한다.
                         // exclusion 하단을 표의 outer_margin_bottom 만큼 늘려, 다음 섹션
                         // 제목(이 zone 을 consult)이 표 아래로 그 여백만큼 띄워지게 한다
                         // (한컴: 섹션 표와 다음 섹션 제목 사이 간격 = 표 아래 외곽여백).

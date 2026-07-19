@@ -13980,8 +13980,23 @@ impl TypesetEngine {
         } else if is_visible_para_float {
             let v_off_px = hwpunit_to_px(signed_vertical_offset, self.dpi);
             let outer_top_px = hwpunit_to_px(table.outer_margin_top as i32, self.dpi);
+            let has_preceding_coanchored_float =
+                para.controls.iter().take(ctrl_idx).any(|control| {
+                    matches!(control, Control::Table(previous)
+                        if is_para_topbottom_float(&previous.common))
+                });
             let table_top = if signed_vertical_offset > 0 {
-                para_start_height + outer_top_px + v_off_px
+                let stored_top = para_start_height + outer_top_px + v_off_px;
+                // [#2439] 같은 visible host 의 첫 표가 offset=0이면 flow 를 전진시키지만
+                // exclusion 은 만들지 않는다. 후행 양수-offset 표의 저장 상단이 그 표
+                // 내부에 있으면 한컴은 앞 표 아래로 밀어 전체 높이를 보존한다. 저장
+                // 상단/하단만 쓰면 후행 exclusion 높이가 겹친 만큼 잘려 후속 본문이
+                // 표 안으로 들어가므로, 이미 소비한 co-anchored flow 를 하한으로 둔다.
+                if has_preceding_coanchored_float {
+                    stored_top.max(st.current_height)
+                } else {
+                    stored_top
+                }
             } else if st.profile.hwpx_stored_layout() {
                 // HWPX visible float 는 같은 문단 안의 앞선 float 뒤에 이어 쌓인다.
                 // B/C처럼 둘 다 non-positive offset 이면 문단 시작점이 아니라 현재 흐름
@@ -14126,6 +14141,14 @@ impl TypesetEngine {
             is_last_table && tac_table_count <= 1 && has_post_text && !pre_text_exists;
         if should_add_post_text {
             let post_height: f64 = fmt.line_advances_sum(post_table_start..total_lines);
+            if is_visible_para_float {
+                // [#2439] 다중 visible-host float 의 host 텍스트가 마지막 표 뒤에서
+                // emit 되는 경우, 같은 문단 소유 exclusion 도 post-text 에는 적용한다.
+                // 첫 표 offset=0 뒤의 양수-offset 표가 아래로 밀렸을 때 이 동기화가
+                // 없으면 서명란이 두 번째 표의 상단에 겹치고 flow도 한 표 높이만큼
+                // 과소 소비된다. 선행 제목은 pre-table 경로라 영향 없다.
+                st.apply_visible_float_exclusions(post_height);
+            }
             if self.tac_table_line_index(para, table, fmt) == Some(0)
                 && st.current_height + post_height > st.available_height() + 0.5
                 && !st.current_items.is_empty()
@@ -15480,6 +15503,13 @@ impl TypesetEngine {
             .iter()
             .take(ctrl_idx)
             .any(|c| matches!(c, Control::Table(t) if is_para_topbottom_float(&t.common)));
+        // [#2439] 아래 orphan 가드가 새 페이지/단으로 이월한 뒤에도 원 페이지의
+        // para_start_height 를 visible-float placement/exclusion 에 넘기면, 새 페이지의
+        // 배타영역이 이전 페이지 시작 높이만큼 아래에서 시작한다. 후속 문단은 실제 표를
+        // 건너뛰지 못하고 typeset/layout 좌표가 벌어져 본문 하단 overflow 로 이어진다.
+        // 이월이 실제 발생한 경우에만 placement 기준을 fresh page-local current_height 로
+        // 재설정한다. #1860 의 budget_para_start_height 는 별도 예산 계약이므로 불변이다.
+        let mut placement_para_start_height = para_start_height;
         if is_para_topbottom_float(&table.common)
             && matches!(
                 table.page_break,
@@ -15491,6 +15521,7 @@ impl TypesetEngine {
             && table_total <= available
         {
             st.advance_column_or_new_page();
+            placement_para_start_height = st.current_height;
         }
 
         let single_row_object_declared_fits_current = !table.common.treat_as_char
@@ -15678,7 +15709,7 @@ impl TypesetEngine {
                 para,
                 table,
                 fmt,
-                para_start_height,
+                placement_para_start_height,
                 if let Some(advance) = single_row_object_height_advance {
                     advance
                 } else if is_para_topbottom_float(&table.common)
