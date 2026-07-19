@@ -1631,7 +1631,7 @@ export class CanvasKitLayerRenderer {
         };
         adjustableFont.setEmbolden?.(style.bold === true);
         adjustableFont.setSkewX?.(style.italic === true ? -0.2 : 0);
-        if (needsPreservedAdvances && hasLayoutPositions) {
+        if (hasLayoutPositions) {
           const glyphIds = font.getGlyphIDs(replayText, codePoints.length);
           const hasGlyphMapping = glyphIds.length === codePoints.length
             && glyphIds.every((glyphId) => glyphId !== 0);
@@ -1643,7 +1643,7 @@ export class CanvasKitLayerRenderer {
             }
             canvas.drawGlyphs(glyphIds, glyphPositions, originX, originY, font, paint);
           } else {
-            this.unsupportedOps.add('textRun:glyphMapping');
+            if (needsPreservedAdvances) this.unsupportedOps.add('textRun:glyphMapping');
             canvas.drawText(replayText, originX, originY + baselineShift, paint, font);
           }
         } else if (needsPreservedAdvances) {

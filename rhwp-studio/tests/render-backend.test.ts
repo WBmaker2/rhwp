@@ -163,6 +163,12 @@ test('CanvasKit renderer source does not introduce Canvas2D overlay replay', () 
   assert.equal(source.includes('rhwpOverlay'), false);
 });
 
+test('CanvasKit text replay preserves LayerTree positions for regular runs', () => {
+  const source = readFileSync(new URL('../src/view/canvaskit-renderer.ts', import.meta.url), 'utf8');
+  assert.match(source, /if \(hasLayoutPositions\) \{[\s\S]*?canvas\.drawGlyphs\(/);
+  assert.doesNotMatch(source, /needsPreservedAdvances && hasLayoutPositions/);
+});
+
 test('CanvasKit contains malformed images and bounds both decode caches', () => {
   const source = readFileSync(new URL('../src/view/canvaskit-renderer.ts', import.meta.url), 'utf8');
   assert.match(source, /try \{\s*image = this\.canvasKit\.MakeImageFromEncoded/);
