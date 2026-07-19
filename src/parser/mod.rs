@@ -262,6 +262,11 @@ fn parse_hwp_with_cfb(
         hwpx_aux_entries: Vec::new(),
         is_hwp3_variant: false,
         is_hwpx_variant,
+        provenance: crate::model::provenance::SourceProvenance {
+            format: crate::model::provenance::SourceFormat::Hwp5,
+            hwp3_lineage: false,
+            hwpx_lineage: is_hwpx_variant,
+        },
     };
 
     // 자동 번호 할당 (문서 전체에서 순차적으로)
@@ -283,6 +288,7 @@ fn parse_hwp_with_cfb(
             let cs_r = doc.doc_info.char_shapes.len() as f64 / total_paras as f64;
             if ps_r < 0.20 && cs_r < 0.20 {
                 doc.is_hwp3_variant = true;
+                doc.provenance.hwp3_lineage = true;
                 // [Task #1001 Stage 11] line_segs.vertical_pos /2 보정 revert —
                 // 실제 raw vpos 비교 결과 HWP5 변환본 vpos 는 HWP3 의 2배가 아닌
                 // ~1.15배 (15% 만 차이). /2 fix 시 HWP5 가 HWP3 보다 더 compact 되어
@@ -551,6 +557,11 @@ fn parse_hwp_with_lenient(
         is_hwpx_variant: false,
         hwpx_aux_entries: Vec::new(),
         is_hwp3_variant: false,
+        provenance: crate::model::provenance::SourceProvenance {
+            format: crate::model::provenance::SourceFormat::Hwp5,
+            hwp3_lineage: false,
+            hwpx_lineage: false,
+        },
     };
 
     assign_auto_numbers(&mut doc);

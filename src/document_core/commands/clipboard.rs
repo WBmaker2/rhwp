@@ -646,6 +646,7 @@ impl DocumentCore {
             // [Task #2299] 붙여넣기로 문단 높이가 변했으므로 하류 vpos 를 재연결한다.
             // 생략하면 후속 문단 first < 커진 end 세임이 저장돼 이후 편집의 리셋
             // 보존이 이를 단/쪽 경계로 오인한다.
+            let doc_hwp3_layout = self.document.layout_profile().hwp3_layout();
             crate::renderer::composer::recalculate_section_vpos(
                 &mut self.document.sections[section_idx].paragraphs,
                 para_idx,
@@ -653,7 +654,7 @@ impl DocumentCore {
                 stored_end_for_reset,
                 &self.styles,
                 self.dpi,
-                self.document.is_hwp3_variant,
+                doc_hwp3_layout,
             );
             self.recompose_paragraph(section_idx, para_idx);
             self.paginate_if_needed();
@@ -708,6 +709,7 @@ impl DocumentCore {
         // [Task #2299] 삽입 문단들의 vpos 를 흐름에 연결한다. 클립보드 클론의
         // 원본 좌표/placeholder 를 방치하면 이후 편집의 vpos 재계산이 이를 저장
         // 단/쪽 리셋으로 오인해 영구 고착시킨다 — 신규 구간은 리셋 보존에서 제외.
+        let doc_hwp3_layout = self.document.layout_profile().hwp3_layout();
         crate::renderer::composer::recalculate_section_vpos(
             &mut self.document.sections[section_idx].paragraphs,
             para_idx,
@@ -715,7 +717,7 @@ impl DocumentCore {
             None,
             &self.styles,
             self.dpi,
-            self.document.is_hwp3_variant,
+            doc_hwp3_layout,
         );
 
         // 6. 선택적 재구성: 삽입된 문단 composed 추가 + 영향 문단 재구성
@@ -1165,6 +1167,7 @@ impl DocumentCore {
             );
             self.reflow_paragraph(section_idx, para_idx);
         }
+        let doc_hwp3_layout = self.document.layout_profile().hwp3_layout();
         crate::renderer::composer::recalculate_section_vpos(
             &mut self.document.sections[section_idx].paragraphs,
             para_idx,
@@ -1172,7 +1175,7 @@ impl DocumentCore {
             None,
             &self.styles,
             self.dpi,
-            self.document.is_hwp3_variant,
+            doc_hwp3_layout,
         );
 
         // 리플로우 + 페이지네이션
