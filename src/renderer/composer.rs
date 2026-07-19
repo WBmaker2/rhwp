@@ -1453,6 +1453,25 @@ pub fn recompose_stored_single_line_if_overflowing(
         .first()
         .map(|l| estimate_composed_line_width(l, styles) > cell_inner_width_px * 1.05)
         .unwrap_or(false);
+    if std::env::var("RHWP_DIAG_CELLREWRAP").is_ok() && over {
+        if let Some(l) = composed.lines.first() {
+            for run in &l.runs {
+                let ts = resolved_to_text_style(styles, run.char_style_id, run.lang_index);
+                eprintln!(
+                    "DIAG_CELLREWRAP inner={:.1} fs={:.1} lsp={:.2} font={:?} w={:.1} text={:?}",
+                    cell_inner_width_px,
+                    ts.font_size,
+                    ts.letter_spacing,
+                    ts.font_family.split(',').next().unwrap_or(""),
+                    estimate_text_width(effective_text_for_metrics(run), &ts),
+                    effective_text_for_metrics(run)
+                        .chars()
+                        .take(10)
+                        .collect::<String>(),
+                );
+            }
+        }
+    }
     if !over {
         return;
     }
