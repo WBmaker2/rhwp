@@ -3844,6 +3844,63 @@ mod tests {
     }
 
     #[test]
+    fn delete_range_in_nested_cell_by_path_preserves_outer_cell() {
+        use crate::model::control::Control;
+        use crate::model::table::{Cell, Table};
+
+        let mut core = DocumentCore::new_empty();
+        core.create_blank_document_native().unwrap();
+
+        let mut inner_para = Paragraph::default();
+        inner_para.text = "INNER".to_string();
+        inner_para.char_count = 5;
+        inner_para.char_offsets = vec![0, 1, 2, 3, 4];
+        let nested_table = Table {
+            cells: vec![Cell {
+                paragraphs: vec![inner_para],
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+
+        let mut outer_para = Paragraph::default();
+        outer_para.text = "OUTER".to_string();
+        outer_para.char_count = 5;
+        outer_para.char_offsets = vec![0, 1, 2, 3, 4];
+        outer_para
+            .controls
+            .push(Control::Table(Box::new(nested_table)));
+        let nested_ctrl_idx = outer_para.controls.len() - 1;
+        let outer_table = Table {
+            cells: vec![Cell {
+                paragraphs: vec![outer_para],
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        core.document.sections[0].paragraphs[0]
+            .controls
+            .push(Control::Table(Box::new(outer_table)));
+        let outer_ctrl_idx = core.document.sections[0].paragraphs[0].controls.len() - 1;
+        let path = [(outer_ctrl_idx, 0, 0), (nested_ctrl_idx, 0, 0)];
+
+        // INNER의 1..3(NN)만 지우고, 같은 컨테이너의 바깥 셀 OUTER는 보존해야 한다.
+        core.delete_range_in_cell_by_path(0, 0, &path, 0, 1, 0, 3)
+            .unwrap();
+
+        let Control::Table(outer) =
+            &core.document.sections[0].paragraphs[0].controls[outer_ctrl_idx]
+        else {
+            panic!("expected outer table");
+        };
+        assert_eq!(outer.cells[0].paragraphs[0].text, "OUTER");
+        let Control::Table(inner) = &outer.cells[0].paragraphs[0].controls[nested_ctrl_idx] else {
+            panic!("expected nested table");
+        };
+        assert_eq!(inner.cells[0].paragraphs[0].text, "IER");
+    }
+
+    #[test]
     fn insert_paragraph_inherits_shape_from_previous_paragraph() {
         let mut core = core_with_two_shaped_paragraphs();
 

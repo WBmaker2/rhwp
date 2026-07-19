@@ -2139,8 +2139,11 @@ impl DocumentCore {
 
 #[cfg(test)]
 mod tests {
-    use super::char_shape_mods_affect_text_flow;
+    use super::{char_shape_mods_affect_text_flow, DocumentCore};
+    use crate::model::control::Control;
+    use crate::model::paragraph::{CharShapeRef, Paragraph};
     use crate::model::style::CharShapeMods;
+    use crate::model::table::{Cell, Table};
 
     #[test]
     fn char_ratio_and_spacing_changes_require_text_reflow() {
@@ -2164,6 +2167,109 @@ mod tests {
             ..Default::default()
         };
         assert!(!char_shape_mods_affect_text_flow(&mods));
+    }
+
+    #[test]
+    fn apply_char_format_in_nested_cell_by_path_preserves_outer_cell() {
+        let mut core = DocumentCore::new_empty();
+        core.create_blank_document_native().unwrap();
+        if core.document.doc_info.char_shapes.is_empty() {
+            // 실제 문서는 기본 글자 모양을 보유한다. 새 서식이 0번을 재사용하지 않게 맞춘다.
+            core.document.doc_info.char_shapes.push(Default::default());
+        }
+
+        let inner_para = Paragraph {
+            text: "INNER".to_string(),
+            char_count: 5,
+            char_offsets: vec![0, 1, 2, 3, 4],
+            char_shapes: vec![CharShapeRef {
+                start_pos: 0,
+                char_shape_id: 0,
+            }],
+            ..Default::default()
+        };
+        let nested_table = Table {
+            cells: vec![Cell {
+                paragraphs: vec![inner_para],
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+
+        let mut outer_para = Paragraph {
+            text: "OUTER".to_string(),
+            char_count: 5,
+            char_offsets: vec![0, 1, 2, 3, 4],
+            char_shapes: vec![CharShapeRef {
+                start_pos: 0,
+                char_shape_id: 0,
+            }],
+            ..Default::default()
+        };
+        outer_para
+            .controls
+            .push(Control::Table(Box::new(nested_table)));
+        let nested_ctrl_idx = outer_para.controls.len() - 1;
+        let outer_table = Table {
+            cells: vec![Cell {
+                paragraphs: vec![outer_para],
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        core.document.sections[0].paragraphs[0]
+            .controls
+            .push(Control::Table(Box::new(outer_table)));
+        let outer_ctrl_idx = core.document.sections[0].paragraphs[0].controls.len() - 1;
+        let path = [(outer_ctrl_idx, 0, 0), (nested_ctrl_idx, 0, 0)];
+
+        // 안쪽 셀에만 굵게 적용한다. 바깥 셀의 글자 모양 ID는 그대로여야 한다.
+        core.apply_char_format_in_cell_by_path(0, 0, &path, 0, 5, r#"{"bold":true}"#)
+            .unwrap();
+
+        let inner_shape_id = {
+            let Control::Table(outer) =
+                &core.document.sections[0].paragraphs[0].controls[outer_ctrl_idx]
+            else {
+                panic!("expected outer table");
+            };
+            assert_eq!(
+                outer.cells[0].paragraphs[0].char_shape_id_at(0),
+                Some(0),
+                "바깥 셀에는 서식이 적용되면 안 된다"
+            );
+            let Control::Table(inner) = &outer.cells[0].paragraphs[0].controls[nested_ctrl_idx]
+            else {
+                panic!("expected nested table");
+            };
+            let inner_shape_id = inner.cells[0].paragraphs[0].char_shape_id_at(0);
+            assert_ne!(
+                inner_shape_id,
+                Some(0),
+                "안쪽 셀에는 새 글자 서식이 적용돼야 한다"
+            );
+            inner_shape_id
+        };
+
+        // undo가 쓰는 ByPath 복원도 안쪽 셀만 기본 글자 모양으로 되돌려야 한다.
+        core.set_char_shape_id_in_cell_by_path(0, 0, &path, 0, 5, 0)
+            .unwrap();
+
+        let Control::Table(outer) =
+            &core.document.sections[0].paragraphs[0].controls[outer_ctrl_idx]
+        else {
+            panic!("expected outer table");
+        };
+        assert_eq!(outer.cells[0].paragraphs[0].char_shape_id_at(0), Some(0));
+        let Control::Table(inner) = &outer.cells[0].paragraphs[0].controls[nested_ctrl_idx] else {
+            panic!("expected nested table");
+        };
+        assert_eq!(inner.cells[0].paragraphs[0].char_shape_id_at(0), Some(0));
+        assert_ne!(
+            inner_shape_id,
+            Some(0),
+            "복원 전에는 안쪽 셀만 새 ID여야 한다"
+        );
     }
 }
 
