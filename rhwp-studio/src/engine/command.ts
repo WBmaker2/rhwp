@@ -286,7 +286,9 @@ export class InsertTextCommand implements EditCommand {
 
   undo(wasm: WasmBridge): DocumentPosition {
     this.lastMutationEffects = NO_TEXT_MUTATION_EFFECTS;
-    doDeleteText(wasm, this.position, this.text.length);
+    // [#2337-review] 삭제 count 는 char(Unicode scalar) 단위다. UTF-16 length 를 넘기면
+    // astral 문자에서 실제보다 많이 지워 인접 문자를 잃는다 → HF/FN 과 동일하게 charCount.
+    doDeleteText(wasm, this.position, charCount(this.text));
     return { ...this.position };
   }
 
@@ -588,11 +590,13 @@ export class DeleteSelectionCommand implements EditCommand {
         for (let i = 1; i < this.savedTexts.length; i++) {
           wasm.splitParagraph(sec, currentPara, currentOffset);
           currentPara++;
-          currentOffset = 0;
           const text = this.savedTexts[i];
           if (text) {
             wasm.insertText(sec, currentPara, 0, text);
           }
+          // 다음 분할점은 방금 복원한 텍스트 "뒤" 다. 0 으로 두면 이미 복원된 텍스트 앞을
+          // 잘라 빈 문단이 끼어들고 내용이 다음 문단으로 밀린다(문단 3개 이상 선택 삭제 undo).
+          currentOffset = text ? text.length : 0;
         }
       }
     }

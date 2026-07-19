@@ -75,7 +75,7 @@ impl DocumentCore {
         let styles = crate::renderer::style_resolver::resolve_styles_with_variant(
             &document.doc_info,
             DEFAULT_DPI,
-            document.is_hwp3_variant,
+            document.layout_profile().hwp3_layout(),
         );
 
         let hwp5_origin_hwpx = matches!(source_format, crate::parser::FileFormat::Hwpx)
@@ -106,7 +106,7 @@ impl DocumentCore {
         // 문단은 typeset 의 em 폴백(#2070 축3)이 담당하고(80168 pi=424 오라클),
         // 본문 텍스트 문단 합성은 흐름 소비 팽창으로 sijang 밀도 핀 -5쪽(#2070v2).
         // HWP3 변환본은 #998 게이트(sample16-hwp5=64) 정합상 종전 유지.
-        let include_cell_empty = !document.is_hwp3_variant;
+        let include_cell_empty = !document.layout_profile().hwp3_layout();
         Self::reflow_zero_height_paragraphs(
             &mut document,
             &styles,
@@ -1001,6 +1001,7 @@ impl DocumentCore {
         let styles = resolve_styles(&self.document.doc_info, self.dpi);
         let dpi = self.dpi;
         let mut reflowed = 0usize;
+        let doc_hwp3_layout = self.document.layout_profile().hwp3_layout();
 
         for section in &mut self.document.sections {
             let page_def = &section.section_def.page_def;
@@ -1061,7 +1062,7 @@ impl DocumentCore {
                     None,
                     &self.styles,
                     self.dpi,
-                    self.document.is_hwp3_variant,
+                    doc_hwp3_layout,
                 );
             }
         }

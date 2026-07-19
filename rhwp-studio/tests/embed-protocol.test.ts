@@ -146,6 +146,154 @@ test('embed runtime은 parent의 exact origin에서 v1 port session을 설치한
   channel.port1.close();
 });
 
+test('embed runtime은 custom scheme 최상위 same-window legacy 요청을 처리한다', async () => {
+  let messageListener: (event: MessageEvent) => void = () => {};
+  let resolveResponse: (value: unknown) => void = () => {};
+  const response = new Promise<unknown>((resolve) => { resolveResponse = resolve; });
+  const hostWindow = {
+    addEventListener(_type: string, listener: (event: MessageEvent) => void) {
+      messageListener = listener;
+    },
+    removeEventListener() {},
+    postMessage(message: unknown, options: unknown) { resolveResponse({ message, options }); },
+  };
+  const cleanup = installEmbedRuntime({
+    hostWindow: hostWindow as unknown as Window,
+    parentWindow: hostWindow as unknown as Window,
+    handlers: { ready: async () => true } as EmbedRpcHandlers,
+  });
+
+  try {
+    messageListener({
+      data: { type: 'rhwp-request', id: 2396, method: 'ready', params: {} },
+      source: hostWindow,
+      origin: 'alhangeul-studio://app',
+      ports: [],
+    } as unknown as MessageEvent);
+
+    assert.deepEqual(await Promise.race([
+      response,
+      new Promise((_, reject) => setTimeout(() => reject(new Error('legacy response timeout')), 50)),
+    ]), {
+      message: { type: 'rhwp-response', id: 2396, result: true },
+      options: { targetOrigin: 'alhangeul-studio://app' },
+    });
+  } finally {
+    cleanup();
+  }
+});
+
+test('embed runtime은 custom scheme 최상위 v1 connect를 거부한 뒤 legacy 요청을 처리한다', async () => {
+  let messageListener: (event: MessageEvent) => void = () => {};
+  let readyCalls = 0;
+  let resolveResponse: (value: unknown) => void = () => {};
+  const response = new Promise<unknown>((resolve) => { resolveResponse = resolve; });
+  const hostWindow = {
+    addEventListener(_type: string, listener: (event: MessageEvent) => void) {
+      messageListener = listener;
+    },
+    removeEventListener() {},
+    postMessage(message: unknown, options: unknown) { resolveResponse({ message, options }); },
+  };
+  const connectPort = {
+    onmessage: null,
+    closed: false,
+    messages: [] as unknown[],
+    start() {},
+    postMessage(message: unknown) { this.messages.push(message); },
+    close() { this.closed = true; },
+  };
+  const cleanup = installEmbedRuntime({
+    hostWindow: hostWindow as unknown as Window,
+    parentWindow: hostWindow as unknown as Window,
+    handlers: {
+      ready: async () => { readyCalls += 1; return true; },
+    } as EmbedRpcHandlers,
+  });
+
+  try {
+    messageListener({
+      data: {
+        type: 'rhwp-connect', version: 1, sessionId: 'custom-top-level',
+        capabilities: ['transferable-array-buffer'],
+      },
+      source: hostWindow,
+      origin: 'alhangeul-studio://app',
+      ports: [connectPort],
+    } as unknown as MessageEvent);
+
+    assert.equal(connectPort.closed, true);
+    assert.deepEqual(connectPort.messages, []);
+
+    messageListener({
+      data: { type: 'rhwp-request', id: 2396, method: 'ready', params: {} },
+      source: hostWindow,
+      origin: 'alhangeul-studio://app',
+      ports: [],
+    } as unknown as MessageEvent);
+
+    assert.deepEqual(await Promise.race([
+      response,
+      new Promise((_, reject) => setTimeout(() => reject(new Error('legacy response timeout')), 50)),
+    ]), {
+      message: { type: 'rhwp-response', id: 2396, result: true },
+      options: { targetOrigin: 'alhangeul-studio://app' },
+    });
+    assert.equal(readyCalls, 1);
+  } finally {
+    cleanup();
+  }
+});
+
+test('embed runtime은 custom scheme iframe parent와 forged sibling 요청을 거부한다', () => {
+  let messageListener: (event: MessageEvent) => void = () => {};
+  let readyCalls = 0;
+  let responses = 0;
+  const hostWindow = {
+    addEventListener(_type: string, listener: (event: MessageEvent) => void) {
+      messageListener = listener;
+    },
+    removeEventListener() {},
+  };
+  const parentWindow = { postMessage() { responses += 1; } };
+  const siblingWindow = { postMessage() { responses += 1; } };
+  const port = () => ({
+    onmessage: null,
+    closed: false,
+    start() {},
+    postMessage() {},
+    close() { this.closed = true; },
+  });
+  const iframePort = port();
+  const siblingPort = port();
+  const cleanup = installEmbedRuntime({
+    hostWindow: hostWindow as unknown as Window,
+    parentWindow: parentWindow as unknown as Window,
+    handlers: {
+      ready: async () => { readyCalls += 1; return true; },
+    } as EmbedRpcHandlers,
+  });
+
+  messageListener({
+    data: { type: 'rhwp-request', id: 1, method: 'ready', params: {} },
+    source: parentWindow,
+    origin: 'alhangeul-studio://app',
+    ports: [iframePort],
+  } as unknown as MessageEvent);
+  messageListener({
+    data: { type: 'rhwp-request', id: 2, method: 'ready', params: {} },
+    source: siblingWindow,
+    origin: 'alhangeul-studio://app',
+    ports: [siblingPort],
+  } as unknown as MessageEvent);
+
+  assert.equal(readyCalls, 0);
+  assert.equal(responses, 0);
+  assert.equal(iframePort.closed, true);
+  assert.equal(siblingPort.closed, true);
+  cleanup();
+});
+
 test('exportHml transferable 응답은 WASM 소유 bytes를 detach하지 않는다', async () => {
   let messageListener: (event: MessageEvent) => void = () => {};
   const hostWindow = {

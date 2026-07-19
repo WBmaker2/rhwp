@@ -548,6 +548,7 @@ impl DocumentCore {
                 &self.document.sections[section_idx].paragraphs[parent_para_idx],
             );
             self.reflow_paragraph(section_idx, parent_para_idx);
+            let doc_hwp3_layout = self.document.layout_profile().hwp3_layout();
             crate::renderer::composer::recalculate_section_vpos(
                 &mut self.document.sections[section_idx].paragraphs,
                 parent_para_idx,
@@ -555,7 +556,7 @@ impl DocumentCore {
                 stored_end_for_reset,
                 &self.styles,
                 self.dpi,
-                self.document.is_hwp3_variant,
+                doc_hwp3_layout,
             );
         }
         // 캡션 생성/삭제 시 AutoNumber 재할당. 생성 path 는 문단 placeholder 도 보강한다.

@@ -464,6 +464,11 @@ pub fn parse_hwpx(data: &[u8]) -> Result<Document, HwpxError> {
         hwpx_aux_entries,
         is_hwp3_variant: false,
         is_hwpx_variant: false,
+        provenance: crate::model::provenance::SourceProvenance {
+            format: crate::model::provenance::SourceFormat::Hwpx,
+            hwp3_lineage: false,
+            hwpx_lineage: false,
+        },
     };
 
     // [Task #873] BinData Link 타입 의 외부 file path 영역 영역 Picture.external_path 영역

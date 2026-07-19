@@ -360,11 +360,9 @@ struct HostSpacing {
 /// 단일 패스 조판 엔진
 pub struct TypesetEngine {
     dpi: f64,
-    /// 현재 조판 중인 입력이 HWPX 원본인지 여부.
-    is_hwpx_source: std::cell::Cell<bool>,
-    /// [Task #1472] HWP3-origin 변환본 여부 — format_paragraph 의 미주 TAC 수식
-    /// indent_scale 보정(effective indent 불변)에 사용. typeset 진입 시 set.
-    is_hwp3_variant: std::cell::Cell<bool>,
+    /// [#2403] 현재 조판 입력의 레이아웃 호환 프로파일 — typeset 진입 시 set.
+    /// (HWPX 저장 시멘틱·HWP3 변환본 판단 등 소스분기의 단일 질의 표면.)
+    profile: std::cell::Cell<crate::model::provenance::LayoutCompatibilityProfile>,
 }
 
 /// 조판 중 현재 페이지/단 상태
@@ -474,17 +472,13 @@ struct TypesetState {
     /// 페이지가 수 px over-fill 되어 tail 이 밀리는 케이스(국제고속선기준 pi=718/995/1789/2128).
     /// 한글은 tail 을 본문 하단(여백 침범 무시)에 배치하므로 tail 에 한해 소량 초과를 허용한다.
     tail_overflow_tolerance_once: f64,
-    /// [Task #1007] HWP3-origin HWP5 변환본 여부 — widow 방지 등 variant-specific
-    /// behavior 분기에 사용.
-    is_hwp3_variant: bool,
-    /// 원본 HWP3 파일 여부 — HWP5 변환본 휴리스틱과 분리해 HWP3 저장 LINE_SEG 계약에 사용.
-    is_hwp3_source: bool,
-    /// [Task #1147] HWPX 원본 여부 — HWPX 의 LINE_SEG 시멘틱은 빈 앵커 TopAndBottom 표에서
-    /// host_line_spacing 을 표 다음 갭으로 더하지 않음. HWP5/HWP3 와 분리.
-    is_hwpx_source: bool,
-    /// rhwp가 HWP5 원본에서 내보낸 HWPX 여부. HWPX 컨테이너라도 HWP5 원본의
-    /// 저장 행 높이와 pagination marker를 보존해야 한다.
-    is_hwp5_origin_hwpx: bool,
+    /// [#2403] 소스분기 질의 표면 — 단일 소유, typeset 진입 시 set. 종전 4필드의
+    /// 시멘틱 승계: hwp3_layout()=HWP3→HWP5 변환본(widow 방지 등 variant 분기,
+    /// Task #1007) / hwp3_native_layout()=원본 HWP3 (저장 LINE_SEG 계약) /
+    /// hwpx_stored_layout()=HWPX 원본 (빈 앵커 TAC 표 host_line_spacing 미가산,
+    /// Task #1147) / hwp5_origin_hwpx()=rhwp HWP5→HWPX 산출물 (HWP5 저장 행높이·
+    /// pagination marker 보존).
+    profile: crate::model::provenance::LayoutCompatibilityProfile,
     /// 문서 전체에 실제 저장 LineSeg가 있는지 여부. HWP5-origin CFB라도 LineSeg가 전부
     /// 비어 있으면 저장 vpos 기반 흐름이 아니라 재조판 흐름으로 취급한다.
     has_stored_line_segs: bool,
@@ -1775,10 +1769,7 @@ impl TypesetState {
             skip_safety_margin_once: false,
             skip_footnote_margin_once: false,
             tail_overflow_tolerance_once: 0.0,
-            is_hwp3_variant: false,
-            is_hwp3_source: false,
-            is_hwpx_source: false,
-            is_hwp5_origin_hwpx: false,
+            profile: Default::default(),
             has_stored_line_segs: false,
             hide_empty_line: false,
             hidden_empty_lines: 0,
@@ -2036,7 +2027,7 @@ impl TypesetState {
             return;
         }
 
-        let use_overlap_probe = self.is_hwpx_source && probe_height > 0.0;
+        let use_overlap_probe = self.profile.hwpx_stored_layout() && probe_height > 0.0;
         self.visible_float_exclusions
             .retain(|zone| self.current_height < zone.bottom - 0.5);
 
@@ -2336,8 +2327,7 @@ impl TypesetEngine {
     pub fn new(dpi: f64) -> Self {
         Self {
             dpi,
-            is_hwpx_source: std::cell::Cell::new(false),
-            is_hwp3_variant: std::cell::Cell::new(false),
+            profile: std::cell::Cell::new(Default::default()),
         }
     }
 
@@ -2512,15 +2502,12 @@ impl TypesetEngine {
             section_index,
             measured_tables,
             hide_empty_line,
-            false,
+            Default::default(),
             false,
             false,
             None,
             None,
             force_break_before,
-            false,
-            false,
-            false,
             EndnoteDeferral::None,
         )
     }
@@ -3029,19 +3016,17 @@ impl TypesetEngine {
         section_index: usize,
         measured_tables: &[MeasuredTable],
         hide_empty_line: bool,
-        is_hwp3_variant: bool,
+        profile: crate::model::provenance::LayoutCompatibilityProfile,
         skip_spacing_before_prededuct: bool,
         hwp3_origin_page_tolerance: bool,
         footnote_shape: Option<&FootnoteShape>,
         endnote_shape: Option<&FootnoteShape>,
         force_break_before: &std::collections::HashSet<usize>,
-        is_hwp3_source: bool,
-        is_hwpx_source: bool,
-        is_hwp5_origin_hwpx: bool,
         endnote_deferral: EndnoteDeferral<'_>,
     ) -> PaginationResult {
         let layout = PageLayoutInfo::from_page_def(page_def, column_def, self.dpi);
-        self.is_hwpx_source.set(is_hwpx_source);
+        // [#2403] 소스분기 프로파일 — 엔진(Cell)과 state 에 한 번에 배선.
+        self.profile.set(profile);
         let col_count = column_def.column_count.max(1);
         let default_footnote_shape = FootnoteShape::default();
         let footnote_shape = footnote_shape.unwrap_or(&default_footnote_shape);
@@ -3050,7 +3035,7 @@ impl TypesetEngine {
             footnote_between_notes_margin_px(footnote_shape, self.dpi);
         let footnote_safety_margin = hwpunit_to_px(3000, self.dpi);
         // [Task #1007] variant cross-paragraph vpos reset THRESHOLD 계산용 body height (HU)
-        let body_height_hu_for_variant: i32 = if is_hwp3_variant {
+        let body_height_hu_for_variant: i32 = if profile.hwp3_layout() {
             page_def.height.saturating_sub(
                 page_def
                     .margin_top
@@ -3074,12 +3059,7 @@ impl TypesetEngine {
             column_def.column_type,
         );
         st.hide_empty_line = hide_empty_line;
-        st.is_hwp3_variant = is_hwp3_variant;
-        st.is_hwp3_source = is_hwp3_source;
-        // [Task #1472] format_paragraph 의 미주 수식 indent_scale 보정용.
-        self.is_hwp3_variant.set(is_hwp3_variant);
-        st.is_hwpx_source = is_hwpx_source;
-        st.is_hwp5_origin_hwpx = is_hwp5_origin_hwpx;
+        st.profile = profile;
         st.has_stored_line_segs = paragraphs
             .iter()
             .any(|p| p.line_segs.iter().any(|ls| !is_synthetic_line_seg(ls)));
@@ -3240,7 +3220,7 @@ impl TypesetEngine {
             // sample16-2022 pi=87 (빈 문단, text_len=0) skip ✓
             // sample16-2022 pi=118 (content, sb=284) skip ✓
             // sample16-2022 pi=316 (content, sb=0) skip ✓
-            let variant_vpos_reset_break = is_hwp3_variant
+            let variant_vpos_reset_break = profile.hwp3_layout()
                 && self.judge_hwp3_variant_vpos_reset_break(
                     para,
                     paragraphs,
@@ -3405,7 +3385,7 @@ impl TypesetEngine {
                                 && para_has_visible_text(next_para)
                                 && next_sb_hu >= 500
                         });
-                    let hwp3_content_vpos_zero_reset = is_hwp3_variant
+                    let hwp3_content_vpos_zero_reset = profile.hwp3_layout()
                         && st.col_count == 1
                         && cv == 0
                         && prev_vpos_end > body_height_hu_for_variant * 70 / 100
@@ -3467,7 +3447,7 @@ impl TypesetEngine {
                         para,
                         next_para,
                         st.col_count,
-                        st.is_hwp3_variant,
+                        st.profile.hwp3_layout(),
                     )
                 }
             } else {
@@ -3494,7 +3474,7 @@ impl TypesetEngine {
                             mid,
                             after,
                             st.col_count,
-                            st.is_hwp3_variant,
+                            st.profile.hwp3_layout(),
                         )
                 };
             if tail_before_break_through_empty {
@@ -3538,7 +3518,7 @@ impl TypesetEngine {
                                 prev,
                                 next_para,
                                 st.col_count,
-                                st.is_hwp3_variant,
+                                st.profile.hwp3_layout(),
                             );
                         let high_tail_heading_then_reset = para_has_visible_text(next_para)
                             && next_para.controls.is_empty()
@@ -3556,7 +3536,7 @@ impl TypesetEngine {
                                         next_para,
                                         after,
                                         st.col_count,
-                                        st.is_hwp3_variant,
+                                        st.profile.hwp3_layout(),
                                     )
                             });
 
@@ -3979,7 +3959,7 @@ impl TypesetEngine {
                     // p4 +16.6px 팬텀 → sliver 쪽 +2). lh 가 개체를 못 담는 일반
                     // 케이스는 종전대로 무효화. HWPX(기계생성 결재문서 계열) 한정 —
                     // HWP5 native 는 종전 핀 보존 (issue_1418 2026_oss_rst 6쪽).
-                    let host_line_covers_object = st.is_hwpx_source
+                    let host_line_covers_object = st.profile.hwpx_stored_layout()
                         && matches!(last, Some(PageItem::Table { .. }))
                         && para.line_segs.first().is_some_and(|s| {
                             s.tag & crate::model::paragraph::LineSeg::TAG_IMPLEMENTATION_PROPERTY
@@ -10915,7 +10895,7 @@ impl TypesetEngine {
             allow_vpos_rewind: false,
             allow_start_height_backtrack: false,
             suppress_large_forward_jump: false,
-            suppress_hwpx_stale_forward: st.is_hwpx_source,
+            suppress_hwpx_stale_forward: st.profile.hwpx_stored_layout(),
             endnote_between_notes_hu: 0,
             prev_item_content_bottom_y: None,
             last_compacted_endnote_title_gap: false,
@@ -10932,7 +10912,7 @@ impl TypesetEngine {
         // 하니스 실측: 36398709 문단당 −5.0pt 균일 = sb 6.7px) 스냅으로 되감지
         // 않는다. 스텝-검사 없이 ±2px 우연 일치만으로 스킵하면 sb-포함 정상
         // ladder 에서 이중 가산(+1쪽 과다, issue_1853 실측 반증)이 난다.
-        if st.is_hwpx_source
+        if st.profile.hwpx_stored_layout()
             && spacing_before_px > 0.5
             && y < st.current_height
             && (st.current_height - y - spacing_before_px).abs() < 2.0
@@ -11080,7 +11060,12 @@ impl TypesetEngine {
                 })
             };
             // [Task #1472] 변환본은 미주 수식 effective indent 불변 위해 scale 절반(2.0→1.0).
-            let eq_indent_scale = 2.0 * if self.is_hwp3_variant.get() { 0.5 } else { 1.0 };
+            let eq_indent_scale = 2.0
+                * if self.profile.get().hwp3_layout() {
+                    0.5
+                } else {
+                    1.0
+                };
             let equation_line_available_width_px = |visual_line_idx: usize| {
                 column_width_px.map(|cw| {
                     let margin_l = para_style.map(|s| s.margin_left).unwrap_or(0.0);
@@ -11264,7 +11249,7 @@ impl TypesetEngine {
                     para,
                     styles,
                     para_style,
-                    self.is_hwp3_variant.get(),
+                    self.profile.get().hwp3_layout(),
                 ) {
                     pairs.push(metric);
                 }
@@ -11296,7 +11281,7 @@ impl TypesetEngine {
             para,
             styles,
             para_style,
-            self.is_hwp3_variant.get(),
+            self.profile.get().hwp3_layout(),
         ) {
             (vec![lh], vec![ls])
         } else {
@@ -11321,7 +11306,7 @@ impl TypesetEngine {
                 para,
                 styles,
                 para_style,
-                self.is_hwp3_variant.get(),
+                self.profile.get().hwp3_layout(),
             )
             .unwrap_or((hwpunit_to_px(400, self.dpi), 0.0));
             line_heights = vec![lh];
@@ -11432,7 +11417,7 @@ impl TypesetEngine {
         } else {
             layout_drift_safety_px
         };
-        let exclusion_probe_height = if st.is_hwpx_source {
+        let exclusion_probe_height = if st.profile.hwpx_stored_layout() {
             fmt.line_heights
                 .first()
                 .zip(fmt.line_spacings.first())
@@ -11595,7 +11580,7 @@ impl TypesetEngine {
             fmt.line_heights.len(),
             st.layout.body_area.height,
             self.dpi,
-            st.is_hwp3_source,
+            st.profile.hwp3_native_layout(),
         )
         .or_else(|| {
             sample16_missing_lineseg_tail_break_line(
@@ -11621,7 +11606,7 @@ impl TypesetEngine {
         // HWP3-origin 변환본은 spacing_before 누적을 보존해야 dump-pages 요약과
         // 실제 한컴 줄 흐름이 유지된다(#1116).
         let trim_spacing_before_for_flow =
-            !st.is_hwp3_variant && !para_near_rowbreak_table(paragraphs, para_idx);
+            !st.profile.hwp3_layout() && !para_near_rowbreak_table(paragraphs, para_idx);
 
         let current_page_vpos_base = st.vpos_page_base.or_else(|| {
             st.current_items
@@ -11804,7 +11789,7 @@ impl TypesetEngine {
                     prior_para,
                     next_para,
                     st.col_count,
-                    st.is_hwp3_variant,
+                    st.profile.hwp3_layout(),
                 ) {
                     forced = true;
                     break;
@@ -11938,7 +11923,7 @@ impl TypesetEngine {
         // 첫 줄이 이전 쪽 말미에 남는다 (3024019 pi22: ls[0] vpos=700, 한글도
         // 문단 전체를 새 쪽 배치). 전체 배치가 이미 실패한 분할 직전에만 적용해
         // 일반 흐름(#418/#321 보수 기준)은 건드리지 않는다.
-        let current_page_has_stale_hwpx_line_metrics = st.is_hwpx_source
+        let current_page_has_stale_hwpx_line_metrics = st.profile.hwpx_stored_layout()
             && st
                 .current_items
                 .iter()
@@ -12224,7 +12209,7 @@ impl TypesetEngine {
         // oracle p13→p12). 의미 필드 + 소스 게이트로 교체: native 는 비트⇔열거형
         // 전단사(shape.rs:394)로 불변, 순수 HWPX 는 종전에도 미진입으로 불변,
         // convert-HWP 만 HWPX 렌더 경로로 정합된다(#1886 origin 전달의 연장).
-        let table_wrap_take_place = !self.is_hwpx_source.get()
+        let table_wrap_take_place = !self.profile.get().hwpx_stored_layout()
             && matches!(
                 table.common.text_wrap,
                 crate::model::shape::TextWrap::TopAndBottom
@@ -13239,7 +13224,7 @@ impl TypesetEngine {
             // 일치). 이때 cap 을 fmt.total 로 올리고 ladder 를 dirty 로 표시해
             // 후속 스냅이 성장분을 압축 anchor 로 되감지 못하게 한다. 스텝이
             // fmt.total 과 일치(±1px)하는 정상 생성기 ladder 는 불변.
-            let stored_step_px = if st.is_hwpx_source && para.text.is_empty() {
+            let stored_step_px = if st.profile.hwpx_stored_layout() && para.text.is_empty() {
                 para.line_segs
                     .first()
                     .filter(|s| {
@@ -13693,7 +13678,7 @@ impl TypesetEngine {
         // 후속 문단 스냅이 드리프트 역산 lazy base(-796HU 등)로 고착되던 결함.
         // 저장 lineseg 가 개체 높이를 온전히 포함하는 호스트(기계생성 결재문서
         // lh = 표 + outMargin)로 한정한다.
-        if st.is_hwpx_source
+        if st.profile.hwpx_stored_layout()
             && st.col_count == 1
             && st.current_items.is_empty()
             && pre_height <= 0.5
@@ -13740,7 +13725,7 @@ impl TypesetEngine {
             let outer_top_px = hwpunit_to_px(table.outer_margin_top as i32, self.dpi);
             let table_top = if signed_vertical_offset > 0 {
                 para_start_height + outer_top_px + v_off_px
-            } else if st.is_hwpx_source {
+            } else if st.profile.hwpx_stored_layout() {
                 // HWPX visible float 는 같은 문단 안의 앞선 float 뒤에 이어 쌓인다.
                 // B/C처럼 둘 다 non-positive offset 이면 문단 시작점이 아니라 현재 흐름
                 // 높이를 기준으로 reserve 해야 layout 의 세로 stacking 과 page break 가 맞는다.
@@ -13767,7 +13752,7 @@ impl TypesetEngine {
             } else {
                 let following_non_positive =
                     has_following_non_positive_visible_float(para, ctrl_idx);
-                let inter_float_gap = if st.is_hwpx_source && following_non_positive {
+                let inter_float_gap = if st.profile.hwpx_stored_layout() && following_non_positive {
                     para_line_spacing_px(para, self.dpi)
                 } else {
                     0.0
@@ -13776,7 +13761,7 @@ impl TypesetEngine {
             }
         } else if tac_wrap_split {
             st.current_height += table_total_height;
-        } else if let Some(host_line_px) = if st.is_hwpx_source && is_last_placed {
+        } else if let Some(host_line_px) = if st.profile.hwpx_stored_layout() && is_last_placed {
             // [#2279 10k] host 빈 줄박스는 **문단당 1개** — 다중 표 문단에서
             // 표마다 가산하면 중간 표 배치의 fit 이 과대해져 후속 표가 조기
             // 개행된다 (156767148 보도자료 pi7: 표2개 문단, 한글 1쪽 vs +1쪽,
@@ -14042,7 +14027,7 @@ impl TypesetEngine {
         // [Task #1811] HWPX 의 누적좌표 RowBreak 문서는 host 줄 pre-emit 자체를
         // 저장 vpos 가드보다 먼저 수행한다. 쪽 내부 vpos 를 가진 HWP/HWP3/일반 HWPX
         // 경로는 기존처럼 같은 쪽 저장 flow 확인 뒤에만 pre-emit 한다.
-        let pre_emit_before_vpos_check = st.is_hwpx_source && host_vpos > body_h_hu;
+        let pre_emit_before_vpos_check = st.profile.hwpx_stored_layout() && host_vpos > body_h_hu;
         if pre_emit_before_vpos_check
             && !self.pre_emit_visible_rowbreak_host_text(st, para_idx, para, composed_all, styles)
         {
@@ -14083,7 +14068,7 @@ impl TypesetEngine {
                 break;
             }
             let trim_sb =
-                !st.is_hwp3_variant && !para_near_rowbreak_table(paragraphs_all, next_idx);
+                !st.profile.hwp3_layout() && !para_near_rowbreak_table(paragraphs_all, next_idx);
             st.current_items.push(PageItem::FullParagraph {
                 para_index: next_idx,
             });
@@ -14888,7 +14873,7 @@ impl TypesetEngine {
         let declared_object_total = raw_table_ctrl_height_px(table, self.dpi)
             .unwrap_or_else(|| hwpunit_to_px(table.common.height as i32, self.dpi).max(0.0))
             + host_spacing_total;
-        let declared_empty_para_float_total = if !st.is_hwpx_source
+        let declared_empty_para_float_total = if !st.profile.hwpx_stored_layout()
             && !table.common.treat_as_char
             && is_para_topbottom_float(&table.common)
             && !para_has_visible_text(para)
@@ -15558,8 +15543,7 @@ impl TypesetEngine {
         // [Task #993] advance_row_cut 호출용 LayoutEngine — 컷 측정은 dpi 와
         // 셀 패딩/중첩 표 높이 계산에만 의존하므로 ad hoc 인스턴스로 충분하다.
         let layout_engine = crate::renderer::layout::LayoutEngine::new(self.dpi);
-        layout_engine.set_hwp3_variant(st.is_hwp3_variant);
-        layout_engine.set_hwpx_source(st.is_hwpx_source);
+        layout_engine.set_layout_profile(st.profile);
         // [Task #993] rowspan(row_span>1) 셀이 걸친 행 — 컷 모델(advance_row_cut)은
         // row_span==1 셀만 다루므로 rowspan 셀 높이를 측정하지 못한다. 구현계획서
         // §4대로 rowspan 행은 MeasuredTable 행 높이를 권위로 쓴다(렌더러도 동일).
@@ -15868,7 +15852,7 @@ impl TypesetEngine {
                 seg.vertical_pos
                     > crate::renderer::px_to_hwpunit(st.layout.body_area.height, self.dpi)
             });
-        if st.is_hwpx_source
+        if st.profile.hwpx_stored_layout()
             && host_vpos_is_cumulative
             && !table.common.treat_as_char
             && is_para_topbottom_float(&table.common)
@@ -16076,23 +16060,23 @@ impl TypesetEngine {
             const HWPX_LANDSCAPE_ROWBREAK_SHORT_ROW_TOLERANCE_PX: f64 = 320.0;
             const HWPX_LANDSCAPE_ROWBREAK_SHORT_ROW_MAX_HEIGHT_PX: f64 = 320.0;
             let landscape_rowbreak_bleed = st.layout.body_area.height < 700.0;
-            let landscape_whole_row_tolerance = if st.is_hwpx_source {
+            let landscape_whole_row_tolerance = if st.profile.hwpx_stored_layout() {
                 HWPX_LANDSCAPE_ROWBREAK_WHOLE_ROW_TOLERANCE_PX
             } else {
                 LANDSCAPE_ROWBREAK_WHOLE_ROW_TOLERANCE_PX
             };
-            let landscape_short_row_tolerance = if st.is_hwpx_source {
+            let landscape_short_row_tolerance = if st.profile.hwpx_stored_layout() {
                 HWPX_LANDSCAPE_ROWBREAK_SHORT_ROW_TOLERANCE_PX
             } else {
                 LANDSCAPE_ROWBREAK_SHORT_ROW_TOLERANCE_PX
             };
-            let landscape_short_row_max_height = if st.is_hwpx_source {
+            let landscape_short_row_max_height = if st.profile.hwpx_stored_layout() {
                 HWPX_LANDSCAPE_ROWBREAK_SHORT_ROW_MAX_HEIGHT_PX
             } else {
                 LANDSCAPE_ROWBREAK_SHORT_ROW_MAX_HEIGHT_PX
             };
             let rowbreak_split_row_overflow_tolerance =
-                if st.is_hwpx_source || !st.has_stored_line_segs {
+                if st.profile.hwpx_stored_layout() || !st.has_stored_line_segs {
                     HWPX_ROWBREAK_SPLIT_ROW_OVERFLOW_TOLERANCE_PX
                 } else {
                     ROWBREAK_SPLIT_ROW_OVERFLOW_TOLERANCE_PX
@@ -17515,15 +17499,12 @@ mod tests {
             0,
             &[],
             false,
-            false,
+            Default::default(),
             false,
             false,
             Some(&shape),
             None,
             &std::collections::HashSet::new(),
-            false,
-            false,
-            false,
             EndnoteDeferral::None,
         );
 
