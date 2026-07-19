@@ -97,6 +97,19 @@ fn replace_secpr_scalars(xml: &str, sd: &SectionDef) -> String {
         &format!(r#"spaceColumns="{}""#, sd.column_spacing),
         1,
     );
+    // 구역 세로쓰기: 파서는 textDirection="VERTICAL" → text_direction=1 로 읽지만
+    // (parser/hwpx/section.rs) 직렬화기는 이 필드를 재출력하지 않아, 세로쓰기 구역이
+    // .hwpx 저장 시 HORIZONTAL 로 유실됐다. text_direction==1 일 때만 치환한다
+    // (기본 0 문서는 템플릿 HORIZONTAL 유지). 템플릿엔 secPr 에만 등장하므로 replacen(1) 안전.
+    let out = if sd.text_direction == 1 {
+        out.replacen(
+            r#"textDirection="HORIZONTAL""#,
+            r#"textDirection="VERTICAL""#,
+            1,
+        )
+    } else {
+        out
+    };
     let out = out.replacen(
         r#"outlineShapeIDRef="1""#,
         &format!(r#"outlineShapeIDRef="{}""#, sd.outline_numbering_id),
@@ -2390,6 +2403,41 @@ mod tests {
         assert!(
             !xml.contains(r#"styleIDRef="96""#),
             "미등록 style_id 는 방출되지 않아야 함"
+        );
+    }
+
+    #[test]
+    fn secpr_emits_ir_text_direction_vertical() {
+        // 파서는 textDirection="VERTICAL" → text_direction=1 로 읽지만 직렬화기가 재출력하지
+        // 않아 세로쓰기 구역이 .hwpx 저장 시 HORIZONTAL 로 유실됐다. 1 이면 VERTICAL 방출.
+        let mut para = Paragraph::default();
+        para.text = "x".to_string();
+        let (mut doc, _) = make_doc_with_paragraph(para);
+        doc.sections[0].section_def.text_direction = 1;
+        let section = doc.sections[0].clone();
+        let mut ctx = SerializeContext::collect_from_document(&doc);
+        let xml = String::from_utf8(write_section(&section, &doc, 0, &mut ctx).unwrap()).unwrap();
+        assert!(
+            xml.contains(r#"textDirection="VERTICAL""#),
+            "세로쓰기 구역은 textDirection=VERTICAL 로 방출돼야 함: {xml:.400}"
+        );
+        assert!(
+            !xml.contains(r#"textDirection="HORIZONTAL""#),
+            "secPr 의 HORIZONTAL 이 남아있으면 안 됨: {xml:.400}"
+        );
+    }
+
+    #[test]
+    fn secpr_keeps_horizontal_when_text_direction_unset() {
+        let mut para = Paragraph::default();
+        para.text = "x".to_string();
+        let (doc, _) = make_doc_with_paragraph(para);
+        let section = doc.sections[0].clone();
+        let mut ctx = SerializeContext::collect_from_document(&doc);
+        let xml = String::from_utf8(write_section(&section, &doc, 0, &mut ctx).unwrap()).unwrap();
+        assert!(
+            xml.contains(r#"textDirection="HORIZONTAL""#),
+            "기본(text_direction=0) 은 HORIZONTAL 유지: {xml:.400}"
         );
     }
 
