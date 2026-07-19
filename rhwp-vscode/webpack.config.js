@@ -113,6 +113,14 @@ const webviewConfig = {
           from: path.resolve(__dirname, "..", "pkg", "rhwp_bg.wasm"),
           to: path.resolve(__dirname, "dist", "media", "rhwp_bg.wasm"),
         },
+        {
+          from: path.resolve(__dirname, "node_modules", "canvaskit-wasm", "LICENSE"),
+          to: path.resolve(__dirname, "dist", "licenses", "canvaskit-wasm-LICENSE.txt"),
+        },
+        {
+          from: path.resolve(__dirname, "node_modules", "@noble", "hashes", "LICENSE"),
+          to: path.resolve(__dirname, "dist", "licenses", "noble-hashes-LICENSE.txt"),
+        },
         // 필수 오픈소스 폰트만 번들 (크기 최적화)
         ...[
           "NotoSerifKR-Regular.woff2", "NotoSerifKR-Bold.woff2",

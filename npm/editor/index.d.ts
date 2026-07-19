@@ -124,7 +124,8 @@ export interface RendererSelectionV1 {
 export interface RendererDiagnosticsV1 {
   schemaVersion: 1;
   request: {
-    backend: { backend: 'auto' | 'canvas2d' | 'canvaskit'; source: 'default' | 'url'; requested?: string; unsupportedReason?: string };
+    /** Legacy v1 request snapshot. Automatic intent is exposed additively through selection. */
+    backend: { backend: 'canvas2d' | 'canvaskit'; source: 'default' | 'url'; requested?: string; unsupportedReason?: string };
     canvaskitMode: { mode: 'default' | 'compat'; source: 'default' | 'storage' | 'url'; requested?: string; unsupportedReason?: string };
     canvaskitSurface: { preference: 'auto' | 'webgpu' | 'webgl' | 'software'; requested: string; unsupportedReason?: string };
     renderProfile: 'fastPreview' | 'screen' | 'print' | 'highQuality';

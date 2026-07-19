@@ -136,6 +136,8 @@ resource generation을 `selection`에서 확인할 수 있습니다. 현재 Stud
 없을 수도 있습니다. `selectionError`는 preflight/리소스/replay 실패를, top-level
 `initializationError`는 Studio 앱 초기화 실패를 나타냅니다. preflight의
 `requiredFontFamilies`는 자동 선택에서 첫 replay 전에 준비해야 하는 문서 폰트 목록입니다.
+기존 v1 소비자 호환을 위해 top-level `request.backend.backend`는 계속 `canvas2d` 또는
+`canvaskit`만 반환하며, `auto` 요청과 실제 선택 과정은 additive `selection`에서 확인합니다.
 
 ```javascript
 const diagnostics = await editor.getRendererDiagnostics(0);

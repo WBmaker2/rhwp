@@ -90,6 +90,7 @@ const canvasKitFontPlan = (requiredFontFamilies: readonly string[]) => resolveCa
   {
     localFontBaseUrl: canvasKitFontsBaseUri,
     availableLocalFiles: vscodeBundledFontFiles,
+    disableExternalWebFonts: true,
   },
 );
 const rendererSession = new RendererSession(

@@ -16,6 +16,7 @@ VSCode에서 HWP/HWPX 문서를 바로 열어볼 수 있는 확장 프로그램�
 - 글상자 내부 표/그림 렌더링
 - 분할 표 셀 세로 정렬
 - 오픈소스 폰트 폴백 (파일이 서버로 전송되지 않음)
+- CanvasKit 자동 선택은 확장에 포함된 폰트만 사용하며 외부 웹 폰트는 Canvas2D 폴백에서만 사용
 - **컨텍스트 메뉴** (탐색기/에디터 탭 우클릭):
   - HWP: SVG로 내보내기
   - HWP: 디버그 오버레이 보기 (개발자용)
@@ -77,6 +78,10 @@ npm run compile
 | copy-webpack-plugin | MIT |
 | @noble/hashes | MIT |
 | canvaskit-wasm | BSD-3-Clause |
+
+배포 VSIX에는 두 런타임 패키지의 전체 라이선스 고지문이 각각
+`dist/licenses/noble-hashes-LICENSE.txt`와
+`dist/licenses/canvaskit-wasm-LICENSE.txt`로 포함됩니다.
 
 ### 웹 폰트 (렌더링 폴백)
 

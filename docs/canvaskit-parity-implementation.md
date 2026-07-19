@@ -227,8 +227,11 @@ eligible document. Main pages and thumbnails use the same pinned decision. A
 layer-resource or runtime failure replaces any CanvasKit-owned canvas and
 queues one whole-document Canvas2D replay; the selection diagnostics are sent
 to the extension host as additive webview messages. The VS Code package exposes
-only its copied font files to this catalog and cleans stale lazy webview chunks
-on each production build.
+only its copied font files to this catalog, explicitly disables external web
+fonts for CanvasKit planning, and cleans stale lazy webview chunks on each
+production build. Externally hosted CSS fonts may still serve the Canvas2D
+fallback, but they never make a document eligible for automatic CanvasKit
+selection in the VS Code webview.
 
 `CanvasKitRenderDiagnostics.passesRuntimeReadinessGate` means only that the
 selected page completed a CanvasKit surface flush without a render error or
@@ -259,6 +262,12 @@ module initialization in the selection snapshot and for Studio application
 initialization at the top level. A failed CanvasKit page snapshot remains
 available after an automatic whole-document fallback so the initiating failure
 is not erased by the subsequent Canvas2D replay.
+For compatibility, the existing v1 `request.backend.backend` enum remains
+limited to `canvas2d | canvaskit`; automatic request intent and its decision are
+reported only through the additive optional `selection` snapshot. Consumers
+that understand only the original v1 shape therefore do not receive a new enum
+member, while newer consumers can inspect `selection.request` and
+`selection.requestedBackend` for `auto`.
 The selected readiness corpus records both document-load/initial-render time
 and one immediate warm replay. Every readiness sample declares cold, warm,
 renderer-duration, and image-cache-pixel budgets; a missing measurement or

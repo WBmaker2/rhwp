@@ -661,7 +661,7 @@
         "maxDiffRatio": 0.047,
         "minimumInkPixels": 30000,
         "inkMaskNeighborhoodRadius": 3,
-        "inkMaskMaxDiffRatio": 0.0185,
+        "inkMaskMaxDiffRatio": 0.019,
         "nonInkMaxDiffPixels": 0,
         "solidInkMaxDiffRatio": 0.005
       },
