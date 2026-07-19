@@ -4,7 +4,8 @@
 - assignee: `postmelee`
 - 브랜치: `codex/issue-2396-custom-scheme-legacy-request`
 - 최초 기준선: `upstream/devel@af5902b6`
-- 최신 통합 기준선: `upstream/devel@9b2216c8` (`6f0d1cdc`)
+- merge 직전 head: `371a31a3` (`upstream/devel@2d1aa588` 통합)
+- merge commit: `7a64a7ce`
 - 수행계획서: `mydocs/plans/task_m100_2396.md`
 - 구현계획서: `mydocs/plans/task_m100_2396_impl.md`
 
@@ -76,16 +77,16 @@ Stage 1에서 첫 테스트의 timeout을 재현했고, PR review 보정 후 세
 - custom scheme v1 MessageChannel connect, iframe custom scheme origin 허용, custom scheme allowlist,
   host 인증 정책은 이번 범위에 포함하지 않는다.
 - Vite chunk-size/browser externalization과 wasm-pack prebuilt fallback 경고는 기존 비차단 build 경고다.
-- 최종 PR head CI 확인, merge와 이슈 close는 별도 작업지시자 판단 범위다.
+- #2396은 PR merge 뒤 closing keyword 자동 처리로 종료됐다.
 
 ## 완료 판단
 
 수행계획서의 기능·보안·로컬 검증 완료 기준을 충족했다. PR review에서 발견한 v1 connect 권한 범위
-확대도 `5e25b0b0`에서 보정했다. 최종 merge 판단은 최신 PR head의 relevant checks와 작업지시자 승인을
-전제로 한다. PR 본문 초안은 `mydocs/report/task_m100_2396_pr_draft.md`, 리뷰 기록은
-`mydocs/pr/archives/pr_2398_review.md`에 둔다.
+확대도 `5e25b0b0`에서 보정했다. 최종 head `371a31a3`의 relevant checks 통과와 작업지시자 승인 뒤
+PR #2398을 merge했고, #2396 자동 종료와 후속 검증 기록까지 확인했다. PR 본문 초안은
+`mydocs/report/task_m100_2396_pr_draft.md`, 리뷰 기록은 `mydocs/pr/archives/pr_2398_review.md`에 둔다.
 
-## PR 생성 결과
+## PR 처리 결과
 
 - Draft PR: [#2398](https://github.com/edwardkim/rhwp/pull/2398)
 - base / head: `edwardkim/rhwp:devel` / `postmelee:codex/issue-2396-custom-scheme-legacy-request`
@@ -95,5 +96,13 @@ Stage 1에서 첫 테스트의 timeout을 재현했고, PR review 보정 후 세
 
 초기 CI 실패는 job step이 하나도 실행되지 않고 `runner_id=0`인 GitHub 계정 billing blocker였다. 이후
 billing lock 해소와 `devel` 통합 head `c8bc5644`에서 CI, Render Diff, CodeQL이 통과했다. PR review 보정
-커밋 `5e25b0b0`에서도 CI, Render Diff, CodeQL이 모두 통과했다. 최신 `devel@9b2216c8` 통합과 최종 review
-문서 커밋 뒤의 PR head relevant checks는 merge 전에 다시 확인해야 한다.
+커밋 `5e25b0b0`에서도 CI, Render Diff, CodeQL이 모두 통과했다.
+
+- 최종 head `371a31a3`: CI, Render Diff, CodeQL relevant checks 전체 통과
+- merge: [PR #2398](https://github.com/edwardkim/rhwp/pull/2398), commit
+  [`7a64a7ce`](https://github.com/edwardkim/rhwp/commit/7a64a7cef977f157893dd89cfd66d82c0d40e99a)
+- 이슈: #2396 closing keyword 자동 종료 확인
+- PR merge comment:
+  [issuecomment-5014098546](https://github.com/edwardkim/rhwp/pull/2398#issuecomment-5014098546)
+- 이슈 후속 comment:
+  [issuecomment-5014097249](https://github.com/edwardkim/rhwp/issues/2396#issuecomment-5014097249)
