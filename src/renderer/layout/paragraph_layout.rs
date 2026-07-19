@@ -3343,13 +3343,13 @@ impl LayoutEngine {
             // 정렬별 간격 분배 계산
             let has_forced_break = comp_line.has_line_break;
             // 머리말/꼬리말은 내부 문단 인덱스를 `usize::MAX - i`로 넘긴다.
-            // HWP3 머리말 단일 줄 Justify도 한컴처럼 머리말 폭까지 공간을 벌려야 한다.
+            // HWP3 Justify와 HWPX DISTRIBUTE_SPACE/HWP5 Split은 모두 공백에만 배분한다.
+            // 머리말/꼬리말 단일 줄도 한컴처럼 영역 폭까지 공백을 벌려야 한다.
             let is_header_footer_para = para_index >= usize::MAX - 1024;
-            let needs_justify = alignment == Alignment::Justify
+            let needs_justify = matches!(alignment, Alignment::Justify | Alignment::Split)
                 && (!is_last_line_of_para || is_header_footer_para)
                 && !has_forced_break;
-            let needs_distribute = alignment == Alignment::Distribute
-                || (alignment == Alignment::Split && !is_last_line_of_para && !has_forced_break);
+            let needs_distribute = alignment == Alignment::Distribute;
 
             let has_tabs = comp_line.runs.iter().any(|r| r.text.contains('\t'));
             let total_char_count: usize = comp_line

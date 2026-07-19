@@ -1612,6 +1612,11 @@ fn parse_table(
             }
             b"textWrap" => {
                 table.common.text_wrap = match attr_str(&attr).as_str() {
+                    // 표 textWrap 파서만 TIGHT/THROUGH arm 이 빠져 있어, 방출측
+                    // (text_wrap_str)이 내는 이 두 값이 SQUARE 로 유실됐다. 도형/그림/차트
+                    // 파서(같은 파일 2228/2795/5681)는 이미 처리하므로 표만 맞춘다.
+                    "TIGHT" => crate::model::shape::TextWrap::Tight,
+                    "THROUGH" => crate::model::shape::TextWrap::Through,
                     "TOP_AND_BOTTOM" => crate::model::shape::TextWrap::TopAndBottom,
                     "BEHIND_TEXT" => crate::model::shape::TextWrap::BehindText,
                     "IN_FRONT_OF_TEXT" => crate::model::shape::TextWrap::InFrontOfText,
@@ -2464,6 +2469,9 @@ fn parse_picture(
                                         "REAL_PIC" => ImageEffect::RealPic,
                                         "GRAY_SCALE" => ImageEffect::GrayScale,
                                         "BLACK_WHITE" => ImageEffect::BlackWhite,
+                                        // 방출측 image_effect_str 은 Pattern8x8 을 이 문자열로
+                                        // 낸다. 안 받으면 무늬(패턴) 효과가 왕복 시 RealPic 유실.
+                                        "PATTERN_8_8" => ImageEffect::Pattern8x8,
                                         _ => ImageEffect::RealPic,
                                     };
                                 }
@@ -6659,6 +6667,51 @@ mod tests {
         assert_eq!(table.common.attr, 0x082a_2211);
         assert_eq!(table.attr, 0x01);
         assert_eq!(table.raw_table_record_attr, 0x0400_000e);
+    }
+
+    #[test]
+    fn table_textwrap_tight_and_through_survive_roundtrip() {
+        // 표 textWrap="TIGHT"/"THROUGH" 가 파서 arm 누락으로 SQUARE 로 유실되던 결함.
+        // 방출측 text_wrap_str 은 이 두 값을 내므로 왕복 보존돼야 한다.
+        for (s, expect) in [("TIGHT", TextWrap::Tight), ("THROUGH", TextWrap::Through)] {
+            let xml = format!(
+                r#"<hs:sec xmlns:hp="http://www.hancom.co.kr/hwpml/2011/paragraph" xmlns:hs="http://www.hancom.co.kr/hwpml/2011/section"><hp:p paraPrIDRef="0" styleIDRef="0"><hp:tbl numberingType="TABLE" textWrap="{s}" pageBreak="CELL" repeatHeader="0" rowCnt="1" colCnt="1" cellSpacing="0" borderFillIDRef="0" noAdjust="0"><hp:sz width="1000" widthRelTo="ABSOLUTE" height="1000" heightRelTo="ABSOLUTE"/><hp:pos treatAsChar="0" flowWithText="1" allowOverlap="0" vertRelTo="PARA" horzRelTo="COLUMN" vertAlign="TOP" horzAlign="LEFT" vertOffset="0" horzOffset="0"/><hp:outMargin left="0" right="0" top="0" bottom="0"/><hp:inMargin left="0" right="0" top="0" bottom="0"/><hp:tr><hp:tc borderFillIDRef="0"><hp:cellAddr colAddr="0" rowAddr="0"/><hp:cellSpan colSpan="1" rowSpan="1"/><hp:cellSz width="1000" height="1000"/></hp:tc></hp:tr></hp:tbl></hp:p></hs:sec>"#
+            );
+            let section = parse_hwpx_section(&xml).unwrap();
+            let table = match &section.paragraphs[0].controls[0] {
+                crate::model::control::Control::Table(t) => t,
+                other => panic!("expected table, got {other:?}"),
+            };
+            assert_eq!(
+                table.common.text_wrap, expect,
+                "textWrap={s} 가 {expect:?} 로 파싱돼야 함(SQUARE 유실 방지)"
+            );
+        }
+    }
+
+    #[test]
+    fn picture_pattern_8_8_effect_is_preserved() {
+        // 방출측이 내는 PATTERN_8_8 효과가 기본값 RealPic 으로 되돌아가지 않아야 한다.
+        let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+<hs:sec xmlns:hp="http://www.hancom.co.kr/hwpml/2011/paragraph"
+        xmlns:hs="http://www.hancom.co.kr/hwpml/2011/section">
+  <hp:p paraPrIDRef="0" styleIDRef="0">
+    <hp:run charPrIDRef="0">
+      <hp:pic id="1" zOrder="0" textWrap="SQUARE" textFlow="BOTH_SIDES">
+        <hp:img binaryItemIDRef="image1" effect="PATTERN_8_8"/>
+      </hp:pic>
+    </hp:run>
+  </hp:p>
+</hs:sec>"#;
+        let section = parse_hwpx_section(xml).unwrap();
+        let Control::Picture(picture) = &section.paragraphs[0].controls[0] else {
+            panic!("첫 컨트롤은 그림이어야 함");
+        };
+        assert_eq!(
+            picture.image_attr.effect,
+            crate::model::image::ImageEffect::Pattern8x8,
+            "PATTERN_8_8 그림 효과가 RealPic 으로 유실되면 안 됨"
+        );
     }
 
     #[test]
