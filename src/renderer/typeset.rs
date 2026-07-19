@@ -411,6 +411,12 @@ struct TypesetState {
     /// 검출됐는가 — 기계생성 압축 ladder 문서군 판별(문서 단위, 리셋 없음).
     /// 분할 진입 첫 줄 full-advance 요구는 이 문서군에만 적용한다.
     stored_ladder_spacing_omitted: bool,
+    /// [#2279 OMIT-eager] 구역 시작 사전 스캔으로 확정한 fresh-재계산 문서군
+    /// (spacing-누락 스텝 + 본문 텍스트 쪽 리셋 + segless 본문 문단 동시 보유).
+    /// 페이지말 빈 문단 재배치·sa 스냅 보존 규칙은 이 판별에만 발동한다 —
+    /// lazy(#2383) 공유 플래그에 얹으면 저장 흐름 신뢰 문서(sample16 #2158 핀)
+    /// 까지 번져 +1 회귀.
+    omit_fresh_recalc_doc: bool,
     /// 현재 단 인덱스
     current_column: u16,
     /// 단 수
@@ -1746,6 +1752,7 @@ impl TypesetState {
             prev_body_bottom_vpos: None,
             flow_underrun: 0.0,
             stored_ladder_spacing_omitted: false,
+            omit_fresh_recalc_doc: false,
             current_column: 0,
             col_count,
             layout,
@@ -2065,7 +2072,7 @@ impl TypesetState {
 }
 
 /// 문단 format() 결과: 문단의 실제 렌더링 높이 정보
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct FormattedParagraph {
     /// 총 높이 (spacing 포함)
     total_height: f64,
@@ -2176,6 +2183,122 @@ fn spacing_trim_restorable(paragraphs: &[Paragraph], para_idx: usize) -> bool {
         }
     }
     false
+}
+
+/// [#2279 OMIT-eager] 저장 ladder 의 spacing-누락(OMIT) 서명 사전 판별.
+///
+/// #2383 의 lazy 판별(빈 host 문단의 표 성장 시점)은 첫 검출 지점 이전의
+/// 페이지말 fit 에 문서군 규칙을 적용하지 못한다(36392557: 판별 pi27, 실제
+/// 경계 pi14). 같은 서명 — 연속 문단쌍의 저장 스텝이 bare lh+ls 와 일치
+/// (±2px)하면서 그 경계의 paraPr spacing(cur.sa + next.sb)을 반영하지 않음 —
+/// 을 구역 시작 시점에 전방 스캔으로 검출한다. 2쌍 이상 요구(단발 우연 일치
+/// 배제). 정상(스텝이 spacing 포함) 문서는 스텝이 lh+ls 보다 spacing 만큼
+/// 길어 불일치한다.
+fn ladder_spacing_omitted_signature(
+    paragraphs: &[Paragraph],
+    styles: &ResolvedStyleSet,
+    dpi: f64,
+) -> bool {
+    use crate::model::paragraph::LineSeg;
+    // [#2279 OMIT-eager 판별 3요건] lineseg 가 통째로 드롭된 본문 문단(마스킹·
+    // 생성기 드롭)이 **다수 비율**로 존재 — 한글이 저장 흐름을 신뢰하지 못하고
+    // fresh 재계산하는 문서군의 본질 신호다. 실측 분리: 재계산 문서군은
+    // 0.39~0.80(36475730/36360680/36392557), 저장 흐름 신뢰 문서는 0(보도자료
+    // 156652332)~0.10(sample16 #2158 핀) — 임계 25% + 4문단, 이하는 국소
+    // 드롭으로 보고 저장 흐름 신뢰를 유지한다(+1 회귀 실측).
+    let mut text_paras = 0usize;
+    let mut segless_text_paras = 0usize;
+    for p in paragraphs {
+        if p.text.trim().is_empty() {
+            continue;
+        }
+        text_paras += 1;
+        if !p
+            .line_segs
+            .iter()
+            .any(|s| s.tag & LineSeg::TAG_IMPLEMENTATION_PROPERTY == 0)
+        {
+            segless_text_paras += 1;
+        }
+    }
+    if segless_text_paras < 4 || segless_text_paras * 4 < text_paras {
+        return false;
+    }
+    let mut hits = 0usize;
+    let mut spacing_omitted = false;
+    // [#2279 OMIT-eager 판별 2요건] 누적좌표 ladder 문서(리셋 없음, 예: 36386907)
+    // 는 저장 좌표가 한글 fresh 와 일치하는 신뢰 문서군이라 spacing-누락 스텝이
+    // 있어도 페이지말 fit 신뢰 철회 대상이 아니다(트림 수용이 정답 — 92셋 실측
+    // 2건 +1 반증). 페이지별 vpos 리셋(재배치 사다리, 예: 36392557 pi14→pi15)
+    // 을 함께 요구한다.
+    let mut has_page_reset = false;
+    for pair in paragraphs.windows(2) {
+        let (cur, next) = (&pair[0], &pair[1]);
+        let (Some(cur_last), Some(next_first)) = (cur.line_segs.last(), next.line_segs.first())
+        else {
+            continue;
+        };
+        if cur_last.tag & LineSeg::TAG_IMPLEMENTATION_PROPERTY != 0
+            || next_first.tag & LineSeg::TAG_IMPLEMENTATION_PROPERTY != 0
+        {
+            continue;
+        }
+        if next_first.vertical_pos <= cur_last.vertical_pos {
+            // vpos 리셋/역행 경계 — 스텝 판정 불가. 쪽 하단→상단 리셋만 인정.
+            // 개체(표/그림) host 문단의 v=0 은 TAC 장식·footer 표의 좌표 관례라
+            // 쪽 리셋이 아니다(156652332 담당부서 표 오인 → +1 회귀 실측) —
+            // 개체 없는 본문 텍스트 문단으로의 리셋만 페이지 재배치 신호로 본다.
+            if cur_last.vertical_pos > 5000
+                && next_first.vertical_pos < 5000
+                && next.controls.is_empty()
+                && para_has_visible_text(next)
+            {
+                has_page_reset = true;
+            }
+            continue;
+        }
+        if spacing_omitted {
+            if has_page_reset {
+                return true;
+            }
+            continue;
+        }
+        let sa = styles
+            .para_styles
+            .get(cur.para_shape_id as usize)
+            .map(|s| s.spacing_after)
+            .unwrap_or(0.0);
+        let sb = styles
+            .para_styles
+            .get(next.para_shape_id as usize)
+            .map(|s| s.spacing_before)
+            .unwrap_or(0.0);
+        let spacing_around = sa + sb;
+        if spacing_around <= 2.5 {
+            continue;
+        }
+        let step = hwpunit_to_px(next_first.vertical_pos - cur_last.vertical_pos, dpi);
+        let bare = hwpunit_to_px(cur_last.line_height + cur_last.line_spacing, dpi);
+        if step <= 0.0 || bare <= 0.0 {
+            continue;
+        }
+        if (step - bare).abs() < 2.0 && step + 1.0 < bare + spacing_around {
+            hits += 1;
+            if std::env::var("RHWP_DIAG_OMITSIG").is_ok() {
+                eprintln!(
+                    "DIAG_OMITSIG hit step={:.1} bare={:.1} sa={:.1} sb={:.1} cur_v={} next_v={}",
+                    step, bare, sa, sb, cur_last.vertical_pos, next_first.vertical_pos
+                );
+            }
+            if hits >= 2 {
+                spacing_omitted = true;
+                if has_page_reset {
+                    return true;
+                }
+            }
+        }
+    }
+    spacing_omitted && has_page_reset
 }
 
 fn debug_brief_line_text(text: &str, max_chars: usize) -> String {
@@ -3064,6 +3187,31 @@ impl TypesetEngine {
             .iter()
             .any(|p| p.line_segs.iter().any(|ls| !is_synthetic_line_seg(ls)));
         st.skip_spacing_before_prededuct = skip_spacing_before_prededuct;
+        // [#2279 OMIT-eager] 기계생성 압축 ladder 문서군 사전 판별 — lazy 판별
+        // (#2383, 빈 host 표 성장 시점)보다 앞서 페이지말 fit 규칙에 적용되도록
+        // 구역 시작 시점에 확정한다. lazy 경로는 사전 스캔 미검출 형상의
+        // fallback 으로 유지. HWP3-origin 계열(변환본·page tolerance 문서)은
+        // 변환기 좌표 관례가 달라 저장 흐름 신뢰가 정답 — 대상이 아니다
+        // (sample16 64→65 +1 실측, #2158 핀).
+        if profile.hwpx_stored_layout()
+            && !profile.hwp3_layout()
+            && !profile.hwp3_native_layout()
+            && !hwp3_origin_page_tolerance
+        {
+            st.omit_fresh_recalc_doc =
+                ladder_spacing_omitted_signature(paragraphs, styles, self.dpi);
+            if std::env::var("RHWP_DIAG_OMITSIG").is_ok() {
+                eprintln!(
+                    "DIAG_OMITSIG sec={} eager={}",
+                    section_index, st.omit_fresh_recalc_doc
+                );
+            }
+            // 사전 판별 문서군은 #2391 분할 진입 full-advance 계보도 동일하게
+            // 적용 대상 — lazy 판별(#2383)의 상위 집합으로 승격만 한다.
+            if st.omit_fresh_recalc_doc {
+                st.stored_ladder_spacing_omitted = true;
+            }
+        }
         st.current_zone_design_spacing_px = column_def_design_spacing_px(column_def, self.dpi);
 
         // 머리말/꼬리말/쪽 번호/새 번호/감추기 컨트롤 수집
@@ -3407,6 +3555,18 @@ impl TypesetEngine {
                             || near_page_top_reset
                             || native_near_top_reset
                     };
+                    // [#2279 OMIT-fit] spacing-누락 문서군에서 fresh 재계산이 직전
+                    // 쪽에서 밀어낸 빈 문단만 담긴 쪽에는 저장 리셋 경계를 적용하지
+                    // 않는다 — 한글 fresh 는 그 빈 문단을 다음 쪽 상단에 두고
+                    // 본문을 이어 붙인다 (36392557 pi14+pi15: 한글 PDF p3 상단
+                    // 36px = pi14 자리, 단독 쪽 아님).
+                    let omit_pushed_empty_page = st.omit_fresh_recalc_doc
+                        && st.current_items.iter().all(|item| {
+                            page_item_para_index(item)
+                                .and_then(|idx| paragraphs.get(idx))
+                                .is_some_and(|p| p.controls.is_empty() && p.text.trim().is_empty())
+                        });
+                    let trigger = trigger && !omit_pushed_empty_page;
                     if trigger {
                         // [Task #724] wrap_around active 시 강제 종료 — anchor cs=0
                         // (HWP5 변환본 caption-style) 한정. 일반 wrap_around (anchor cs>0)
@@ -10903,8 +11063,37 @@ impl TypesetEngine {
         let mut y = hc.vpos_adjust(st.current_height, para_idx, paragraphs, styles);
         // [#2243] dirty 저장-앵커 사다리의 역스냅 금지 — 저장 lineseg 누락 문단의
         // fresh 재계산 성장분을 낡은 기계 v0 가 되돌리지 못하게 한다(전방만 허용).
-        if st.vpos_ladder_dirty && st.vpos_page_base_stored && y < st.current_height {
+        // [#2279 OMIT-sa] spacing-누락 문서군은 합성(비저장) base 사다리도 동일 —
+        // 사다리 자체가 spacing 을 누락하므로 dirty 성장분의 역스냅을 base 저장
+        // 여부와 무관하게 금지한다 (36392557 p4: pi61 저장 anchor 로의 역스냅이
+        // sa 성장분 +20.1px 를 되감아 페이지 경계를 한 문단 뒤로 밀던 형상).
+        if st.vpos_ladder_dirty
+            && (st.vpos_page_base_stored || st.omit_fresh_recalc_doc)
+            && y < st.current_height
+        {
             y = st.current_height;
+        }
+        // [#2279 OMIT-sa] 합성(비저장) lineseg 경계의 후방 스냅량이 직전 문단의
+        // spacing_after 와 일치(±2px)하면 합성 사다리의 sa-누락이다 — 한글
+        // fresh 는 sa 를 가산하므로 되감지 않는다 (36392557 p4 pi42/43/44
+        // sa 6.7px ×3, 한글 PDF 절대좌표 +20.1px 실측). OMIT 문서군 + 합성
+        // seg 직전 문단 한정. 이후 저장 anchor 역스냅이 성장분을 되돌리지
+        // 못하게 dirty 처리(위 #2243 확장과 짝).
+        if st.omit_fresh_recalc_doc && y < st.current_height && para_idx > 0 {
+            let prev = &paragraphs[para_idx - 1];
+            let prev_synthetic = !prev.line_segs.is_empty()
+                && prev.line_segs.iter().all(|s| {
+                    s.tag & crate::model::paragraph::LineSeg::TAG_IMPLEMENTATION_PROPERTY != 0
+                });
+            let prev_sa = styles
+                .para_styles
+                .get(prev.para_shape_id as usize)
+                .map(|s| s.spacing_after)
+                .unwrap_or(0.0);
+            if prev_synthetic && prev_sa > 0.5 && (st.current_height - y - prev_sa).abs() < 2.0 {
+                y = st.current_height;
+                st.vpos_ladder_dirty = true;
+            }
         }
         // [#2279 ladder-sb] 후방 스냅량이 이 문단의 spacing_before 와 정확히
         // 일치(±2px)하고, **저장 ladder 스텝 자체가 sb 를 누락**했으면 생성기
@@ -11613,7 +11802,30 @@ impl TypesetEngine {
                 .first()
                 .and_then(|item| page_item_vpos_base(item, paragraphs))
         });
+        // [#2279 OMIT-fit] spacing-누락 문서군에서 **저장 리셋 직전의 페이지말
+        // 빈 문단**은 다음 쪽 상단 귀속이다 — 한글 fresh 는 누락 spacing 을
+        // 재가산해 이 빈 문단을 다음 쪽으로 넘긴다(36392557 pi14: 저장 bottom
+        // 910.6px 는 본문 안이지만 한글 PDF 는 p3 상단 36px 로 실측). 저장
+        // page-last 신뢰와 h4f 트림을 함께 철회한다. 리셋이 뒤따르지 않는
+        // 빈 문단(156652332 pi22 누적 구간)과 본문/개체 문단(156577742 footer
+        // 표·그림)의 저장 증거·트림은 유지 — 전면 철회는 +1 회귀 실측.
+        let omit_untrusted_empty = st.omit_fresh_recalc_doc
+            && para.controls.is_empty()
+            && !para_has_visible_text(para)
+            && para
+                .line_segs
+                .last()
+                .filter(|cs| {
+                    cs.tag & crate::model::paragraph::LineSeg::TAG_IMPLEMENTATION_PROPERTY == 0
+                })
+                .zip(paragraphs.get(para_idx + 1).and_then(|next| {
+                    next.line_segs.first().filter(|ns| {
+                        ns.tag & crate::model::paragraph::LineSeg::TAG_IMPLEMENTATION_PROPERTY == 0
+                    })
+                }))
+                .is_some_and(|(cs, ns)| ns.vertical_pos < cs.vertical_pos);
         let saved_single_line_bottom_fits = forced_page_break_line.is_none()
+            && !omit_untrusted_empty
             && st.col_count == 1
             && fmt.line_heights.len() == 1
             // [#2137] 비-TAC 자리차지(TopAndBottom) float 만 가진 앵커도 저장
@@ -11645,6 +11857,7 @@ impl TypesetEngine {
                         && bottom <= st.available_height() + 0.5 + spill
                 });
         let saved_list_tail_body_vpos_fits = forced_page_break_line.is_none()
+            && !omit_untrusted_empty
             && st.col_count == 1
             && fmt.line_heights.len() == 1
             && fmt.spacing_after <= 0.5
@@ -11665,8 +11878,16 @@ impl TypesetEngine {
                     )
                 });
 
+        // 위 omit_untrusted_empty(저장 리셋 직전 빈 문단)는 트림 혜택도 잃는다
+        // — 전량(lh+ls) 부족 시 다음 쪽 상단으로 넘긴다(36392557 pi14 36px).
+        // 텍스트 문단은 종전 h4f 트림 유지(36392757 pi19: 전량 요구 시 +1 실측).
+        let page_end_fit_height = if omit_untrusted_empty {
+            fmt.total_height.max(fmt.height_for_fit)
+        } else {
+            fmt.height_for_fit
+        };
         if forced_page_break_line.is_none()
-            && (st.current_height + fmt.height_for_fit <= available
+            && (st.current_height + page_end_fit_height <= available
                 || saved_single_line_bottom_fits
                 || saved_list_tail_body_vpos_fits)
         {
@@ -13761,12 +13982,19 @@ impl TypesetEngine {
             }
         } else if tac_wrap_split {
             st.current_height += table_total_height;
-        } else if let Some(host_line_px) = if st.profile.hwpx_stored_layout() && is_last_placed {
+        } else if let Some(host_line_px) = if st.profile.hwpx_stored_layout()
+            && is_last_placed
+            && total_lines <= pre_table_end_line + 1
+        {
             // [#2279 10k] host 빈 줄박스는 **문단당 1개** — 다중 표 문단에서
             // 표마다 가산하면 중간 표 배치의 fit 이 과대해져 후속 표가 조기
             // 개행된다 (156767148 보도자료 pi7: 표2개 문단, 한글 1쪽 vs +1쪽,
             // 10k 회귀 +29건 군집의 지배 형상). 마지막 표 배치 시점으로 이연
             // — 단일 표 문단(36392557 pi27 장제목)은 종전과 동일.
+            // [#2279 sec0] host 문단에 표 줄 외 추가 줄박스(트레일러 빈 줄)가
+            // 이미 있으면 host 줄박스가 그 줄로 실체화된 것 — 별도 가산하면
+            // 이중 계상으로 분할 유발(36392557 sec0 표지: 표 892.5 + 트레일러
+            // 25.6 = 918.1 로 한글 1쪽인데 +16 가산 시 934.1 > 930.5 분할).
             self.tac_topbottom_conflict_host_line_px(para, table, styles)
         } else {
             None
