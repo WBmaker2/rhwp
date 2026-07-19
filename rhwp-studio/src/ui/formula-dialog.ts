@@ -231,6 +231,20 @@ export class FormulaDialog extends ModalDialog {
         );
         if (formatted !== null) {
           try {
+            // [#2367] 위 evaluateTableFormula(write_result=true) 가 이미 원시 결과를 셀에
+            // 기록했다. 지우지 않고 offset 0 에 삽입하면 두 값이 겹쳐 남는다
+            // ("6,912" + "6912" → "6,9126912"). #2344 계열과 동형으로 delete 후 insert 한다.
+            // 같은 commit() 안이라 두 뮤테이션은 하나의 snapshot 으로 원자화된다.
+            const len = this.wasm.getCellParagraphLength(
+              this.ctx.sec, this.ctx.ppi, this.ctx.ci,
+              this.ctx.cellIndex, 0,
+            );
+            if (len > 0) {
+              this.wasm.deleteTextInCell(
+                this.ctx.sec, this.ctx.ppi, this.ctx.ci,
+                this.ctx.cellIndex, 0, 0, len,
+              );
+            }
             this.wasm.insertTextInCell(
               this.ctx.sec, this.ctx.ppi, this.ctx.ci,
               this.ctx.cellIndex, 0, 0, formatted,

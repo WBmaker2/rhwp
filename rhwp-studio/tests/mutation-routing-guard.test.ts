@@ -144,7 +144,7 @@ const BASELINE: Readonly<Record<string, number>> = {
   'src/ui/equation-editor-dialog.ts': 2,
   'src/ui/equation-props-dialog.ts': 2,
   'src/ui/find-dialog.ts': 4,
-  'src/ui/formula-dialog.ts': 3,
+  'src/ui/formula-dialog.ts': 4, // +1: [#2367] 쉼표 포맷이 원시 결과 위에 겹치지 않도록 deleteTextInCell 추가(commit() snapshot 내부 — 라우팅 유지)
   'src/ui/new-number-dialog.ts': 1,
   'src/ui/numbering-dialog.ts': 1,
   'src/ui/page-border-dialog.ts': 1,
