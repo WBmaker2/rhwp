@@ -1206,11 +1206,19 @@ export class MergeParagraphInCellCommand implements EditCommand {
     const sec = pos.sectionIndex;
     const ppi = pos.parentParaIndex!;
     const cpi = pos.cellParaIndex!;
-    // 병합 전 이전 셀 문단 길이 기억
-    this.mergePointOffset = wasm.getCellParagraphLength(sec, ppi, pos.controlIndex!, pos.cellIndex!, cpi - 1);
+    // 병합 전 이전 셀 문단 길이 기억.
+    // flat 필드(controlIndex/cellIndex)는 "외부 표 기준" 레거시 좌표라(types.ts DocumentPosition)
+    // 중첩 셀에서는 안쪽 셀을 가리키지 못한다. 뮤테이션이 ByPath 로 분기하는 만큼 길이 조회도
+    // 같은 축으로 맞춘다(cursor.ts 의 useCellPath 분기와 동형). 어긋나면 undo 가 바깥 셀에서
+    // 읽은 길이로 안쪽 셀을 분할해 문단이 엉뚱한 지점에서 잘린다.
     if (isNestedCell(pos)) {
+      const prevPath = pos.cellPath!.map((entry, index, path) =>
+        index + 1 === path.length ? { ...entry, cellParaIndex: cpi - 1 } : entry,
+      );
+      this.mergePointOffset = wasm.getCellParagraphLengthByPath(sec, ppi, JSON.stringify(prevPath));
       wasm.mergeParagraphInCellByPath(sec, ppi, cellPathJson(pos));
     } else {
+      this.mergePointOffset = wasm.getCellParagraphLength(sec, ppi, pos.controlIndex!, pos.cellIndex!, cpi - 1);
       wasm.mergeParagraphInCell(sec, ppi, pos.controlIndex!, pos.cellIndex!, cpi);
     }
     return cellParagraphPosition(pos, cpi - 1, this.mergePointOffset);
