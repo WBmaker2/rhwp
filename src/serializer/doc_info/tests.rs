@@ -608,6 +608,28 @@ fn test_serialize_numbering_roundtrip() {
     assert_eq!(len, 3);
 }
 
+/// HWPX 유래/IR 생성 TabDef 는 attr=0 이고 auto_tab 불리언만 세팅된다. serialize_tab_def 이
+/// 불리언을 attr 하위 2비트로 재인코딩하지 않으면 자동 탭 설정이 저장·재로드 시 유실된다.
+#[test]
+fn tab_def_serializes_auto_tab_bits_from_bools() {
+    use crate::model::style::TabDef;
+    let td = TabDef {
+        raw_data: None,
+        attr: 0,
+        tabs: vec![],
+        auto_tab_left: false,
+        auto_tab_right: true,
+    };
+    let bytes = serialize_tab_def(&td);
+    let mut r = crate::parser::byte_reader::ByteReader::new(&bytes);
+    let attr = r.read_u32().unwrap();
+    assert_eq!(
+        attr & 0x03,
+        0b10,
+        "auto_tab_right=true → attr bit1 이 세팅돼야 저장 보존"
+    );
+}
+
 /// [#1793] BULLET 레코드 직렬화 레이아웃 — 문단 머리 정보는 char_shape_id 포함
 /// 12바이트. char_shape_id 4바이트 누락 시 재파싱에서 bullet_char 오프셋이
 /// 어긋나 글머리표 문자가 NUL 로 손상된다 (HWPX→HWP 저장 후 렌더 손상).
