@@ -192,7 +192,7 @@ fn parse_jpeg_header(bytes: &[u8]) -> Option<CanvasKitEncodedImageHeader> {
         let marker = *bytes.get(offset)?;
         offset += 1;
 
-        if marker == 0x00 || matches!(marker, 0xd8 | 0xd9 | 0xda) {
+        if marker == 0x00 || matches!(marker, 0xd8..=0xda) {
             return None;
         }
         if marker == 0x01 || (0xd0..=0xd7).contains(&marker) {

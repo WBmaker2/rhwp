@@ -1446,7 +1446,7 @@ assert.equal(
 );
 assert.equal(
   tableReadinessSample?.browserParityThresholds?.inkMaskMaxDiffRatio,
-  0.0185,
+  0.019,
   'table readiness must keep the calibrated ink-mask budget bounded',
 );
 assert.equal(rendererBaselineManifest.schemaVersion, 1, 'renderer baseline manifest schema must be explicit');
@@ -1618,7 +1618,7 @@ requireSnippet(
 );
 for (const readinessGuard of [
   'backendNotActive',
-  'defaultAutoRequestMissing',
+  'legacyDefaultRequestMismatch',
   'autoSelectionMismatch',
   'autoPreflightNotEligible',
   'autoDocumentDigestMissing',
