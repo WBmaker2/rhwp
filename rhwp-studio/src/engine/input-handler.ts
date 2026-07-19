@@ -4587,17 +4587,30 @@ export class InputHandler {
     });
   }
 
+  /**
+   * 셀 내부 컨트롤 locator (뮤테이션 분기와 record 대상이 같은 조건을 공유).
+   *
+   * 셀 안 양식 개체는 hit 결과의 para 가 "표를 담은 최상위 문단" 이고 ci 는 "셀 문단 안의
+   * 컨트롤 인덱스" 다(form_query.rs get_form_object_at_native). 따라서 flat
+   * setFormValue(sec, para, ci) 로 쓰면 표 컨트롤 슬롯을 가리켜 항상 실패한다
+   * (set_form_value_native 의 `not a form object`). 셀 안이면 반드시 이 locator 로
+   * setFormValueInCell 을 쓰고, 기록에도 inCell 을 실어야 undo 가 같은 슬롯을 되돌린다.
+   */
+  private formInCellLoc(formHit: FormObjectHitResult):
+    { tablePara: number; tableCi: number; cellIdx: number; cellPara: number } | undefined {
+    return (formHit.inCell && formHit.tablePara !== undefined && formHit.tableCi !== undefined
+        && formHit.cellIdx !== undefined && formHit.cellPara !== undefined)
+      ? { tablePara: formHit.tablePara, tableCi: formHit.tableCi, cellIdx: formHit.cellIdx, cellPara: formHit.cellPara }
+      : undefined;
+  }
+
   /** 양식 개체 클릭 처리 */
   handleFormObjectClick(formHit: FormObjectHitResult, pageIdx: number, _zoom: number): void {
     if (!formHit.found || formHit.sec === undefined || formHit.para === undefined || formHit.ci === undefined) return;
 
     const { sec, para, ci, formType } = formHit;
 
-    // 셀 내부 컨트롤 locator (record 대상과 setFormVal 분기가 같은 조건을 공유)
-    const inCellLoc = (formHit.inCell && formHit.tablePara !== undefined && formHit.tableCi !== undefined
-        && formHit.cellIdx !== undefined && formHit.cellPara !== undefined)
-      ? { tablePara: formHit.tablePara, tableCi: formHit.tableCi, cellIdx: formHit.cellIdx, cellPara: formHit.cellPara }
-      : undefined;
+    const inCellLoc = this.formInCellLoc(formHit);
 
     // 셀 내부 폼 값 설정 헬퍼
     const setFormVal = (valueJson: string) => {
@@ -4798,12 +4811,22 @@ export class InputHandler {
     const commit = () => {
       if (committed) return;
       committed = true;
-      this.wasm.setFormValue(sec, para, ci, JSON.stringify({ text: input.value }));
+      // 셀 안 Edit 필드는 flat setFormValue 로 쓰면 표 컨트롤 슬롯을 가리켜 조용히 실패한다
+      // (CheckBox 분기와 동일 조건 — formInCellLoc 참고). 기록에도 inCell 을 실어야 undo 가
+      // 같은 슬롯을 되돌린다(SetFormValueCommand.apply 가 inCell 로 분기).
+      const inCellLoc = this.formInCellLoc(formHit);
+      const afterJson = JSON.stringify({ text: input.value });
+      if (inCellLoc) {
+        this.wasm.setFormValueInCell(sec, inCellLoc.tablePara, inCellLoc.tableCi,
+          inCellLoc.cellIdx, inCellLoc.cellPara, ci, afterJson);
+      } else {
+        this.wasm.setFormValue(sec, para, ci, afterJson);
+      }
       // [Task #2374] 편집 필드 커밋 기록(동일 텍스트는 no-op 제외).
       this.recordFormValueChanges([{
-        sec, para, ci,
+        sec, para, ci, inCell: inCellLoc,
         beforeJson: JSON.stringify({ text: formHit.text ?? '' }),
-        afterJson: JSON.stringify({ text: input.value }),
+        afterJson,
       }]);
       this.removeFormOverlay();
       this.afterEdit();
