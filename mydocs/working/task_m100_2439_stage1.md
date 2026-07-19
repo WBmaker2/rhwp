@@ -34,3 +34,9 @@ visible host의 두 RowBreak 표 중 후행 표가 페이지 하단의 좁은 �
 
 신규 `tests/issue_2439.rs`는 이월 표의 fresh-page exclusion과 zero-offset 선행 표의
 전체 exclusion, 표 그룹 뒤 host 텍스트의 시작 위치를 render tree bbox로 단언한다.
+
+## 5. 후속 기록
+
+이 문서는 최초 재현과 회귀 가드를 기록한 당시 스냅샷이다. 9쪽 중간 출력을 완료로
+보았던 후속 판정은 [Stage 5](task_m100_2439_stage5.md)에서 철회했고, 추가 구현과 최종
+10쪽 검증은 [Stage 6](task_m100_2439_stage6.md)에 기록했다.
