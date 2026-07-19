@@ -14,6 +14,7 @@ use rhwp::model::paragraph::LineSeg;
 use rhwp::model::provenance::{SourceFormat, SourceProvenance};
 use rhwp::model::table::TablePageBreak;
 use rhwp::renderer::render_tree::{RenderNode, RenderNodeType};
+use rhwp::renderer::{hwpunit_to_px, DEFAULT_DPI};
 use rhwp::wasm_api::HwpDocument;
 use std::fs;
 use std::path::Path;
@@ -51,6 +52,22 @@ fn load_with_native_hwp5_provenance(sample: &str) -> HwpDocument {
     table.page_break = TablePageBreak::RowBreak;
     doc.set_document(model);
     assert!(doc.document().layout_profile().native_hwp5_layout());
+    doc
+}
+
+fn isolated_positive_empty_host_doc(top_margin_delta: i16) -> HwpDocument {
+    let mut doc = load_with_native_hwp5_provenance(POSITIVE_EMPTY_HOST_SAMPLE);
+    let mut model = doc.document().clone();
+    // Remove the unrelated float in the preceding title paragraph so the full-table coordinate
+    // is controlled only by this host's paragraph top, offset, and strict outer-top margin.
+    model.sections[0].paragraphs[0]
+        .controls
+        .retain(|control| !matches!(control, Control::Table(_)));
+    let Control::Table(table) = &mut model.sections[0].paragraphs[1].controls[0] else {
+        panic!("positive empty-host fixture must contain a table control");
+    };
+    table.outer_margin_top += top_margin_delta;
+    doc.set_document(model);
     doc
 }
 
@@ -187,5 +204,25 @@ fn positive_offset_empty_host_float_advances_flow_to_its_painted_bottom() {
         "following flow must start at or below the actual painted bottom of a positive-offset \
          empty-host TopAndBottom float: table=[{table_top:.1},{table_bottom:.1}], \
          following_top={following_top:.1}",
+    );
+
+    const TOP_MARGIN_DELTA_HU: i16 = 567;
+    let isolated_base_page = isolated_positive_empty_host_doc(0)
+        .build_page_render_tree(0)
+        .expect("build isolated base render tree");
+    let (isolated_base_top, _) =
+        find_table_bbox(&isolated_base_page.root, 1, 0).expect("isolated base table bbox");
+    let larger_top_margin_doc = isolated_positive_empty_host_doc(TOP_MARGIN_DELTA_HU);
+    let larger_margin_page = larger_top_margin_doc
+        .build_page_render_tree(0)
+        .expect("build larger-top-margin render tree");
+    let (larger_margin_top, _) =
+        find_table_bbox(&larger_margin_page.root, 1, 0).expect("larger-top-margin table bbox");
+    let expected_delta = hwpunit_to_px(TOP_MARGIN_DELTA_HU as i32, DEFAULT_DPI);
+    assert!(
+        (larger_margin_top - isolated_base_top - expected_delta).abs() < 0.01,
+        "the full PageItem::Table path must repeat the same strict outer-top margin as the first \
+         PartialTable fragment: base_top={isolated_base_top:.2}, larger_top={larger_margin_top:.2}, \
+         expected_delta={expected_delta:.2}",
     );
 }

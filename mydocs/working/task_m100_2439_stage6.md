@@ -5,6 +5,10 @@
 - 작성일: 2026-07-20
 - 코드 커밋: `64138965`
 
+> 정정(2026-07-20): 2~3쪽 확대 비교에서 축퇴 헤더 폭, fragment outer margin, padding을
+> 제외한 orphan guard 문제가 추가로 확인됐다. 아래 Stage 6의 “최종” 판정은
+> [Stage 7](task_m100_2439_stage7.md)의 구현·10쪽 재검증으로 대체한다.
+
 ## 1. 구현 결과
 
 ### 단일 positive-offset 빈 host RowBreak 표

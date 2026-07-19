@@ -141,6 +141,7 @@ RHWP_TABLE_DRIFT=1 RHWP_DIAG_FLOW=1 cargo run --quiet --bin rhwp -- \
 - Stage 4: 최초 PDF 비교와 잘못된 완료 판정 기록 + `mydocs/working/task_m100_2439_stage4.md`
 - Stage 5: PDF 오라클 정정·잔여 차이 분석 + `mydocs/working/task_m100_2439_stage5.md`
 - Stage 6: 잔여 구현·10쪽 최종 검증 + `mydocs/working/task_m100_2439_stage6.md`
+- Stage 7: 헤더 열 격자·fragment 여백·행내 컷 정합 + `mydocs/working/task_m100_2439_stage7.md`
 - 최종: `mydocs/report/task_m100_2439_report.md`, 오늘할일 상태 갱신
 
 커밋·push·PR 생성은 저장소 승인 절차에 따라 별도로 수행한다.

@@ -5,7 +5,8 @@
 
 use super::composer::{compose_paragraph, effective_text_for_metrics, ComposedParagraph};
 use super::float_placement::{
-    horizontal_range, is_para_topbottom_float, signed_hwpunit, FloatLaneSet, FloatPlacementContext,
+    horizontal_range, is_para_topbottom_float, native_empty_host_rowbreak_line_advance_hu,
+    signed_hwpunit, FloatLaneSet, FloatPlacementContext,
 };
 use super::font_metrics_data;
 use super::height_cursor::HeightCursor;
@@ -597,6 +598,39 @@ fn para_has_non_whitespace_text(para: &Paragraph) -> bool {
     para.text
         .chars()
         .any(|c| c > '\u{001F}' && c != '\u{FFFC}' && !c.is_whitespace())
+}
+
+fn repeats_native_empty_host_rowbreak_fragment_margin(
+    native_hwp5_layout: bool,
+    paragraphs: &[Paragraph],
+    para_index: usize,
+    control_index: usize,
+) -> bool {
+    let Some(para) = paragraphs.get(para_index) else {
+        return false;
+    };
+    let Some(Control::Table(table)) = para.controls.get(control_index) else {
+        return false;
+    };
+    native_empty_host_rowbreak_line_advance_hu(
+        native_hwp5_layout,
+        para,
+        table,
+        paragraphs.get(para_index + 1),
+    )
+    .is_some()
+}
+
+/// Paint the first, unsplit form of the strict native-HWP empty-host RowBreak table at the
+/// same top coordinate that `layout_partial_table` uses for its first fragment.  The ordinary
+/// float lane intentionally omits outer margins (#2097); only callers that already proved the
+/// narrow #2439 structural contract pass a non-zero `fragment_outer_top_px` here.
+fn empty_host_float_raw_top(
+    para_y: f64,
+    vertical_offset_px: f64,
+    fragment_outer_top_px: f64,
+) -> f64 {
+    (para_y + vertical_offset_px).max(para_y) + fragment_outer_top_px
 }
 
 fn para_line_spacing_px(para: &Paragraph, dpi: f64) -> f64 {
@@ -6277,7 +6311,19 @@ impl LayoutEngine {
                         horizontal_range(&t.common, width_px, placement_ctx, self.dpi);
                     let v_offset_px =
                         hwpunit_to_px(signed_hwpunit(t.common.vertical_offset), self.dpi);
-                    let raw_top = (para_y_for_table + v_offset_px).max(para_y_for_table);
+                    let fragment_outer_top_px = native_empty_host_rowbreak_line_advance_hu(
+                        self.profile.get().native_hwp5_layout(),
+                        para,
+                        t,
+                        paragraphs.get(para_index + 1),
+                    )
+                    .map(|_| hwpunit_to_px(t.outer_margin_top as i32, self.dpi))
+                    .unwrap_or(0.0);
+                    let raw_top = empty_host_float_raw_top(
+                        para_y_for_table,
+                        v_offset_px,
+                        fragment_outer_top_px,
+                    );
                     let lane_top = para_float_lanes
                         .entry(para_index)
                         .or_default()
@@ -7036,81 +7082,28 @@ impl LayoutEngine {
                 let reserved_height = (y_offset - lane_top).max(0.0);
                 let lanes = para_float_lanes.entry(para_index).or_default();
                 lanes.place(x_start, x_end, raw_top, reserved_height);
-                let single_positive_empty_float_before_plain_text =
-                    self.profile.get().native_hwp5_layout()
-                        && is_current_empty_para_float
-                        && para
-                            .controls
-                            .iter()
-                            .filter(|control| matches!(control, Control::Table(_)))
-                            .count()
-                            == 1
-                        && para
-                            .controls
-                            .iter()
-                            .filter(|control| {
-                                matches!(control, Control::Table(table)
-                                    if is_para_topbottom_float(&table.common))
-                            })
-                            .count()
-                            == 1
-                        && para.controls.get(control_index).is_some_and(|control| {
-                            matches!(control, Control::Table(table)
-                                if is_para_topbottom_float(&table.common)
-                                    && matches!(table.common.vert_rel_to,
-                                        crate::model::shape::VertRelTo::Para)
-                                    && matches!(table.page_break,
-                                        crate::model::table::TablePageBreak::RowBreak)
-                                    && signed_hwpunit(table.common.vertical_offset) > 0)
-                        })
-                        && para.line_segs.iter().any(|seg| {
-                            seg.tag & crate::model::paragraph::LineSeg::TAG_IMPLEMENTATION_PROPERTY
-                                == 0
-                                && seg.line_height > 0
-                        })
-                        && paragraphs.get(para_index + 1).is_some_and(|next| {
-                            para_has_non_whitespace_text(next) && next.controls.is_empty()
-                        });
-                let lane_flow_bottom = if single_positive_empty_float_before_plain_text {
+                let single_positive_empty_float_before_plain_text = para
+                    .controls
+                    .get(control_index)
+                    .and_then(|control| match control {
+                        Control::Table(table) => native_empty_host_rowbreak_line_advance_hu(
+                            self.profile.get().native_hwp5_layout(),
+                            para,
+                            table,
+                            paragraphs.get(para_index + 1),
+                        )
+                        .map(|line_advance| (table.as_ref(), line_advance)),
+                        _ => None,
+                    });
+                let lane_flow_bottom = if let Some((table, line_advance)) =
+                    single_positive_empty_float_before_plain_text
+                {
                     // #2439: a single empty-host TopAndBottom float followed by an ordinary
                     // text paragraph must clear the table's painted lane. `global + reserved`
                     // below deliberately omits the visual vertical offset; using it here put
                     // the signature line inside the table by exactly that offset.
-                    let stored_rowbreak_host_tail = para
-                        .controls
-                        .get(control_index)
-                        .and_then(|control| match control {
-                            Control::Table(table)
-                                if self.profile.get().native_hwp5_layout()
-                                    && matches!(
-                                        table.common.vert_rel_to,
-                                        crate::model::shape::VertRelTo::Para
-                                    )
-                                    && matches!(
-                                        table.page_break,
-                                        crate::model::table::TablePageBreak::RowBreak
-                                    ) => para
-                                .line_segs
-                                .iter()
-                                .find(|seg| {
-                                    seg.tag
-                                        & crate::model::paragraph::LineSeg::TAG_IMPLEMENTATION_PROPERTY
-                                        == 0
-                                        && seg.line_height > 0
-                                })
-                                .map(|seg| {
-                                    hwpunit_to_px(
-                                        seg.line_height + seg.line_spacing.max(0),
-                                        self.dpi,
-                                    )
-                                        + hwpunit_to_px(
-                                            table.outer_margin_bottom as i32,
-                                            self.dpi,
-                                        )
-                                }),
-                            _ => None,
-                        })
-                        .unwrap_or(0.0);
+                    let stored_rowbreak_host_tail = hwpunit_to_px(line_advance, self.dpi)
+                        + hwpunit_to_px(table.outer_margin_bottom as i32, self.dpi);
                     lanes.max_bottom() + stored_rowbreak_host_tail
                 } else if is_current_empty_para_float {
                     // Empty-anchor TopAndBottom tables can encode a visual
@@ -7411,6 +7404,12 @@ impl LayoutEngine {
         let pt_mt = measured_tables
             .iter()
             .find(|mt| mt.para_index == para_index && mt.control_index == control_index);
+        let repeat_fragment_outer_margin = repeats_native_empty_host_rowbreak_fragment_margin(
+            self.profile.get().native_hwp5_layout(),
+            paragraphs,
+            para_index,
+            control_index,
+        );
         // 비-TAC 자리차지 표에서 vert offset이 있으면 문단 시작 y 전달.
         // layout_partial_table 내부에서 vert_offset을 적용하므로 이중 적용 방지.
         // [Task #712] HwpUnit=u32 이라 `vertical_offset > 0` 가드는 음수 비트표현
@@ -7511,12 +7510,12 @@ impl LayoutEngine {
             let para_style_id = comp
                 .map(|c| c.para_style_id as usize)
                 .unwrap_or(para.para_shape_id as usize);
+            let is_tac = para
+                .controls
+                .get(control_index)
+                .map(|c| matches!(c, Control::Table(t) if t.common.treat_as_char))
+                .unwrap_or(false);
             if let Some(para_style) = styles.para_styles.get(para_style_id) {
-                let is_tac = para
-                    .controls
-                    .get(control_index)
-                    .map(|c| matches!(c, Control::Table(t) if t.common.treat_as_char))
-                    .unwrap_or(false);
                 if is_tac {
                     if para_style.spacing_after > 0.0 {
                         y_offset += para_style.spacing_after;
@@ -7534,6 +7533,14 @@ impl LayoutEngine {
                     if para_style.spacing_after > 0.0 {
                         y_offset += para_style.spacing_after;
                     }
+                }
+            }
+            // #2439: typeset reserves this margin for every proven native-HWP RowBreak
+            // fragment.  Keep it outside `last_item_content_bottom`: it is trailing flow, not
+            // painted content, and therefore must not trigger an overflow report.
+            if !is_tac && repeat_fragment_outer_margin {
+                if let Some(Control::Table(table)) = para.controls.get(control_index) {
+                    y_offset += hwpunit_to_px(table.outer_margin_bottom as i32, self.dpi);
                 }
             }
         }
