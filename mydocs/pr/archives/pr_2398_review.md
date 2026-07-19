@@ -9,8 +9,8 @@
 | 작성자 | `postmelee` |
 | base / head | `devel` / `codex/issue-2396-custom-scheme-legacy-request` |
 | 리뷰 경로 | collaborator self-merge 후보 |
-| 최신 `devel` 통합 | `upstream/devel@9b2216c8`, merge commit `6f0d1cdc` |
-| merge 전제 | 최종 PR head의 relevant checks 통과와 작업지시자 승인 |
+| merge 직전 통합 | `upstream/devel@2d1aa588`, head `371a31a3` |
+| 최종 결과 | merge commit `7a64a7ce`, #2396 자동 종료 |
 
 ## 변경 범위
 
@@ -38,7 +38,8 @@ custom scheme v1 connect가 binding을 만들지 않고 port를 닫는지, 그 �
 | Studio TypeScript + Vite production build | PASS |
 | `git diff --check` | PASS |
 | GitHub Actions (`5e25b0b0`) | CI, CodeQL, Render Diff PASS |
-| 최신 `devel` 통합 | 충돌 없이 완료; 최종 head CI 재확인 필요 |
+| GitHub Actions (`371a31a3`) | CI, CodeQL, Render Diff relevant checks 전체 PASS |
+| 최신 `devel` 통합 | 충돌 없이 완료 |
 
 ## 시각 검증 판단
 
@@ -48,10 +49,17 @@ renderer, DOM/CSS, 페이지 출력과 UI를 변경하지 않는 message gate �
 
 - 실제 macOS WKWebView downstream representative suite는 이 저장소 환경에서 별도로 실행하지 않았다.
 - custom scheme v1 MessageChannel connect와 iframe custom scheme origin 허용은 이번 변경 범위가 아니다.
-- 최종 문서 커밋과 최신 `devel` 통합 뒤의 PR head checks는 merge 전에 다시 확인해야 한다.
 
 ## 최종 의견
 
-코드 리뷰에서 발견한 권한 범위 확대는 보정됐고, 회귀 테스트와 로컬 검증 및 보정 커밋 CI가 통과했다.
-최종 PR head의 relevant checks가 모두 통과하고 작업지시자가 승인하면 merge할 수 있다. merge 뒤 #2396의
-자동 close 여부와 후속 문서 상태를 확인한다.
+코드 리뷰에서 발견한 권한 범위 확대를 보정했고, 회귀 테스트·로컬 검증·최종 PR head relevant checks가
+통과했다. 작업지시자 승인 뒤 PR #2398을 merge했으며 #2396 자동 종료와 후속 comment를 확인했다.
+
+## Merge 후 확인
+
+- merge commit: [`7a64a7ce`](https://github.com/edwardkim/rhwp/commit/7a64a7cef977f157893dd89cfd66d82c0d40e99a)
+- PR merge comment:
+  [issuecomment-5014098546](https://github.com/edwardkim/rhwp/pull/2398#issuecomment-5014098546)
+- 이슈 후속 comment:
+  [issuecomment-5014097249](https://github.com/edwardkim/rhwp/issues/2396#issuecomment-5014097249)
+- 별도 코드·테스트·시각 검증 후속 작업은 없다.
