@@ -54,13 +54,16 @@ artifact 정책은 변경하지 않습니다.
 - fresh dev WASM build: PASS
 - generated WASM binding/editor embed contract: 3/3 PASS
 - release WASM build + `wasm-opt`: PASS
-- Markdown link/redirect 검사: 389개 문서, PASS
+- Markdown link/redirect 검사: 393개 문서, PASS
 - document metadata 검사: 384개 문서, PASS
 - `git diff --check`: PASS
 - Git LFS/worktree: clean
 
 제품 renderer/layout/WASM source는 변경하지 않아 별도 visual sweep 대상이 아닙니다. 최신 PR head의
 `CI / Build & Test`, frontend package gates, CodeQL, Render Diff 결과를 최종 merge gate로 사용합니다.
+
+준비 중 최신 `upstream/devel@62bcae43`을 merge한 뒤 dev/release WASM, consumer 3건과 `wasm-opt`를
+같은 결합 트리에서 다시 통과했습니다.
 ```
 
 ## 생성 명령 초안

@@ -3,7 +3,9 @@
 - 이슈: [#2233](https://github.com/edwardkim/rhwp/issues/2233)
 - source PR: [#2274](https://github.com/edwardkim/rhwp/pull/2274) — closed, unmerged
 - 브랜치: `codex/issue-2233-wasm-pack-pin`
-- 기준: `upstream/devel@537639445332e85b76eb29c76e1dae4d8930369f`
+- 최초 기준: `upstream/devel@537639445332e85b76eb29c76e1dae4d8930369f`
+- 최신 upstream 통합: `upstream/devel@62bcae435370b58373248c284c126c9572098522`
+- 통합 merge commit: `98d25a140c9cb20dfa861c1f7d78770226f5ca58`
 - source commit: `d6c9494812a054b1497f29cd9865185e92675d8a`
 - integration commit: `0213e52a4b4ea3388759272f78382586ce5ac2be`
 - collaborator docs commit: `460b1d8f9acecad1f4ec922b86e4c323c11e76f9`
@@ -64,7 +66,7 @@ wasm-pack-v0.15.0-x86_64-unknown-linux-musl.tar.gz
 | `wasm-pack build --target web --release` | PASS |
 | release `wasm-opt` | PASS |
 | `git diff --check upstream/devel...HEAD` | PASS |
-| changed Markdown link/redirect 검사 | 389개 문서, 이상 없음 |
+| changed Markdown link/redirect 검사 | 393개 문서, 이상 없음 |
 | document metadata 검사 | 384개 문서, 이상 없음 |
 | `git lfs status` | clean |
 | `git status --short --branch` | tracked change 없음, `upstream/devel` 대비 commit만 ahead |
@@ -82,13 +84,26 @@ release Rust compile 자체는 완료됐고, 동일 명령을 sandbox 밖에서 
 - dev `rhwp_bg.wasm`: 약 23 MiB
 - release+wasm-opt `rhwp_bg.wasm`: 약 6.7 MiB
 
-## 5. 시각 검증 판정
+## 5. 최신 upstream 통합
+
+문서 준비 중 `upstream/devel`이 최초 기준보다 5커밋 전진했다. contributor 이식 commit을 rebase로 다시
+쓰지 않고 `upstream/devel@62bcae43`을 merge했다.
+
+- upstream 변경: `src/renderer/typeset.rs`, `tools/task2279/band_compare.py`, PR #2412 review와 오늘할일
+- #2233 workflow/action/Docker/기술 정책 파일과 겹침: 0건
+- `mydocs/orders/20260719.md`: upstream 오후 후반 사이클과 #2233 행을 자동 merge로 모두 보존
+- merge 후 `wasm-pack build --target web --dev`: PASS
+- merge 후 binding/editor consumer: 3/3 PASS
+- merge 후 `wasm-pack build --target web --release`와 `wasm-opt`: PASS
+- 최종 PR diff: upstream의 #2412 제품·도구·review 파일은 제외되고 #2233 변경만 유지
+
+## 6. 시각 검증 판정
 
 제품 renderer/layout/typeset/WASM source를 바꾸지 않고 CI installer와 문서만 변경한다. 렌더 출력 의미가
 변하지 않으므로 로컬 visual sweep 대상이 아니다. 대신 신규 PR의 Render Diff workflow가 동일 0.15.0으로
 fresh dev WASM을 빌드하고 consumer gate를 통과하는지를 최신 PR head에서 확인한다.
 
-## 6. 다음 관문
+## 7. 다음 관문
 
 - [x] Issue #2233 기준 신규 PR branch 준비
 - [x] source PR/commit provenance와 contributor credit 보존
@@ -97,4 +112,3 @@ fresh dev WASM을 빌드하고 consumer gate를 통과하는지를 최신 PR hea
 - [ ] 작업지시자 승인 후 remote push·PR 생성
 - [ ] 신규 PR 최신 head의 CI / CodeQL / Render Diff 통과
 - [ ] merge와 Issue #2233 close는 별도 승인 후 처리
-
