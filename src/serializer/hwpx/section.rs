@@ -2415,7 +2415,10 @@ mod tests {
         let mut ctx = SerializeContext::collect_from_document(&doc);
         let xml = String::from_utf8(write_section(&section, &doc, 0, &mut ctx).unwrap()).unwrap();
 
-        assert!(xml.contains(r#"tabStop="4000""#), "기본 탭 폭이 IR 값이어야 함: {xml:.600}");
+        assert!(
+            xml.contains(r#"tabStop="4000""#),
+            "기본 탭 폭이 IR 값이어야 함: {xml:.600}"
+        );
         assert!(
             xml.contains(r#"<hp:grid lineGrid="1200" charGrid="900" wonggojiFormat="0"/>"#),
             "구역 그리드가 IR 값이어야 함: {xml:.600}"
@@ -2435,10 +2438,16 @@ mod tests {
         let mut para = Paragraph::default();
         para.text = "x".to_string();
         let (doc, section) = make_doc_with_paragraph(para);
-        assert_eq!(section.section_def.default_tab_spacing, 0, "전제: 기본값은 0");
+        assert_eq!(
+            section.section_def.default_tab_spacing, 0,
+            "전제: 기본값은 0"
+        );
         let mut ctx = SerializeContext::collect_from_document(&doc);
         let xml = String::from_utf8(write_section(&section, &doc, 0, &mut ctx).unwrap()).unwrap();
-        assert!(xml.contains(r#"tabStop="8000""#), "IR 미설정 시 템플릿 상수 유지: {xml:.600}");
+        assert!(
+            xml.contains(r#"tabStop="8000""#),
+            "IR 미설정 시 템플릿 상수 유지: {xml:.600}"
+        );
     }
 
     #[test]
