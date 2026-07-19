@@ -2365,6 +2365,12 @@ export class InputHandler {
     }
     this.lastCellKey = null; // 편집 후 셀 bbox 캐시 무효화
     this.protectedCellHitCache = null;
+    // 표 구조 편집(줄/칸 삽입·삭제, 셀 합치기·나누기)은 cachedCellBboxes 의 기하와 cellIdx
+    // 번호를 모두 바꾸지만, cachedTableRef 는 {sec, ppi, ci} 라 표 "정체성"만 담아 신선도
+    // 검사를 그대로 통과한다. 지우지 않으면 hover marker 가 옛 경계에 그려지고
+    // resolveTableResizeHit → startResizeDrag 가 옛 번호의 cellIdx 로 엉뚱한 행을 리사이즈한다.
+    // undo/redo 경로가 이미 같은 이유로 이 루틴을 부른다.
+    this.clearTableResizeRuntimeCache();
     this.eventBus.emit('document-mutated', 'input-handler-edit');
     this.eventBus.emit('document-changed');
     this.updateCaret();
