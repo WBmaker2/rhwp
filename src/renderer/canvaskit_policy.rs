@@ -1,9 +1,6 @@
 use serde::Serialize;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
-use std::io::Cursor;
-
-use image::{ImageFormat, ImageReader};
 
 use crate::model::image::ImageEffect;
 use crate::model::shape::TextWrap;
@@ -18,6 +15,7 @@ use crate::renderer::equation::{
     layout::{LayoutBox, LayoutKind},
     symbols::{DecoKind, FontStyleKind},
 };
+use crate::renderer::image_header::canvaskit_encoded_image_header;
 use crate::renderer::layer_renderer::{
     analyze_text_variant_selection, TextVariantSelectionOptions, VariantSelectedReason,
     VariantSelectionBackend,
@@ -114,8 +112,6 @@ const CANVASKIT_DOCUMENT_PREFLIGHT_PRELOWER_UNIT_BYTES: usize = 1024;
 const CANVASKIT_DOCUMENT_PREFLIGHT_MAX_RENDER_TREE_DEPTH: usize = 128;
 const CANVASKIT_DOCUMENT_PREFLIGHT_MAX_TEXT_BYTES: usize = 1024 * 1024;
 const CANVASKIT_MAX_ENCODED_IMAGE_BASE64_BYTES: usize = 24 * 1024 * 1024;
-const CANVASKIT_MAX_IMAGE_DIMENSION: u32 = 8192;
-const CANVASKIT_MAX_IMAGE_PIXELS: u64 = 32 * 1024 * 1024;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -1950,29 +1946,7 @@ fn canvaskit_encoded_image_is_replayable(bytes: &[u8]) -> bool {
     {
         return false;
     }
-    let Ok(format) = image::guess_format(bytes) else {
-        return false;
-    };
-    // The browser CanvasKit runtime's bounded header parser currently admits
-    // these formats. In particular, do not let image-rs TIFF support make a
-    // payload eligible when the browser will reject it before decode.
-    if !matches!(
-        format,
-        ImageFormat::Png | ImageFormat::Jpeg | ImageFormat::Bmp
-    ) {
-        return false;
-    }
-    let Ok((width, height)) =
-        ImageReader::with_format(Cursor::new(bytes), format).into_dimensions()
-    else {
-        return false;
-    };
-    let pixels = u64::from(width).saturating_mul(u64::from(height));
-    width > 0
-        && height > 0
-        && width <= CANVASKIT_MAX_IMAGE_DIMENSION
-        && height <= CANVASKIT_MAX_IMAGE_DIMENSION
-        && pixels <= CANVASKIT_MAX_IMAGE_PIXELS
+    canvaskit_encoded_image_header(bytes).is_some_and(|header| header.is_within_decode_limits())
 }
 
 fn image_has_replayable_payload(
@@ -2048,6 +2022,8 @@ mod tests {
         PageBackgroundImage, PlaceholderNode, RawSvgNode, RectangleNode, RenderLayerInfo,
     };
     use crate::renderer::{GradientFillInfo, ShapeStyle, TextStyle};
+    use image::ImageFormat;
+    use std::io::Cursor;
 
     fn bbox() -> BoundingBox {
         BoundingBox::new(0.0, 0.0, 20.0, 20.0)

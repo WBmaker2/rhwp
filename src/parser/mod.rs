@@ -607,7 +607,7 @@ fn load_bin_data_content_lenient(
                 };
 
                 // Task #195 단계 6: OLE Storage는 CFB 매직 바로 앞의 4-byte size prefix 스킵
-                if is_storage && decompressed.len() > 8 {
+                if is_storage && decompressed.len() >= 12 {
                     let cfb_magic = [0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1];
                     if decompressed[..8] != cfb_magic && decompressed[4..12] == cfb_magic {
                         decompressed.drain(..4);
@@ -1314,7 +1314,7 @@ impl crate::model::bin_data::BinDataResolver for Hwp5BinResolver {
 
         // Task #195 단계 6: OLE Storage는 해제 후 선두 4바이트 size prefix를 스킵하여
         // 내부 CFB(`d0cf11e0...`) 시작 바이트부터 노출한다.
-        if self.ole_streams.contains(key) && decompressed.len() > 8 {
+        if self.ole_streams.contains(key) && decompressed.len() >= 12 {
             let cfb_magic = [0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1];
             if decompressed[..8] != cfb_magic && decompressed[4..12] == cfb_magic {
                 decompressed.drain(..4);
@@ -1322,6 +1322,33 @@ impl crate::model::bin_data::BinDataResolver for Hwp5BinResolver {
         }
 
         decompressed
+    }
+
+    fn resolve_limited(&self, key: &str, max_bytes: usize) -> Option<Vec<u8>> {
+        let mut cfb = match self.cfb.lock() {
+            Ok(cfb) => cfb,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        let raw = match cfb.read_bin_data_limited(key, max_bytes) {
+            Ok(data) => data,
+            Err(error) => {
+                eprintln!("경고: BinData '{}' bounded 로드 실패: {}", key, error);
+                return None;
+            }
+        };
+
+        let mut bytes = match cfb_reader::decompress_stream_limited(&raw, max_bytes) {
+            Ok(data) => data,
+            Err(cfb_reader::CfbError::LimitExceeded(_)) => return None,
+            Err(_) => raw,
+        };
+        if self.ole_streams.contains(key) && bytes.len() >= 12 {
+            let cfb_magic = [0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1];
+            if bytes[..8] != cfb_magic && bytes[4..12] == cfb_magic {
+                bytes.drain(..4);
+            }
+        }
+        (bytes.len() <= max_bytes).then_some(bytes)
     }
 }
 
@@ -1408,7 +1435,7 @@ fn load_bin_data_content(
 
                 // Task #195 단계 6: OLE Storage는 해제 후 선두 4바이트 size prefix를 스킵하여
                 // 내부 CFB(`d0cf11e0...`) 시작 바이트부터 노출한다.
-                if is_storage && decompressed.len() > 8 {
+                if is_storage && decompressed.len() >= 12 {
                     // CFB 매직이 바로 시작하면 prefix 없음
                     let cfb_magic = [0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1];
                     if decompressed[..8] != cfb_magic && decompressed[4..12] == cfb_magic {
