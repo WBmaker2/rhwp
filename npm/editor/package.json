@@ -33,6 +33,7 @@
   "bugs": {
     "url": "https://github.com/edwardkim/rhwp/issues"
   },
+  "funding": "https://github.com/sponsors/edwardkim",
   "license": "MIT",
   "author": "Edward Kim",
   "engines": {
