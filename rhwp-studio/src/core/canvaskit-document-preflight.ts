@@ -76,25 +76,27 @@ function surfaceCapabilitySuffix(details: readonly string[]): string {
   return hash.toString(16).padStart(8, '0');
 }
 
-/** Surface-specific requirements are folded into the bounded WASM report before auto selection. */
+/** Surface and view requirements are folded into the bounded WASM report before auto selection. */
 export function withCanvasKitSurfaceBlockers(
   report: CanvasKitDocumentPreflight,
   blockerDetails: readonly string[],
 ): CanvasKitDocumentPreflight {
-  const details = [...new Set(blockerDetails.map(detail => detail.trim()).filter(Boolean))]
-    .sort()
-    .map(detail => detail.slice(0, 256));
+  const maxBlockers = Math.max(0, Math.floor(report.limits.maxBlockers));
+  const details = [...new Set(
+    blockerDetails.map(detail => detail.trim().slice(0, 256)).filter(Boolean),
+  )].sort();
   if (details.length === 0) return report;
 
-  const remainingBlockers = Math.max(0, report.limits.maxBlockers - report.blockers.length);
+  const detailBlockers = details.slice(0, maxBlockers).map(detail => ({
+    code: 'unsupported' as const,
+    pageIndex: 0,
+    opType: 'textRun',
+    detail,
+  }));
+  const existingBlockerLimit = Math.max(0, maxBlockers - detailBlockers.length);
   const blockers = [
-    ...report.blockers.map(blocker => ({ ...blocker })),
-    ...details.slice(0, remainingBlockers).map(detail => ({
-      code: 'unsupported' as const,
-      pageIndex: 0,
-      opType: 'textRun',
-      detail,
-    })),
+    ...report.blockers.slice(0, existingBlockerLimit).map(blocker => ({ ...blocker })),
+    ...detailBlockers,
   ];
   return {
     ...report,

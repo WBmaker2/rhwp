@@ -81,7 +81,7 @@ const editor = await createEditor(document.getElementById('editor'));
 | `studioUrl` | `https://edwardkim.github.io/rhwp/` | rhwp-studio HTTP(S) URL. opaque origin은 지원하지 않음 |
 | `width` | `'100%'` | iframe 너비 |
 | `height` | `'100%'` | iframe 높이 |
-| `renderer` | `'auto'` | 문서 단위 renderer 요청. `auto`, `canvas2d`, `canvaskit` 중 하나 |
+| `renderer` | `'canvas2d'` | 문서 단위 renderer 요청. `auto`, `canvas2d`, `canvaskit` 중 하나 |
 | `requestTimeoutMs` | method별 기본값 | 모든 method 제한 시간 override(ms). 일반 10초, load/export 60초 |
 | `handshakeTimeoutMs` | `1000` | v1 협상 후 legacy 전환까지의 제한 시간(ms) |
 

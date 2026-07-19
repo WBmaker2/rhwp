@@ -79,3 +79,53 @@ test('surface blockers fail auto eligibility without mutating the WASM report', 
   assert.equal(blocked.blockers.at(-1)?.detail, 'fontUnavailable:Missing Family');
   assert.match(blocked.capabilityDigest, /^preflight-digest:surface-[0-9a-f]{8}$/);
 });
+
+test('surface blockers remain visible when the WASM blocker budget is full', () => {
+  const report = {
+    ...validReport(),
+    blockers: Array.from({ length: 32 }, (_, pageIndex) => ({
+      code: 'unsupported' as const,
+      pageIndex,
+      detail: `wasm:${pageIndex}`,
+    })),
+  };
+  const blocked = withCanvasKitSurfaceBlockers(report, [
+    'viewOption:showParagraphMarks',
+    'viewOption:showControlCodes',
+  ]);
+
+  assert.equal(report.blockers.length, 32);
+  assert.equal(blocked.blockers.length, 32);
+  assert.deepEqual(
+    blocked.blockers.slice(-2).map(blocker => blocker.detail),
+    ['viewOption:showControlCodes', 'viewOption:showParagraphMarks'],
+  );
+});
+
+test('surface blockers fail closed even when diagnostics cannot retain a blocker', () => {
+  const report = validReport();
+  report.limits.maxBlockers = 0;
+  const blocked = withCanvasKitSurfaceBlockers(report, ['fontUnavailable:Missing Family']);
+
+  assert.equal(blocked.status, 'ineligible');
+  assert.equal(blocked.eligible, false);
+  assert.deepEqual(blocked.blockers, []);
+  assert.equal(blocked.summary.unsupportedItems, 1);
+});
+
+test('surface blocker details remain bounded while the summary counts every requirement', () => {
+  const report = validReport();
+  report.limits.maxBlockers = 2;
+  const blocked = withCanvasKitSurfaceBlockers(report, [
+    'viewOption:z',
+    'viewOption:a',
+    'viewOption:m',
+  ]);
+
+  assert.deepEqual(
+    blocked.blockers.map(blocker => blocker.detail),
+    ['viewOption:a', 'viewOption:m'],
+  );
+  assert.equal(blocked.summary.unsupportedItems, 3);
+  assert.equal(blocked.summary.totalItems, report.summary.totalItems + 3);
+});

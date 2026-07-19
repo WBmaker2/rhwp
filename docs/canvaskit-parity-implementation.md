@@ -180,8 +180,9 @@ noise floor is understood.
 
 ## Readiness Gate Contract
 
-The browser requests `auto` by default. Before CanvasKit is loaded, Rust runs a
-bounded document capability preflight over the selected render profile. The
+The browser keeps Canvas2D as the compatibility default. An explicit
+`?renderer=auto` request runs a bounded Rust document capability preflight over
+the selected render profile before CanvasKit is loaded. The
 result is a compact summary and bounded blocker list; it does not serialize
 `PageLayerTree` JSON or resource bytes across the WASM boundary. CanvasKit is
 selected only when the scan is complete and eligible. A page/work limit,
@@ -200,7 +201,10 @@ fallbacks that the selected replay plan will actually paint. A strict glyph
 outline variant does not require its source family. Each browser surface maps
 that list through the shared font catalog before lazy CanvasKit initialization;
 an unavailable family adds a surface blocker and keeps the document on
-Canvas2D. Eligible families are fetched under a 32 MiB per-face bound and
+Canvas2D. Paragraph and control mark view options are also folded into this
+transformed report and keep automatic requests on Canvas2D because their edit
+marker operations do not yet have direct replay parity. Eligible families are
+fetched under a 32 MiB per-face bound and
 registered before the first replay. A named family that still reaches replay
 without a prepared typeface is a document-wide resource failure, not a silent
 substitution with the default Noto face.
@@ -210,28 +214,30 @@ document digest, edit revision, render profile, resource generation, requested
 backend, and CanvasKit mode. In automatic mode, an edit immediately advances to
 a Canvas2D-pinned revision. Repeated edits coalesce behind a 300 ms quiet period,
 after which one new revision runs the bounded selection again. A resource or
-view-profile change also invalidates the decision; there is no per-page, per-op,
-or per-replay-plane backend mixing. CanvasKit initialization and resource
-preparation failures also pin that revision to Canvas2D. Explicit
-`?renderer=canvas2d` and `?renderer=canvaskit` requests bypass automatic
-preflight selection, while rejected request values remain visible in
-diagnostics. A CanvasKit surface or replay failure discovered after selection
-also moves an automatic session to Canvas2D for the whole revision; the
-explicit CanvasKit diagnostic path remains available for backend debugging.
+view-option or profile change also invalidates the decision; there is no
+per-page, per-op, or per-replay-plane backend mixing. CanvasKit initialization
+and resource preparation failures also pin that revision to Canvas2D. Explicit
+`?renderer=auto` enables document selection, while `?renderer=canvas2d` and
+`?renderer=canvaskit` bypass automatic preflight selection. Rejected request
+values remain visible in diagnostics. A CanvasKit surface or replay failure
+discovered after selection also moves an automatic session to Canvas2D for the
+whole revision; the explicit CanvasKit diagnostic path remains available for
+backend debugging.
 
 Studio, its browser-extension and iframe-embed surfaces, and the VS Code
-webview share this `RendererSession` selection contract. VS Code adapts its
-direct `HwpDocument` binding to the same bounded preflight source, resolves the
-backend before page layout, and lazily loads the CanvasKit bundle only for an
-eligible document. Main pages and thumbnails use the same pinned decision. A
+webview share this `RendererSession` contract while retaining Canvas2D as their
+default request. VS Code adapts its direct `HwpDocument` binding to the same
+bounded preflight source so automatic selection can be enabled separately
+after fidelity convergence. Main pages and thumbnails use the same pinned
+decision. A
 layer-resource or runtime failure replaces any CanvasKit-owned canvas and
 queues one whole-document Canvas2D replay; the selection diagnostics are sent
 to the extension host as additive webview messages. The VS Code package exposes
 only its copied font files to this catalog, explicitly disables external web
 fonts for CanvasKit planning, and cleans stale lazy webview chunks on each
-production build. Externally hosted CSS fonts may still serve the Canvas2D
-fallback, but they never make a document eligible for automatic CanvasKit
-selection in the VS Code webview.
+production build. Externally hosted CSS fonts may still serve Canvas2D, but
+they never make a document eligible for CanvasKit selection in the VS Code
+webview.
 
 `CanvasKitRenderDiagnostics.passesRuntimeReadinessGate` means only that the
 selected page completed a CanvasKit surface flush without a render error or
@@ -300,11 +306,13 @@ backend.
 
 The manifest flag `canvaskitReadinessGate` selects a bounded paragraph, table,
 and image corpus. `scripts/renderer_baseline.py --readiness-only --profiles
-screen` runs only Canvas2D and CanvasKit default on the automatic surface. Each
+screen` runs only Canvas2D and CanvasKit default on the automatic surface. The
+CanvasKit capture explicitly requests `renderer=auto`; it does not depend on
+the public browser default. Each
 selected case must satisfy all of these conditions:
 
-1. the effective backend is CanvasKit after the browser's default `auto`
-   request selects a complete and eligible document, with `default` mode and
+1. the effective backend is CanvasKit after an explicit `auto` request selects
+   a complete and eligible document, with `default` mode and
    `auto` surface preference;
 2. page-scoped CanvasKit diagnostics are available and pass the runtime gate;
 3. the visible page canvas is still owned by the page canvas pool after any
@@ -387,8 +395,8 @@ work rather than being declared parity-complete.
 
 ## Non-Goals
 
-- This plan does not make CanvasKit an unconditional public default; automatic
-  selection remains fail-closed and document-scoped.
+- This plan does not make CanvasKit a public default; automatic selection is an
+  explicit opt-in and remains fail-closed and document-scoped.
 - This plan does not add a hidden Canvas2D overlay fallback.
 - This plan does not enable CanvasKit `GlyphRun` or `GlyphOutline` selection
   without proof resources and deterministic diagnostics.

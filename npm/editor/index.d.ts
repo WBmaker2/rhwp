@@ -5,7 +5,7 @@
 export interface EditorOptions {
   /** rhwp-studio HTTP(S) URL. file:, data:, browser extension 등 opaque origin은 지원하지 않음 */
   studioUrl?: string;
-  /** 문서 단위 renderer 요청. 기본값은 auto이며 Canvas2D/CanvasKit 강제 선택도 지원함 */
+  /** 문서 단위 renderer 요청. 기본값은 canvas2d이며 auto/CanvasKit 명시 선택도 지원함 */
   renderer?: 'auto' | 'canvas2d' | 'canvaskit';
   /** iframe 너비 (기본: '100%') */
   width?: string;

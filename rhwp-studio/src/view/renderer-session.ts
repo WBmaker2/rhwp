@@ -9,6 +9,7 @@ import type {
 } from './render-backend';
 
 export type RendererSelectionReason =
+  | 'defaultCanvas2d'
   | 'explicitCanvas2d'
   | 'explicitCanvasKit'
   | 'autoEligible'
@@ -54,6 +55,13 @@ type CanvasKitRendererFactory = (
   mode: CanvasKitRenderModeRequest['mode'],
   surface: CanvasKitSurfaceRequest,
 ) => Promise<CanvasKitLayerRenderer>;
+
+interface RendererDecisionSnapshot {
+  key: string;
+  documentRevision: number;
+  resourceGeneration: number;
+  documentDigest: string | null;
+}
 
 export interface RendererSessionOptions {
   transformCanvasKitPreflight?: (
@@ -128,11 +136,12 @@ export class RendererSession {
 
   resolve(source: RendererPreflightSource): Promise<RendererSessionSelection> {
     if (this.disposed) return Promise.reject(new Error('RendererSession is disposed'));
-    const key = this.decisionKey();
+    const decision = this.decisionSnapshot();
+    const key = decision.key;
     if (this.current?.diagnostics.decisionKey === key) return Promise.resolve(this.current);
     if (this.pending?.key === key) return this.pending.promise;
 
-    const promise = this.resolveUncached(source, key).then((selection) => {
+    const promise = this.resolveUncached(source, decision).then((selection) => {
       if (this.decisionKey() === key) this.current = selection;
       if (this.pending?.key === key) this.pending = null;
       return selection;
@@ -160,9 +169,9 @@ export class RendererSession {
   pinAutoMutationRevision(): RendererSessionSelection | null {
     if (!this.isAutoRequest() || this.disposed) return null;
     this.invalidateDocument();
-    const key = this.decisionKey();
+    const decision = this.decisionSnapshot();
     const selection = this.selection(
-      key,
+      decision,
       'canvas2d',
       'autoRevisionPending',
       'canvaskitRevisionInvalidated',
@@ -204,10 +213,10 @@ export class RendererSession {
     selectionReason: RendererSelectionReason,
     fallbackReason: RenderBackendFallbackReason,
   ): RendererSessionSelection | null {
-    const key = this.decisionKey();
-    if (expectedDecisionKey !== key) return null;
+    const decision = this.decisionSnapshot();
+    if (expectedDecisionKey !== decision.key) return null;
     const selection = this.selection(
-      key,
+      decision,
       'canvas2d',
       selectionReason,
       fallbackReason,
@@ -253,13 +262,14 @@ export class RendererSession {
 
   private async resolveUncached(
     source: RendererPreflightSource,
-    key: string,
+    decision: RendererDecisionSnapshot,
   ): Promise<RendererSessionSelection> {
+    const key = decision.key;
     if (this.request.backend === 'canvas2d') {
       return this.selection(
-        key,
+        decision,
         'canvas2d',
-        'explicitCanvas2d',
+        this.request.source === 'default' ? 'defaultCanvas2d' : 'explicitCanvas2d',
         this.request.unsupportedReason ?? null,
         null,
       );
@@ -271,7 +281,7 @@ export class RendererSession {
         preflight = this.readPreflight(source);
       } catch (error) {
         return this.selection(
-          key,
+          decision,
           'canvas2d',
           'autoPreflightIncomplete',
           'canvaskitDocumentPreflightIncomplete',
@@ -281,7 +291,7 @@ export class RendererSession {
       }
       if (!preflight.complete || preflight.status === 'incomplete') {
         return this.selection(
-          key,
+          decision,
           'canvas2d',
           'autoPreflightIncomplete',
           'canvaskitDocumentPreflightIncomplete',
@@ -290,7 +300,7 @@ export class RendererSession {
       }
       if (!preflight.eligible || preflight.status !== 'eligible') {
         return this.selection(
-          key,
+          decision,
           'canvas2d',
           'autoIneligible',
           'canvaskitDocumentIneligible',
@@ -304,7 +314,7 @@ export class RendererSession {
       renderer = await this.ensureCanvasKitRenderer();
     } catch (error) {
       return this.selection(
-        key,
+        decision,
         'canvas2d',
         'canvaskitInitializationFailed',
         'canvaskitInitializationFailed',
@@ -315,7 +325,7 @@ export class RendererSession {
     }
     if (this.decisionKey() !== key) {
       return this.selection(
-        key,
+        decision,
         'canvas2d',
         'superseded',
         'canvaskitRevisionInvalidated',
@@ -328,7 +338,7 @@ export class RendererSession {
       } catch (error) {
         if (this.decisionKey() === key) {
           return this.selection(
-            key,
+            decision,
             'canvas2d',
             'canvaskitResourcePreparationFailed',
             'canvaskitResourcePreparationFailed',
@@ -339,7 +349,7 @@ export class RendererSession {
       }
       if (this.decisionKey() !== key) {
         return this.selection(
-          key,
+          decision,
           'canvas2d',
           'superseded',
           'canvaskitRevisionInvalidated',
@@ -348,7 +358,7 @@ export class RendererSession {
       }
     }
     return this.selection(
-      key,
+      decision,
       'canvaskit',
       this.request.backend === 'auto' ? 'autoEligible' : 'explicitCanvasKit',
       null,
@@ -408,7 +418,7 @@ export class RendererSession {
   }
 
   private selection(
-    key: string,
+    decision: RendererDecisionSnapshot,
     backend: RenderBackend,
     selectionReason: RendererSelectionReason,
     fallbackReason: RenderBackendFallbackReason | null,
@@ -427,11 +437,11 @@ export class RendererSession {
         effectiveBackend: backend,
         selectionReason,
         fallbackReason,
-        documentRevision: this.documentRevision,
-        resourceGeneration: this.resourceGeneration,
+        documentRevision: decision.documentRevision,
+        resourceGeneration: decision.resourceGeneration,
         renderProfile: this.renderProfile,
-        documentDigest: this.documentDigest,
-        decisionKey: key,
+        documentDigest: decision.documentDigest,
+        decisionKey: decision.key,
         preflight,
         initializationError,
         selectionError,
@@ -440,7 +450,11 @@ export class RendererSession {
   }
 
   private decisionKey(): string {
-    return [
+    return this.decisionSnapshot().key;
+  }
+
+  private decisionSnapshot(): RendererDecisionSnapshot {
+    const key = [
       this.documentDigest ?? 'document:none',
       `revision:${this.documentRevision}`,
       `profile:${this.renderProfile}`,
@@ -448,5 +462,11 @@ export class RendererSession {
       `request:${this.request.backend}`,
       `mode:${this.canvaskitMode.mode}`,
     ].join('|');
+    return {
+      key,
+      documentRevision: this.documentRevision,
+      resourceGeneration: this.resourceGeneration,
+      documentDigest: this.documentDigest,
+    };
   }
 }

@@ -120,14 +120,14 @@ Per-cycle changes (including contributor credits) are recorded in [CHANGELOG_EN.
 - SVG export (CLI, legacy + layer replay)
 - PNG export (native Skia, `--features native-skia`)
 - PDF export: SVG compatibility by default (`--text-as-paths`, byte-reproducible), native Skia direct opt-in (`--features native-skia`, `--backend direct`)
-- Canvas rendering (WASM/Web) + document-scoped Canvas2D/CanvasKit auto selection
+- Canvas rendering (WASM/Web) + opt-in document-scoped Canvas2D/CanvasKit auto selection
 - Save: native HWP editing, semantics-preserving HWPX/HML save, HWPX → HWP conversion
 - Debug overlay (paragraph/table boundaries + indices + y-coordinates)
 
 ### Multi-Renderer Backends
 - Shared paint IR: `PageRenderTree` → `PageLayerTree` (Rust `DocumentCore::build_page_layer_tree`, WASM `getPageLayerTree`) — `schemaVersion: 1`, compatible changes stay additive
 - Backends: legacy/layered SVG, Canvas2D, CanvasKit direct replay, native Skia PNG/direct PDF (`--features native-skia`)
-- Studio, browser extension/embed, and VS Code viewer surfaces request `auto` by default. Only documents with a complete, eligible bounded preflight whose required document fonts are available on that surface are pinned to CanvasKit; all other documents and initialization, resource-preparation, or runtime failures are pinned wholly to Canvas2D for that revision. `?renderer=canvas2d` and `?renderer=canvaskit` remain explicit Studio-family overrides.
+- Studio, browser extension/embed, and VS Code viewer surfaces keep Canvas2D as the compatibility default. An explicit Studio-family `?renderer=auto` request pins only documents with a complete, eligible bounded preflight and available required fonts to CanvasKit. Paragraph/control marks and preflight, initialization, resource-preparation, or runtime failures pin the whole revision to Canvas2D. `?renderer=canvas2d` and `?renderer=canvaskit` remain explicit overrides.
 - Text IR v2: font-blob-proof-gated GlyphRun/GlyphOutline sidecars — unproven cases always fall back to `TextRun` (compatibility contract)
 - Visual regression CI: render-diff (Canvas family + report-only PDF diff), shared replay-plane ordering (background → behindText → flow → inFrontOfText) across all four backends
 - Direct PDF uses the print profile and a CSS-px-to-PDF-point `72/96` transform. Lossy gradient/pattern/shadow/connector/image-adjustment payloads fail with guidance to use the SVG backend; only Raw SVG uses the bounded `--raster-dpi` fallback.

@@ -80,7 +80,7 @@ export function resolveRenderBackend(search = ''): RenderBackendPreference {
 export function resolveRenderBackendRequest(search = ''): RenderBackendRequest {
   const explicit = searchParam(search, 'renderer', 'renderBackend', 'backend');
   const normalized = explicit?.trim().toLowerCase();
-  if (!normalized) return { backend: 'auto', source: 'default' };
+  if (!normalized) return { backend: 'canvas2d', source: 'default' };
   if (normalized === 'auto') {
     return { backend: 'auto', source: 'url', requested: normalized };
   }

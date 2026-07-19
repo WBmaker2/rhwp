@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
+import { withCanvasKitSurfaceBlockers } from '../src/core/canvaskit-document-preflight.ts';
 import type { CanvasKitDocumentPreflight } from '../src/core/types.ts';
 import type { CanvasKitLayerRenderer } from '../src/view/canvaskit-renderer.ts';
 import { RendererSession, type RendererSessionOptions } from '../src/view/renderer-session.ts';
@@ -56,9 +57,10 @@ function session(
   backend: 'auto' | 'canvas2d' | 'canvaskit',
   create: () => Promise<CanvasKitLayerRenderer>,
   options: RendererSessionOptions = {},
+  source: 'default' | 'url' = 'url',
 ): RendererSession {
   return new RendererSession(
-    { backend, source: backend === 'auto' ? 'default' : 'url', requested: backend },
+    { backend, source, ...(source === 'url' ? { requested: backend } : {}) },
     { mode: 'default', source: 'default' },
     { preference: 'auto', requested: 'auto' },
     'screen',
@@ -187,7 +189,53 @@ test('surface preflight transforms stay lazy and document resources prepare befo
   assert.equal(fallback.diagnostics.selectionError, 'font decode failed');
 });
 
-test('explicit backends bypass auto preflight while preserving requested and effective diagnostics', async () => {
+test('auto re-evaluation keeps paragraph and control marks on Canvas2D', async () => {
+  let showParagraphMarks = false;
+  let showControlCodes = false;
+  let createCalls = 0;
+  const rendererSession = session('auto', async () => {
+    createCalls += 1;
+    return fakeRenderer();
+  }, {
+    transformCanvasKitPreflight(report) {
+      const blockers: string[] = [];
+      if (showParagraphMarks) blockers.push('viewOption:showParagraphMarks');
+      if (showControlCodes) blockers.push('viewOption:showControlCodes');
+      return withCanvasKitSurfaceBlockers(report, blockers);
+    },
+  });
+  const wasm = { getCanvasKitDocumentPreflight: () => preflight('eligible') };
+
+  rendererSession.beginDocument('document-view-marks');
+  assert.equal((await rendererSession.resolve(wasm)).backend, 'canvaskit');
+
+  showParagraphMarks = true;
+  rendererSession.invalidateDocument({ resetResources: false });
+  const paragraphMarks = await rendererSession.resolve(wasm);
+  assert.equal(paragraphMarks.backend, 'canvas2d');
+  assert.equal(paragraphMarks.diagnostics.selectionReason, 'autoIneligible');
+  assert.equal(
+    paragraphMarks.diagnostics.preflight?.blockers.at(-1)?.detail,
+    'viewOption:showParagraphMarks',
+  );
+
+  showParagraphMarks = false;
+  showControlCodes = true;
+  rendererSession.invalidateDocument({ resetResources: false });
+  const controlCodes = await rendererSession.resolve(wasm);
+  assert.equal(controlCodes.backend, 'canvas2d');
+  assert.equal(
+    controlCodes.diagnostics.preflight?.blockers.at(-1)?.detail,
+    'viewOption:showControlCodes',
+  );
+
+  showControlCodes = false;
+  rendererSession.invalidateDocument({ resetResources: false });
+  assert.equal((await rendererSession.resolve(wasm)).backend, 'canvaskit');
+  assert.equal(createCalls, 1);
+});
+
+test('fixed backends bypass auto preflight while distinguishing default and explicit diagnostics', async () => {
   let preflightCalls = 0;
   const wasm = {
     getCanvasKitDocumentPreflight() {
@@ -201,6 +249,13 @@ test('explicit backends bypass auto preflight while preserving requested and eff
   const canvas2dSelection = await canvas2d.resolve(wasm as never);
   assert.equal(canvas2dSelection.backend, 'canvas2d');
   assert.equal(canvas2dSelection.diagnostics.selectionReason, 'explicitCanvas2d');
+
+  const defaultCanvas2d = session('canvas2d', async () => fakeRenderer(), {}, 'default');
+  defaultCanvas2d.beginDocument('document-default-canvas2d');
+  const defaultSelection = await defaultCanvas2d.resolve(wasm as never);
+  assert.equal(defaultSelection.backend, 'canvas2d');
+  assert.equal(defaultSelection.diagnostics.request.source, 'default');
+  assert.equal(defaultSelection.diagnostics.selectionReason, 'defaultCanvas2d');
 
   const canvaskit = session('canvaskit', async () => fakeRenderer());
   canvaskit.beginDocument('document-canvaskit');
@@ -238,6 +293,9 @@ test('revision invalidation prevents stale decisions from becoming current', asy
 
   assert.equal(stale.backend, 'canvas2d');
   assert.equal(stale.diagnostics.selectionReason, 'superseded');
+  assert.equal(stale.diagnostics.documentRevision, 1);
+  assert.equal(stale.diagnostics.resourceGeneration, 1);
+  assert.equal(stale.diagnostics.documentDigest, 'document-a');
   assert.equal(rendererSession.isCurrent(stale), false);
   assert.equal(rendererSession.isCurrent(current), true);
   assert.equal(current.diagnostics.documentRevision, 2);
@@ -275,6 +333,9 @@ test('revision invalidation during document preparation returns a superseded Can
     assert.equal(stale.diagnostics.selectionReason, 'superseded');
     assert.equal(stale.diagnostics.fallbackReason, 'canvaskitRevisionInvalidated');
     assert.equal(stale.diagnostics.selectionError, null);
+    assert.equal(stale.diagnostics.documentRevision, 1);
+    assert.equal(stale.diagnostics.resourceGeneration, 1);
+    assert.equal(stale.diagnostics.documentDigest, `document-prepare-${preparationResult}`);
     assert.equal(rendererSession.isCurrent(stale), false);
   }
 });

@@ -26,8 +26,8 @@ import { isExpectedCanvasKitUnsupportedOp } from '../src/view/canvaskit/diagnost
 import type { LayerInfo, LayerPaintOp } from '../src/core/types.ts';
 import { glyphOutlinePayloadResourceKey, glyphOutlinePayloadStatus } from '../src/view/glyph-outline-payload-status.ts';
 
-test('render backend resolver defaults to document auto selection and accepts explicit aliases', () => {
-  assert.equal(resolveRenderBackend(''), 'auto');
+test('render backend resolver keeps Canvas2D as the compatibility default and accepts explicit aliases', () => {
+  assert.equal(resolveRenderBackend(''), 'canvas2d');
   assert.equal(resolveRenderBackend('?renderer=auto'), 'auto');
   assert.equal(resolveRenderBackend('?renderer=canvas'), 'canvas2d');
   assert.equal(resolveRenderBackend('?renderer=canvas2d'), 'canvas2d');
@@ -42,9 +42,9 @@ test('render backend resolver reports invalid explicit values and keeps URL opt-
     setItem: () => undefined,
   };
   try {
-    assert.equal(resolveRenderBackend(''), 'auto');
+    assert.equal(resolveRenderBackend(''), 'canvas2d');
     assert.deepEqual(resolveRenderBackendRequest(''), {
-      backend: 'auto',
+      backend: 'canvas2d',
       source: 'default',
     });
     assert.deepEqual(resolveRenderBackendRequest('?renderer=auto'), {

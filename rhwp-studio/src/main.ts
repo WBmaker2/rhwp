@@ -322,9 +322,12 @@ async function initialize(): Promise<void> {
             report.requiredFontFamilies,
             extensionViewerSettings,
           );
+          const blockers = plan.unavailableFonts.map(font => `fontUnavailable:${font}`);
+          if (wasm.getShowParagraphMarks()) blockers.push('viewOption:showParagraphMarks');
+          if (wasm.getShowControlCodes()) blockers.push('viewOption:showControlCodes');
           return withCanvasKitSurfaceBlockers(
             report,
-            plan.unavailableFonts.map(font => `fontUnavailable:${font}`),
+            blockers,
           );
         },
         async prepareCanvasKitDocument(renderer, report) {

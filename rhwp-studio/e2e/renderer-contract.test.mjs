@@ -366,8 +366,8 @@ requireSnippet(
 );
 requireSnippet(
   vscodeViewerSource,
-  /new RendererSession\([\s\S]*?backend: "auto"[\s\S]*?import\("@\/view\/canvaskit-renderer"\)/,
-  'VS Code should share document-scoped auto selection and lazily load CanvasKit',
+  /new RendererSession\([\s\S]*?backend: "canvas2d"[\s\S]*?import\("@\/view\/canvaskit-renderer"\)/,
+  'VS Code should keep the compatibility default while retaining lazy CanvasKit infrastructure',
 );
 requireSnippet(
   vscodeViewerSource,
@@ -491,13 +491,18 @@ requireSnippet(
 );
 requireSnippet(
   renderBackendSource,
-  /if \(!normalized\) return \{ backend: 'auto', source: 'default' \}/,
-  'Browser rendering should request document-scoped auto selection by default',
+  /if \(!normalized\) return \{ backend: 'canvas2d', source: 'default' \}/,
+  'Browser rendering should preserve Canvas2D unless auto is explicitly requested',
 );
 requireSnippet(
   rendererBaselineSource,
-  /if \(options\.readinessOnly\) \{[\s\S]*?\?canvaskitMode=default&renderProfile=[\s\S]*?runtime\.request\?\.backend\?\.backend !== 'canvas2d'[\s\S]*?runtime\.selection\?\.request\?\.backend !== 'auto'[\s\S]*?runtime\.selection\?\.selectionReason !== 'autoEligible'[\s\S]*?autoPreflightNotEligible/,
-  'Selected readiness should measure the no-parameter default auto candidate and its preflight decision',
+  /if \(options\.readinessOnly\) \{[\s\S]*?\?renderer=auto&canvaskitMode=default&renderProfile=[\s\S]*?runtime\.request\?\.backend\?\.backend !== 'canvas2d'[\s\S]*?runtime\.selection\?\.request\?\.backend !== 'auto'[\s\S]*?runtime\.selection\?\.request\?\.source !== 'url'[\s\S]*?runtime\.selection\?\.selectionReason !== 'autoEligible'[\s\S]*?autoPreflightNotEligible/,
+  'Selected readiness should measure an explicit auto candidate and its preflight decision',
+);
+requireSnippet(
+  mainSource,
+  /transformCanvasKitPreflight\(report\)[\s\S]*?getShowParagraphMarks\(\)[\s\S]*?viewOption:showParagraphMarks[\s\S]*?getShowControlCodes\(\)[\s\S]*?viewOption:showControlCodes[\s\S]*?withCanvasKitSurfaceBlockers/,
+  'Automatic selection should reject paragraph and control mark view options before replay',
 );
 requireSnippet(
   embedRpcRouterSource,
@@ -1446,7 +1451,7 @@ assert.equal(
 );
 assert.equal(
   tableReadinessSample?.browserParityThresholds?.inkMaskMaxDiffRatio,
-  0.019,
+  0.0185,
   'table readiness must keep the calibrated ink-mask budget bounded',
 );
 assert.equal(rendererBaselineManifest.schemaVersion, 1, 'renderer baseline manifest schema must be explicit');
@@ -1618,7 +1623,7 @@ requireSnippet(
 );
 for (const readinessGuard of [
   'backendNotActive',
-  'legacyDefaultRequestMismatch',
+  'legacyRequestProjectionMismatch',
   'autoSelectionMismatch',
   'autoPreflightNotEligible',
   'autoDocumentDigestMissing',

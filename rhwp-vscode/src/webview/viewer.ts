@@ -94,7 +94,7 @@ const canvasKitFontPlan = (requiredFontFamilies: readonly string[]) => resolveCa
   },
 );
 const rendererSession = new RendererSession(
-  { backend: "auto", source: "default" },
+  { backend: "canvas2d", source: "default" },
   { mode: "default", source: "default" },
   { preference: "auto", requested: "auto" },
   "screen",

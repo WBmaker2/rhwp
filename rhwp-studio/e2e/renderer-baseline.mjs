@@ -92,7 +92,7 @@ const BACKENDS = [
         ? ''
         : `&canvaskitSurface=${encodeURIComponent(options.canvaskitSurface)}`;
       if (options.readinessOnly) {
-        return `?canvaskitMode=default&renderProfile=${encodeURIComponent(profile)}${surfaceQuery}`;
+        return `?renderer=auto&canvaskitMode=default&renderProfile=${encodeURIComponent(profile)}${surfaceQuery}`;
       }
       return `?renderer=canvaskit&canvaskitMode=default&renderProfile=${encodeURIComponent(profile)}${surfaceQuery}`;
     },
@@ -1279,12 +1279,12 @@ for (const result of results.filter((entry) => entry.readinessGateRequired)) {
     blockers.push('backendNotActive');
   }
   if (runtime.request?.backend?.backend !== 'canvas2d'
-    || runtime.request?.backend?.source !== 'default') {
-    blockers.push('legacyDefaultRequestMismatch');
+    || runtime.request?.backend?.source !== 'url') {
+    blockers.push('legacyRequestProjectionMismatch');
   }
   if (runtime.selection?.requestedBackend !== 'auto'
     || runtime.selection?.request?.backend !== 'auto'
-    || runtime.selection?.request?.source !== 'default'
+    || runtime.selection?.request?.source !== 'url'
     || runtime.selection?.effectiveBackend !== 'canvaskit'
     || runtime.selection?.selectionReason !== 'autoEligible') {
     blockers.push('autoSelectionMismatch');
@@ -1427,7 +1427,7 @@ const canvaskitReadinessGate = {
   criteria: {
     sampleFlag: 'canvaskitReadinessGate',
     profile: 'screen',
-    targetBackend: 'canvaskit-default (default auto request)',
+    targetBackend: 'canvaskit-default (explicit auto request)',
     canvaskitSurface: 'auto',
     requireActiveBackend: true,
     requireRuntimeReadiness: true,
