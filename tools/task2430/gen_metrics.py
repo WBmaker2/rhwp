@@ -1,0 +1,72 @@
+# -*- coding: utf-8 -*-
+"""#2430 실측 TSV → font_metrics_data.rs LATIN_0 테이블 생성.
+
+ladder_<face>.tsv (adv_em, 14pt 실측) → em1024 정수 배열 (0x20..0x7E, 95개).
+미측정 글자는 실측/기존 비율 중앙값으로 기존 HY 대응값을 스케일해 보간.
+"""
+import re
+import statistics
+import sys
+
+sys.stdout.reconfigure(encoding="utf-8")
+OUT = r"C:\Users\planet\rhwp\output\poc\task2430"
+SRC = r"C:\Users\planet\rhwp\src\renderer\font_metrics_data.rs"
+
+# (표시명, tsv face, 새 메트릭명, 기존 HY 메트릭 LATIN_0 static 이름)
+TARGETS = [
+    ("한양신명조", "한양신명조", "HanyangSinMyeongJo", "FONT_276_LATIN_0"),
+    ("한양중고딕", "한양중고딕", "HanyangJungGothic", None),  # HY중고딕 static 탐색
+    ("한양견명조", "한양견명조", "HanyangKyunMyeongJo", None),
+    ("한양견고딕", "한양견고딕", "HanyangKyunGothic", None),
+    ("휴먼명조", "휴먼명조", "HumanMyeongJo", "FONT_276_LATIN_0"),
+]
+# 기존 HY 메트릭명 → hangul/기타 참조용
+HY_OF = {
+    "HanyangSinMyeongJo": "HYSinMyeongJo-Medium",
+    "HanyangJungGothic": "HYGothic-Medium",
+    "HanyangKyunMyeongJo": "HYMyeongJo-Extra",
+    "HanyangKyunGothic": "HYGothic-Extra",
+    "HumanMyeongJo": "HYSinMyeongJo-Medium",
+}
+
+data = open(SRC, encoding="utf-8").read()
+
+def hy_latin0_of(metric_name):
+    m = re.search(r'name: "%s",.*?latin_ranges: &(\w+)_LATIN_RANGES' % re.escape(metric_name), data, re.S)
+    base = m.group(1)
+    m2 = re.search(r"static %s_LATIN_0: \[u16; \d+\] = \[(.*?)\];" % base, data, re.S)
+    return [int(x) for x in re.findall(r"\d+", m2.group(1))], base
+
+def hy_ranges_of(metric_name):
+    m = re.search(r'name: "%s",.*?latin_ranges: &(\w+)_LATIN_RANGES,\s*hangul: (Some\(&\w+\)|None)' % re.escape(metric_name), data, re.S)
+    return m.group(1), m.group(2)
+
+for disp, face, newname, _ in TARGETS:
+    tsv = f"{OUT}\\ladder_{face}.tsv"
+    meas = {}
+    for line in open(tsv, encoding="utf-8"):
+        p = line.rstrip("\n").split("\t")
+        if p[0] == "font" or len(p) < 4:
+            continue
+        code, em = int(p[1]), float(p[3])
+        if 0x20 <= code <= 0x7E and 0.01 < em < 2.5:
+            meas[code] = em
+    hy_metric = HY_OF[newname]
+    hy_vals, base = hy_latin0_of(hy_metric)
+    ratios = [meas[c] * 1024 / hy_vals[c - 0x20] for c in meas if hy_vals[c - 0x20] > 0]
+    med_ratio = statistics.median(ratios)
+    arr = []
+    n_meas = n_interp = 0
+    for c in range(0x20, 0x7F):
+        if c in meas:
+            arr.append(round(meas[c] * 1024))
+            n_meas += 1
+        else:
+            arr.append(round(hy_vals[c - 0x20] * med_ratio))
+            n_interp += 1
+    rng_base, hangul_ref = hy_ranges_of(hy_metric)
+    print(f"// {disp} → {newname}: 실측 {n_meas}/95, 보간 {n_interp} (중앙비 {med_ratio:.3f}, 기준 {hy_metric})")
+    body = ", ".join(str(v) for v in arr)
+    print(f"pub(crate) static {newname.upper()}_LATIN_0: [u16; 95] = [{body}];")
+    print(f"// ranges base: {rng_base}_LATIN_RANGES (LATIN_1+ 재사용), hangul: {hangul_ref}")
+    print()
