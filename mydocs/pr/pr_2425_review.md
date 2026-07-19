@@ -18,4 +18,4 @@
 
 ## 처리 결과
 
-(merge 후 기재)
+merge 완료(admin) + 스왑 이미지 첨부 감사 코멘트. #2400 은 close-issues 대기.
