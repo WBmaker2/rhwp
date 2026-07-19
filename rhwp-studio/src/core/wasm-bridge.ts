@@ -1008,6 +1008,12 @@ export class WasmBridge {
     return JSON.parse(this.doc.getTableBBox(sec, parentPara, controlIdx));
   }
 
+  /** 지정 page 에 배치된 표 fragment 의 페이지 좌표 bbox (#2400). */
+  getTableBBoxAtPage(sec: number, parentPara: number, controlIdx: number, pageIdx: number): { pageIndex: number; x: number; y: number; width: number; height: number } {
+    if (!this.doc) throw new Error('문서가 로드되지 않았습니다');
+    return JSON.parse(this.doc.getTableBBoxAtPage(sec, parentPara, controlIdx, pageIdx));
+  }
+
   /** [Task #919] 글상자/도형 컨트롤의 페이지 좌표 바운딩박스 */
   getShapeBBox(sec: number, parentPara: number, controlIdx: number): { pageIndex: number; x: number; y: number; width: number; height: number } {
     if (!this.doc) throw new Error('문서가 로드되지 않았습니다');

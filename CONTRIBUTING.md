@@ -171,9 +171,12 @@ cargo fmt --all -- --check       # CI와 같은 포맷 검증
 줄어듭니다. 모두 **한컴 설치 없이** (macOS/Linux 포함) 실행할 수 있습니다.
 
 ```bash
-# 개체(표·그림) geometry 무회귀 — 수정 전 baseline 저장, 수정 후 비교
+# 개체(표·그림) geometry 무회귀 — 원커맨드: devel 을 worktree 빌드해 baseline 자동 생성 후
+# 현 트리와 대조, PR 본문용 markdown 요약(out/ovr/ovr_diff.md)까지 출력
+python tools/object_visual_regression.py --preset ovr5 -o out/ovr --diff-against devel
+
+# (수동 3단계 흐름도 그대로 동작 — 수정 전 baseline 저장, 수정 후 비교)
 python tools/object_visual_regression.py <샘플.hwp> -o out/ovr --no-hwp --save-baseline
-#   (수정 적용 후)
 python tools/object_visual_regression.py <샘플.hwp> -o out/ovr2 --no-hwp --baseline out/ovr/baseline.json
 
 # 라운드트립 시각 기하 회귀
@@ -184,7 +187,8 @@ python tools/roundtrip_fidelity_harness.py --files <샘플.hwpx> --workdir out/r
 ```
 
 - OVR(개체 시각 회귀)로 "변경 범위 밖 문서의 개체가 움직이지 않았음"을 결과와 함께
-  PR 본문에 적어주시면 리뷰가 빨라집니다.
+  PR 본문에 적어주시면 리뷰가 빨라집니다 — `--diff-against devel` 이 출력하는
+  `ovr_diff.md` 표를 그대로 붙여넣으면 됩니다 (git 상태 전환·baseline 관리 불필요).
 - 어떤 PR 에 어떤 시각 증거가 필요한지는
   [시각 검증 거버넌스](mydocs/manual/verification/visual_verification_governance.md)를 참고하세요 —
   시각 검증은 전수 절차가 아니라 **PR 의 수정 목적과 사용자에게 보이는 동작 기준으로 선택**합니다.

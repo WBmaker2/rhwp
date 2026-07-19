@@ -128,7 +128,18 @@ PR 검토 초기에 변경 파일과 PR 설명을 보고 visual sweep 필요 여
 - HWP/HWPX 샘플, 기준 PDF, golden, visual regression fixture 가 추가되거나 갱신된다.
 
 `cargo test --profile release-test --tests`, `cargo clippy`, `cargo test --test svg_snapshot` 통과는 이 판정을
-대체하지 않는다. 위 조건에 해당하면 3.5 절과 `mydocs/manual/verification/visual_sweep_guide.md` 에 따라 첨부 기준 PDF
+대체하지 않는다.
+
+개체(표·그림 프레임) geometry 무회귀의 재실증은 원커맨드를 사용한다 (#2356/#2449):
+
+```bash
+python tools/object_visual_regression.py --preset ovr5 -o output/poc/ovr --diff-against devel
+```
+
+출력 md 표의 **개체 수 열이 0→0 인 샘플은 그 행이 공허 판정**이므로 무회귀 근거로 쓰지
+않는다 — 추적 개체가 있는 샘플의 회귀 0 만 근거로 삼는다
+([개체 시각 회귀 하니스](verification/object_visual_regression.md) 참조). 이 도구는 geometry
+전용이며 한컴 대조·픽셀 판정을 대체하지 않는다. 위 조건에 해당하면 3.5 절과 `mydocs/manual/verification/visual_sweep_guide.md` 에 따라 첨부 기준 PDF
 또는 3.5.1 절의 HWP 2020 MCP 산출 PDF 를 사용해 대표 샘플/페이지 시각 검증을 수행한다. PR 작성자가
 검증 PDF 를 첨부하지 않았다는 이유만으로 보류 사유를 적고 끝내지 않는다. 먼저 MCP 로 기준 PDF 를 산출하고,
 MCP 변환이 실패하거나 원본 HWP/HWPX 가 없어서 산출할 수 없을 때만 PR 작성자 또는 reviewer 에게 한컴

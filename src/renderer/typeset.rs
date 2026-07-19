@@ -435,6 +435,12 @@ struct TypesetState {
     /// 한글 저장 vpos 는 하단 틀도 문서순으로 누적하므로, 후속 틀의 vpos 동기화
     /// (#1611) 시 이 값을 차감해야 본문 텍스트 끝 위치가 복원된다.
     bottom_fixed_consumed_flow: f64,
+    /// [#2279 footer-오염] 이 페이지에 PAGE-앵커(vertRelTo=Page, vertAlign=Top)
+    /// 절대배치 비-TAC 표가 배치됐는가. 이 표들의 저장 vpos 누적은 절대 위치
+    /// 산물이라 본문 흐름과 무관하게 부풀며(36496000 pi3: 저장 스텝 +482px vs
+    /// 흐름 +143px), 이후 footer 의 저장 vpos 동기화(target_y)를 오염시킨다.
+    /// 켜져 있으면 footer 는 stored 동기화 없이 흐름 좌표로 판정한다.
+    page_has_page_abs_top_table: bool,
     /// 첫 각주 여부
     is_first_footnote_on_page: bool,
     /// 각주 구분선 오버헤드
@@ -1760,6 +1766,7 @@ impl TypesetState {
             current_footnote_height: 0.0,
             current_bottom_fixed_exclusion: 0.0,
             bottom_fixed_consumed_flow: 0.0,
+            page_has_page_abs_top_table: false,
             is_first_footnote_on_page: true,
             footnote_separator_overhead,
             footnote_between_notes_margin,
@@ -2021,6 +2028,7 @@ impl TypesetState {
         self.current_footnote_height = 0.0;
         self.current_bottom_fixed_exclusion = 0.0;
         self.bottom_fixed_consumed_flow = 0.0;
+        self.page_has_page_abs_top_table = false;
         self.is_first_footnote_on_page = true;
         self.current_zone_y_offset = 0.0;
         self.current_zone_layout = None;
@@ -13834,6 +13842,18 @@ impl TypesetEngine {
         is_last_placed: bool,
         styles: &ResolvedStyleSet,
     ) {
+        // [#2279 footer-오염] PAGE-앵커 Top 절대배치 표 기록 — 같은 쪽 후속
+        // footer 의 저장 vpos 동기화 차단용. 이 표들의 저장 누적은 절대 위치
+        // 산물이라 본문 흐름 좌표가 아니다(36496000 pi3 실측).
+        if !table.common.treat_as_char
+            && matches!(
+                table.common.vert_rel_to,
+                crate::model::shape::VertRelTo::Page
+            )
+            && matches!(table.common.vert_align, crate::model::shape::VertAlign::Top)
+        {
+            st.page_has_page_abs_top_table = true;
+        }
         let vertical_offset = Self::get_table_vertical_offset(table);
         let is_visible_para_float =
             is_para_topbottom_float(&table.common) && para_has_non_whitespace_text(para);
@@ -13982,32 +14002,46 @@ impl TypesetEngine {
             }
         } else if tac_wrap_split {
             st.current_height += table_total_height;
-        } else if let Some(host_line_px) = if st.profile.hwpx_stored_layout()
+        } else if let Some(host_spacing_px) = if st.profile.hwpx_stored_layout()
             && is_last_placed
             && total_lines <= pre_table_end_line + 1
+            && fmt.spacing_before + fmt.spacing_after > 0.5
+            && self
+                .tac_topbottom_conflict_host_line_px(para, table, styles)
+                .is_some()
         {
-            // [#2279 10k] host 빈 줄박스는 **문단당 1개** — 다중 표 문단에서
+            // [#2279 10k] host spacing 가산은 **문단당 1회** — 다중 표 문단에서
             // 표마다 가산하면 중간 표 배치의 fit 이 과대해져 후속 표가 조기
             // 개행된다 (156767148 보도자료 pi7: 표2개 문단, 한글 1쪽 vs +1쪽,
-            // 10k 회귀 +29건 군집의 지배 형상). 마지막 표 배치 시점으로 이연
-            // — 단일 표 문단(36392557 pi27 장제목)은 종전과 동일.
+            // 10k 회귀 +29건 군집의 지배 형상). 마지막 표 배치 시점으로 이연.
             // [#2279 sec0] host 문단에 표 줄 외 추가 줄박스(트레일러 빈 줄)가
-            // 이미 있으면 host 줄박스가 그 줄로 실체화된 것 — 별도 가산하면
-            // 이중 계상으로 분할 유발(36392557 sec0 표지: 표 892.5 + 트레일러
-            // 25.6 = 918.1 로 한글 1쪽인데 +16 가산 시 934.1 > 930.5 분할).
-            self.tac_topbottom_conflict_host_line_px(para, table, styles)
+            // 이미 있으면 그 줄의 fmt 가 spacing 을 계상하므로 제외(36392557
+            // sec0 표지: 표 892.5 + 트레일러 25.6 = 918.1 로 한글 1쪽).
+            Some(fmt.spacing_before + fmt.spacing_after)
         } else {
             None
         } {
-            // [#2279 TAC host] 기계생성 결재문서의 모순 조합(treat_as_char=true +
-            // wrap=자리차지) 장제목/결재표: 한글 fresh 는 host 빈 줄박스(호스트
-            // CS 크기)를 표 **위에** 별도 배치한다 — 36392557 pi27 한글 PDF
-            // 괘선 실측: 표 top = 흐름 + om_top(1.9px) + host 줄박스(20px=15pt).
-            // rhwp 는 lh-포함형(host lh = 표+om)으로만 소비해 표당 ~20px 과소
-            // (92셋 −1쪽 계열의 "TAC host +15~21px" 성분). 가산 후에는 생성기
-            // 압축 anchor 로의 후방 스냅이 성장분을 되돌리지 못하게 dirty 처리.
-            st.current_height += host_line_px + pre_height + table_total_height;
+            // [#2279 sb+α 종결] 기계생성 문서의 TAC-모순(treat_as_char=true +
+            // wrap=자리차지) host 표: 한글 fresh 는 host CS 크기의 "빈 줄박스"가
+            // 아니라 host paraPr 의 **sb+sa 를 순수 가산**한다(α=0) — 재저장
+            // ladder 실측: 36399374 pi4→5 = bare + (pi4.sa 500 + pi5.sb 300)
+            // 정확, pi3(sb/sa=0)→4 = bare, 계열X 보도자료 156745609 host 4개
+            // 전부 bare. 종전 font_size 근사(#2352 CS-근사)는 2557 pi27
+            // (sb 1000)에서 우연히 ±2px 로 맞았던 것. 가산 후에는 생성기 압축
+            // anchor 로의 후방 스냅이 성장분을 되돌리지 못하게 dirty 처리.
+            st.current_height += host_spacing_px + pre_height + table_total_height;
             st.vpos_ladder_dirty = true;
+            // [#2279 sb+α 진단] host spacing 가산 내역. 동작 불변.
+            if std::env::var("RHWP_DIAG_TAC").is_ok() {
+                eprintln!(
+                    "DIAG_HOSTBOX pi={} add={:.1} host_sb={:.1} host_sa={:.1} stored_gap_hu={}",
+                    para_idx,
+                    host_spacing_px,
+                    fmt.spacing_before,
+                    fmt.spacing_after,
+                    para.line_segs.first().map(|s| s.line_spacing).unwrap_or(-1),
+                );
+            }
         } else {
             // [#2097 프로브 기록] 빈 host 자리차지 float(v_off>0)의 흐름 전진에
             // v_off + outer_bottom 을 더하는 기하 정합(82802 pi75: 저장 322.6 =
@@ -15298,7 +15332,14 @@ impl TypesetEngine {
                 // 있으면(본문이 짧은데 vpos 가 page-bottom 앵커/누적 노이즈), vpos 동기화는
                 // 본문 직후에 들어갈 footer 를 spurious 하게 다음 쪽으로 민다(+1쪽 over-push).
                 // vpos 가 흐름을 plausibly 따를 때(cur_h + block_height 이내)만 동기화한다.
-                let sync_h = if target_y <= st.current_height + block_height {
+                // [#2279 footer-오염] 같은 쪽에 PAGE-앵커 Top 절대배치 표가 있으면
+                // 저장 누적이 절대 위치 산물로 부풀어(36496000 pi3: 저장 스텝
+                // +482px vs 흐름 +143px) target_y 가 본문 끝이 아니다 — 동기화를
+                // 건너뛰고 흐름 좌표로 판정한다(한글 PDF 본문 끝 ~520px = 흐름
+                // 517.3px 실측 일치, stored 861.2px 는 허상. 한글 1쪽 vs +1 유령).
+                let sync_h = if !st.page_has_page_abs_top_table
+                    && target_y <= st.current_height + block_height
+                {
                     st.current_height.max(target_y)
                 } else {
                     st.current_height
