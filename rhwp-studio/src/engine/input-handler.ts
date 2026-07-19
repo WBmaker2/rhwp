@@ -2838,10 +2838,17 @@ export class InputHandler {
           start.controlIndex === end.controlIndex &&
           start.cellIndex === end.cellIndex) {
         // 같은 셀 내부 선택
+        const pageHints = start.cursorRect && end.cursorRect
+          ? {
+            startPageHint: start.cursorRect.pageIndex,
+            endPageHint: end.cursorRect.pageIndex,
+          }
+          : undefined;
         rects = this.wasm.getSelectionRectsInCell(
           start.sectionIndex, start.parentParaIndex!, start.controlIndex!, start.cellIndex!,
           start.cellParaIndex!, start.charOffset,
           end.cellParaIndex!, end.charOffset,
+          pageHints,
         );
       } else if (!startInCell && !endInCell) {
         // 본문 선택

@@ -6,6 +6,11 @@ import {
   type HmlSaveBlocker,
   type HmlSaveState,
 } from './hml-save-capability';
+import {
+  getSelectionRectsInCellWithPageHints,
+  type CellSelectionRectDocument,
+  type SelectionPageHints,
+} from './selection-page-hints';
 
 /** HWPX 비표준 감지 경고 리포트 (#177). */
 export interface ValidationReport {
@@ -1644,9 +1649,22 @@ export class WasmBridge {
     return JSON.parse(this.doc.getSelectionRects(sec, startPara, startOffset, endPara, endOffset));
   }
 
-  getSelectionRectsInCell(sec: number, parentPara: number, controlIdx: number, cellIdx: number, startCellPara: number, startOffset: number, endCellPara: number, endOffset: number): SelectionRect[] {
+  getSelectionRectsInCell(sec: number, parentPara: number, controlIdx: number, cellIdx: number, startCellPara: number, startOffset: number, endCellPara: number, endOffset: number, pageHints?: SelectionPageHints): SelectionRect[] {
     if (!this.doc) throw new Error('문서가 로드되지 않았습니다');
-    return JSON.parse(this.doc.getSelectionRectsInCell(sec, parentPara, controlIdx, cellIdx, startCellPara, startOffset, endCellPara, endOffset));
+    return getSelectionRectsInCellWithPageHints(
+      this.doc as unknown as CellSelectionRectDocument,
+      {
+        sectionIdx: sec,
+        parentParaIdx: parentPara,
+        controlIdx,
+        cellIdx,
+        startCellParaIdx: startCellPara,
+        startCharOffset: startOffset,
+        endCellParaIdx: endCellPara,
+        endCharOffset: endOffset,
+      },
+      pageHints,
+    );
   }
 
   getSelectionRectsInFootnote(pageNum: number, footnoteIndex: number, startFnPara: number, startOffset: number, endFnPara: number, endOffset: number): SelectionRect[] {
