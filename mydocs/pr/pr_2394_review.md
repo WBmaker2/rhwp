@@ -44,3 +44,21 @@ package contracts")·본문 모두 근거 서술 없음. CanvasKit AA 차이 추
    최종 판정. `cd rhwp-studio && npm run dev` 후 대표 문서(표 중심 +
    이미지 중심 각 1)에서 auto 선택 백엔드 확인 (진단: 콘솔 renderer
    selection 로그 / F12).
+
+## 작업지시자 실기동 판정 (2026-07-19) — changes requested
+
+세 경로 실기동 검증(auto 선택/auto 수렴/명시 강제) 후 판정:
+
+1. **auto-eligible 문서(hwp_table_test)조차 육안 fidelity 미달** — ①글자
+   굵기(bold) 소실 ②기호(□)와 한글 사이 간격 소실·괄호 안 이상 간격
+   ③글자 블럭 선택 품질. preflight 가 "지원"으로 판정한 범위 안의 차이라
+   fail-closed 게이트가 거르지 못하는 종류.
+2. **조판부호/문단부호 보기에서 문서 공백** — 표식 토글이 preflight 재평가
+   없이 레이어 트리에 편집 표식 op 를 추가 → CanvasKit replay 실패 추정.
+   기능 결함(P1급).
+3. ink-mask 예산 완화(0.0185→0.019)의 성격 확정 — 근소 AA 가 아니라 실제
+   fidelity 격차를 예산 확대로 숫자상 통과시킨 것.
+
+**판정: 인프라(preflight/session/진단/계약 테스트) 수용 가치 크나, 기본
+요청의 auto 전환은 시기상조.** 기본 canvas2d 유지 + auto 는 명시 opt-in
+강등, ink-mask 원복, fidelity 3축 + 표식 공백 해소 후 기본 전환 재제안 요청.
