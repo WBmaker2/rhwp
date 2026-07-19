@@ -5672,6 +5672,10 @@ impl HwpDocument {
         }
         // raw_data 무효화 (수정됨)
         style.raw_data = None;
+        // DocInfo 스트림 무효화. serialize_doc_info 는 raw_stream_dirty 가 false 이면
+        // 원본 스트림을 그대로 반환하고(레코드 raw_data 는 그 이전에 단락됨), 이름/nextStyleId
+        // 변경이 .hwp 저장에서 유실된다. 형제 update_style_shapes 는 이미 이 플래그를 세운다.
+        self.core.document.doc_info.raw_stream_dirty = true;
         true
     }
 
@@ -5918,6 +5922,13 @@ impl HwpDocument {
             &self.core.document.doc_info,
             self.core.dpi,
         );
+        // DocInfo(styles 목록)와 문단 style_id 가 함께 바뀌었으므로 저장 스트림을 무효화한다.
+        // raw_stream_dirty 미설정 시 DocInfo 가, 섹션 raw_stream 잔존 시 본문이 각각 원본
+        // 바이트로 재방출돼 스타일 삭제·문단 재배정이 .hwp 저장에서 유실된다.
+        self.core.document.doc_info.raw_stream_dirty = true;
+        for section in &mut self.core.document.sections {
+            section.raw_stream = None;
+        }
         true
     }
 
