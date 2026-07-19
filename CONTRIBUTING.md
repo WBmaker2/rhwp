@@ -92,7 +92,7 @@ HWP 파일이 한컴과 다르게 렌더링되면 알려주세요:
 
 ```bash
 cargo fmt --all -- --check                   # 포맷 정책 준수
-cargo test --profile release-test --tests    # 통합 테스트 포함 전체 (5,500+)
+cargo test --profile release-test --tests    # 통합 테스트 포함 전체 (3,300+)
 cargo clippy -- -D warnings                  # 린트 경고 0건
 ```
 
@@ -254,6 +254,11 @@ rhwp-studio/        ← 웹 에디터 (TypeScript + Vite)
 - `cargo clippy -- -D warnings` 경고 0건 (CI에서 강제)
 - `unwrap()` 최소화
 - 모든 문서는 한국어로 작성
+- **소스 포맷 분기**: HWP3/HWPX 등 원본 포맷에 따른 레이아웃 분기가 필요하면
+  boolean 전달이나 포맷 이름 비교 대신 `Document::layout_profile()` 질의를
+  사용합니다 (`mydocs/tech/parser_architecture.md` 의 "소스 출처와 레이아웃
+  호환 정책" 참조). 새 판별이 필요하면 profile 질의를 추가하는 방식으로
+  엽니다.
 
 ## 문서 작성 규칙
 

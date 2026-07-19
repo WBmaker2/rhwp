@@ -2644,6 +2644,7 @@ impl DocumentCore {
             &self.document.sections[section_idx].paragraphs[parent_para_idx],
         );
         self.reflow_paragraph(section_idx, parent_para_idx);
+        let doc_hwp3_layout = self.document.layout_profile().hwp3_layout();
         crate::renderer::composer::recalculate_section_vpos(
             &mut self.document.sections[section_idx].paragraphs,
             parent_para_idx,
@@ -2651,7 +2652,7 @@ impl DocumentCore {
             stored_end_for_reset,
             &self.styles,
             self.dpi,
-            self.document.is_hwp3_variant,
+            doc_hwp3_layout,
         );
         self.recompose_section(section_idx);
         self.paginate_if_needed();

@@ -2891,11 +2891,11 @@ impl LayoutEngine {
                 .map(|seg| hwpunit_to_px(seg.text_height, self.dpi))
                 .unwrap_or(0.0);
             let use_stored_text_height = para.map(|p| p.controls.is_empty()).unwrap_or(false)
-                && (self.is_hwpx_source.get() || cell_ctx.is_none());
+                && (self.profile.get().hwpx_stored_layout() || cell_ctx.is_none());
             let source_metrics_reflow_eligible = para
                 .map(|p| crate::renderer::controls_mark_section_start(&p.controls))
                 .unwrap_or(false)
-                && self.is_hwpx_source.get();
+                && self.profile.get().hwpx_stored_layout();
             let source_metrics_reflowed = crate::renderer::source_line_metrics_need_reflow(
                 raw_lh,
                 raw_text_height,
@@ -3212,7 +3212,11 @@ impl LayoutEngine {
             // available_width 의 effective indent 를 불변 유지: 변환본은 scale 을 절반으로.
             // (종전: IR(half)×2.0=full → 현재: IR(full)×1.0=full)
             let equation_indent_scale = (if cell_ctx.is_some() { 1.0 } else { 2.0 })
-                * if self.is_hwp3_variant.get() { 0.5 } else { 1.0 };
+                * if self.profile.get().hwp3_layout() {
+                    0.5
+                } else {
+                    1.0
+                };
             let equation_first_effective_margin_left =
                 crate::renderer::equation_tac_flow::paragraph_effective_margin_left_with_indent_scale(
                     margin_left,
@@ -3742,7 +3746,11 @@ impl LayoutEngine {
                     is_last_line_of_para,
                     defer_empty_line_control_marker,
                     equation_tac_extra_rows,
-                    hwp3_indent_scale: if self.is_hwp3_variant.get() { 0.5 } else { 1.0 },
+                    hwp3_indent_scale: if self.profile.get().hwp3_layout() {
+                        0.5
+                    } else {
+                        1.0
+                    },
                     section_index,
                     para_index,
                 },
