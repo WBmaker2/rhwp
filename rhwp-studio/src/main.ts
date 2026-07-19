@@ -6,7 +6,8 @@ import { CanvasView } from '@/view/canvas-view';
 import { InputHandler } from '@/engine/input-handler';
 import { Toolbar } from '@/ui/toolbar';
 import { MenuBar } from '@/ui/menu-bar';
-import { loadWebFonts } from '@/core/font-loader';
+import { loadWebFonts, resolveCanvasKitFontPlan } from '@/core/font-loader';
+import { withCanvasKitSurfaceBlockers } from '@/core/canvaskit-document-preflight';
 import { loadExtensionViewerSettings, type ExtensionViewerSettings } from '@/core/extension-settings';
 import { CommandRegistry } from '@/command/registry';
 import { CommandDispatcher } from '@/command/dispatcher';
@@ -44,7 +45,7 @@ import { CellSelectionRenderer } from '@/engine/cell-selection-renderer';
 import { TableObjectRenderer } from '@/engine/table-object-renderer';
 import { TableResizeRenderer } from '@/engine/table-resize-renderer';
 import { Ruler } from '@/view/ruler';
-import type { CanvasKitLayerRenderer } from '@/view/canvaskit-renderer';
+import { RendererSession, type RendererSessionDiagnostics } from '@/view/renderer-session';
 import {
   resolveCanvasKitRenderModeRequest,
   resolveCanvasKitSurfaceRequest,
@@ -53,6 +54,7 @@ import {
   type RenderBackendFallbackReason,
 } from '@/view/render-backend';
 import { installEmbedRuntime } from '@/embed/runtime';
+import type { EmbedRendererRuntimeRequestV1 } from '@/embed/rpc-router';
 
 const wasm = new WasmBridge();
 const eventBus = new EventBus();
@@ -82,14 +84,9 @@ let canvasView: CanvasView | null = null;
 let inputHandler: InputHandler | null = null;
 let toolbar: Toolbar | null = null;
 let ruler: Ruler | null = null;
-let canvaskitRenderer: CanvasKitLayerRenderer | null = null;
+let rendererSession: RendererSession | null = null;
 let editMode: EditorEditMode = 'normal';
-let rendererRuntimeRequest: {
-  backend: ReturnType<typeof resolveRenderBackendRequest>;
-  canvaskitMode: ReturnType<typeof resolveCanvasKitRenderModeRequest>;
-  canvaskitSurface: ReturnType<typeof resolveCanvasKitSurfaceRequest>;
-  renderProfile: ReturnType<typeof resolveRenderProfile>;
-} | null = null;
+let rendererRuntimeRequest: EmbedRendererRuntimeRequestV1 | null = null;
 let renderBackendFallbackReason: RenderBackendFallbackReason | null = null;
 let rendererInitializationError: string | null = null;
 let rendererInitialized = false;
@@ -245,13 +242,18 @@ async function updateLoadProgress(percent: number, label: string): Promise<void>
  * 저장된 권한 범위 안에서 필요한 local face를 준비하고 등록된 경우에만 다시 그린다.
  */
 function prepareCanvasKitLocalFonts(fontNames: readonly string[] | undefined): void {
-  const renderer = canvaskitRenderer;
+  const renderer = canvasView?.getRenderBackend() === 'canvaskit'
+    ? rendererSession?.getCanvasKitRenderer() ?? null
+    : null;
   if (!renderer || !fontNames?.length) return;
   const requestedFonts = [...fontNames];
   void (async () => {
     await loadStoredLocalFonts();
     await renderer.prepareLocalFonts(requestedFonts);
-    if (renderer === canvaskitRenderer) {
+    if (
+      renderer === rendererSession?.getCanvasKitRenderer()
+      && canvasView?.getRenderBackend() === 'canvaskit'
+    ) {
       // 등록 성공 여부와 관계없이 pending 진단이 끝난 상태를 page snapshot에 반영한다.
       eventBus.emit('document-view-changed');
     }
@@ -281,8 +283,12 @@ async function initialize(): Promise<void> {
     const canvaskitMode = canvaskitModeRequest.mode;
     const canvaskitSurfaceRequest = resolveCanvasKitSurfaceRequest(window.location.search);
     const renderProfile = resolveRenderProfile(window.location.search);
+    const diagnosticsBackendRequest: EmbedRendererRuntimeRequestV1['backend'] =
+      renderBackendRequest.backend === 'auto'
+        ? { ...renderBackendRequest, backend: 'canvas2d' }
+        : { ...renderBackendRequest, backend: renderBackendRequest.backend };
     rendererRuntimeRequest = {
-      backend: renderBackendRequest,
+      backend: diagnosticsBackendRequest,
       canvaskitMode: canvaskitModeRequest,
       canvaskitSurface: canvaskitSurfaceRequest,
       renderProfile,
@@ -297,19 +303,45 @@ async function initialize(): Promise<void> {
         `[main] 지원하지 않는 CanvasKit mode입니다: ${canvaskitModeRequest.requested}; default를 사용합니다.`,
       );
     }
-    let renderBackend = renderBackendRequest.backend;
     renderBackendFallbackReason = renderBackendRequest.unsupportedReason ?? null;
-    if (renderBackend === 'canvaskit') {
-      msg.textContent = 'CanvasKit 로딩 중...';
-      try {
+    rendererSession = new RendererSession(
+      renderBackendRequest,
+      canvaskitModeRequest,
+      canvaskitSurfaceRequest,
+      renderProfile,
+      async (mode, surface) => {
+        msg.textContent = 'CanvasKit 로딩 중...';
         const { CanvasKitLayerRenderer } = await import('@/view/canvaskit-renderer');
-        canvaskitRenderer = await CanvasKitLayerRenderer.create(canvaskitMode, canvaskitSurfaceRequest);
-      } catch (error) {
-        console.error('[main] CanvasKit 초기화 실패, Canvas2D로 폴백합니다:', error);
-        renderBackend = 'canvas2d';
-        renderBackendFallbackReason = 'canvaskitInitializationFailed';
-      }
-    }
+        return CanvasKitLayerRenderer.create(mode, surface, {
+          requirePreparedFontFamilies: renderBackendRequest.backend === 'auto',
+        });
+      },
+      {
+        transformCanvasKitPreflight(report) {
+          const plan = resolveCanvasKitFontPlan(
+            report.requiredFontFamilies,
+            extensionViewerSettings,
+          );
+          const blockers = plan.unavailableFonts.map(font => `fontUnavailable:${font}`);
+          if (wasm.getShowParagraphMarks()) blockers.push('viewOption:showParagraphMarks');
+          if (wasm.getShowControlCodes()) blockers.push('viewOption:showControlCodes');
+          return withCanvasKitSurfaceBlockers(
+            report,
+            blockers,
+          );
+        },
+        async prepareCanvasKitDocument(renderer, report) {
+          const plan = resolveCanvasKitFontPlan(
+            report.requiredFontFamilies,
+            extensionViewerSettings,
+          );
+          if (plan.unavailableFonts.length > 0) {
+            throw new Error(`CanvasKit font family가 준비되지 않았습니다: ${plan.unavailableFonts.join(', ')}`);
+          }
+          await renderer.prepareBundledFonts(plan.sources);
+        },
+      },
+    );
     msg.textContent = 'HWP 파일을 선택해주세요.';
 
     const container = document.getElementById('scroll-container')!;
@@ -317,9 +349,7 @@ async function initialize(): Promise<void> {
       container,
       wasm,
       eventBus,
-      renderBackend,
-      renderProfile,
-      canvaskitRenderer,
+      rendererSession,
     );
 
     // 눈금자 초기화
@@ -439,7 +469,7 @@ async function initialize(): Promise<void> {
     if (import.meta.env.DEV) {
       (window as any).__inputHandler = inputHandler;
       (window as any).__canvasView = canvasView;
-      (window as any).__renderBackend = renderBackend;
+      (window as any).__renderBackend = null;
       (window as any).__renderBackendRequest = renderBackendRequest;
       (window as any).__rendererRuntimeRequest = rendererRuntimeRequest;
       (window as any).__renderBackendFallbackReason = renderBackendFallbackReason;
@@ -676,6 +706,16 @@ function setupEventListeners(): void {
     documentState.markDirty(typeof reason === 'string' ? reason : 'document-changed');
   });
 
+  eventBus.on('renderer-selection-changed', (payload) => {
+    const diagnostics = payload as RendererSessionDiagnostics;
+    renderBackendFallbackReason = diagnostics.fallbackReason;
+    if (import.meta.env.DEV) {
+      (window as any).__renderBackend = diagnostics.effectiveBackend;
+      (window as any).__renderBackendFallbackReason = diagnostics.fallbackReason;
+      (window as any).__rendererSelection = diagnostics;
+    }
+  });
+
   eventBus.on('document-dirty-changed', () => {
     eventBus.emit('command-state-changed');
   });
@@ -791,7 +831,7 @@ async function initializeDocument(
     inputHandler?.deactivate();
     console.log('[initDoc] 4. canvasView loadDocument');
     await updateLoadProgress(82, '페이지 렌더 준비 중...');
-    canvasView?.loadDocument();
+    await canvasView?.loadDocument();
     prepareCanvasKitLocalFonts(docInfo.fontsUsed);
     console.log('[initDoc] 5. toolbar setEnabled');
     await updateLoadProgress(90, '도구 모음 준비 중...');
@@ -819,7 +859,7 @@ async function initializeDocument(
             console.log(`[validation] reflowed ${n} paragraphs`);
             if (n > 0) {
               // 렌더 재계산
-              canvasView?.loadDocument();
+              await canvasView?.loadDocument();
               msg.textContent = `${displayName} (비표준 lineseg ${n}건 자동 보정됨)`;
               normalizedDuringLoad = true;
             }
@@ -914,9 +954,8 @@ async function loadFile(file: File, options: { skipUnsavedGuard?: boolean } = {}
   }
 }
 
-function resetCanvasKitDocumentState(): void {
-  canvaskitRenderer?.resetDocumentResources();
-  canvasView?.resetRendererDiagnostics();
+function prepareCanvasRendererDocument(): void {
+  canvasView?.prepareDocumentLoad();
 }
 
 async function loadBytes(
@@ -931,7 +970,7 @@ async function loadBytes(
   }
   await updateLoadProgress(25, '문서 파싱 및 쪽 계산 중...');
   const docInfo = wasm.loadDocument(data, fileName);
-  resetCanvasKitDocumentState();
+  prepareCanvasRendererDocument();
   await updateLoadProgress(45, '자동 저장 준비 중...');
   forgetConvertedHmlSaveHandle(fileHandle);
   wasm.currentFileHandle = fileHandle;
@@ -1077,7 +1116,7 @@ async function createNewDocument(): Promise<void> {
   try {
     msg.textContent = '새 문서 생성 중...';
     const docInfo = wasm.createNewDocument();
-    resetCanvasKitDocumentState();
+    prepareCanvasRendererDocument();
     await autosaveManager.beginDocument(
       { fileName: wasm.fileName, sourceFormat: wasm.getSourceFormat() },
       { discardPreviousDraft: true },
@@ -1279,13 +1318,15 @@ installEmbedRuntime({
     },
     async getRendererDiagnostics(pageIndex) {
       await initPromise;
+      const selection = canvasView?.getRendererSessionDiagnostics() ?? null;
       return {
         schemaVersion: 1 as const,
         request: rendererRuntimeRequest,
         initialized: rendererInitialized,
         initializationError: rendererInitializationError,
-        effectiveBackend: rendererInitialized ? canvasView?.getRenderBackend() ?? null : null,
-        backendFallbackReason: renderBackendFallbackReason,
+        effectiveBackend: selection?.effectiveBackend ?? null,
+        backendFallbackReason: selection?.fallbackReason ?? renderBackendFallbackReason,
+        selection,
         page: {
           index: pageIndex,
           canvaskit: canvasView?.getCanvasKitRenderDiagnostics(pageIndex) ?? null,

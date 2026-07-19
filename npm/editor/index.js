@@ -36,7 +36,15 @@ export async function createEditor(container, options = {}) {
     throw new Error(`Container not found: ${container}`);
   }
 
-  const studioUrl = options.studioUrl || DEFAULT_STUDIO_URL;
+  let studioUrl = options.studioUrl || DEFAULT_STUDIO_URL;
+  if (options.renderer !== undefined) {
+    if (!['auto', 'canvas2d', 'canvaskit'].includes(options.renderer)) {
+      throw new TypeError(`Unsupported renderer: ${options.renderer}`);
+    }
+    const resolvedStudioUrl = new URL(studioUrl, document.baseURI);
+    resolvedStudioUrl.searchParams.set('renderer', options.renderer);
+    studioUrl = resolvedStudioUrl.href;
+  }
 
   // iframe 생성
   const iframe = document.createElement('iframe');

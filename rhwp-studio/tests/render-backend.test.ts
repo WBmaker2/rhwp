@@ -26,8 +26,9 @@ import { isExpectedCanvasKitUnsupportedOp } from '../src/view/canvaskit/diagnost
 import type { LayerInfo, LayerPaintOp } from '../src/core/types.ts';
 import { glyphOutlinePayloadResourceKey, glyphOutlinePayloadStatus } from '../src/view/glyph-outline-payload-status.ts';
 
-test('render backend resolver keeps Canvas2D as the default and accepts skia aliases', () => {
+test('render backend resolver keeps Canvas2D as the compatibility default and accepts explicit aliases', () => {
   assert.equal(resolveRenderBackend(''), 'canvas2d');
+  assert.equal(resolveRenderBackend('?renderer=auto'), 'auto');
   assert.equal(resolveRenderBackend('?renderer=canvas'), 'canvas2d');
   assert.equal(resolveRenderBackend('?renderer=canvas2d'), 'canvas2d');
   assert.equal(resolveRenderBackend('?renderer=canvaskit'), 'canvaskit');
@@ -45,6 +46,11 @@ test('render backend resolver reports invalid explicit values and keeps URL opt-
     assert.deepEqual(resolveRenderBackendRequest(''), {
       backend: 'canvas2d',
       source: 'default',
+    });
+    assert.deepEqual(resolveRenderBackendRequest('?renderer=auto'), {
+      backend: 'auto',
+      source: 'url',
+      requested: 'auto',
     });
     assert.deepEqual(resolveRenderBackendRequest('?renderer=canvaskit'), {
       backend: 'canvaskit',
@@ -157,6 +163,12 @@ test('CanvasKit renderer source does not introduce Canvas2D overlay replay', () 
   assert.equal(source.includes('rhwpOverlay'), false);
 });
 
+test('CanvasKit text replay preserves LayerTree positions for regular runs', () => {
+  const source = readFileSync(new URL('../src/view/canvaskit-renderer.ts', import.meta.url), 'utf8');
+  assert.match(source, /if \(hasLayoutPositions\) \{[\s\S]*?canvas\.drawGlyphs\(/);
+  assert.doesNotMatch(source, /needsPreservedAdvances && hasLayoutPositions/);
+});
+
 test('CanvasKit contains malformed images and bounds both decode caches', () => {
   const source = readFileSync(new URL('../src/view/canvaskit-renderer.ts', import.meta.url), 'utf8');
   assert.match(source, /try \{\s*image = this\.canvasKit\.MakeImageFromEncoded/);
@@ -177,6 +189,12 @@ test('CanvasKit distinguishes missing-picture editor and print replay', () => {
   assert.match(source, /profile === 'print' \|\| profile === 'highQuality'/);
   assert.match(source, /MAX_PLACEHOLDER_DASH_SEGMENTS_PER_AXIS = 2048/);
   assert.match(source, /\.every\(Number\.isFinite\)/);
+});
+
+test('CanvasKit form replay accepts the canonical LayerTree form type names', () => {
+  const source = readFileSync(new URL('../src/view/canvaskit-renderer.ts', import.meta.url), 'utf8');
+  assert.match(source, /op\.formType === 'checkBox'/);
+  assert.match(source, /op\.formType === 'radioButton'/);
 });
 
 test('PageLayerTree bridge verifies the returned profile instead of relabeling it', () => {
@@ -398,6 +416,20 @@ test('CanvasView renders visible pages before deferred prefetch work', () => {
   assert.match(source, /this\.schedulePrefetchPages\(prefetchPages\.filter/);
   assert.match(source, /requestIdleCallback\(run, \{ timeout: 1000 \}\)/);
   assert.match(source, /cancelPendingPrefetch\(\)/);
+});
+
+test('CanvasView falls back from failed CanvasKit readiness only for auto requests', () => {
+  const source = readFileSync(new URL('../src/view/canvas-view.ts', import.meta.url), 'utf8');
+  assert.match(
+    source,
+    /canvaskitDiagnostics[\s\S]*?!canvaskitDiagnostics\.passesRuntimeReadinessGate[\s\S]*?rendererSession\.isAutoRequest\(\)/,
+  );
+  assert.match(source, /readinessBlockers\.join\(','\)/);
+  assert.match(source, /lastRenderError[\s\S]*?lastUnexpectedUnsupportedOps/);
+  assert.doesNotMatch(
+    source,
+    /getCanvasKitRenderDiagnostics\(pageIdx\)\?\.lastRenderError/,
+  );
 });
 
 test('ViewportManager coalesces scroll events to one animation frame', () => {

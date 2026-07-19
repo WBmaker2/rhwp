@@ -66,6 +66,33 @@ export class PageRenderer {
     private canvaskitRenderer: CanvasKitLayerRenderer | null = null,
   ) {}
 
+  configure(
+    backend: RenderBackend,
+    renderProfile: LayerRenderProfile,
+    canvaskitRenderer: CanvasKitLayerRenderer | null,
+    preserveCanvasKitDiagnostics = false,
+  ): boolean {
+    const changed =
+      this.backend !== backend
+      || this.renderProfile !== renderProfile
+      || this.canvaskitRenderer !== canvaskitRenderer;
+    if (!changed) return false;
+
+    this.cancelAll();
+    if (!preserveCanvasKitDiagnostics) this.releaseAllPageDiagnostics();
+    this.layerSummaryCache.clear();
+    this.backend = backend;
+    this.renderProfile = renderProfile;
+    this.canvaskitRenderer = canvaskitRenderer;
+    return true;
+  }
+
+  invalidateDocumentRevision(): void {
+    this.cancelAll();
+    this.releaseAllPageDiagnostics();
+    this.layerSummaryCache.clear();
+  }
+
   /** 페이지를 Canvas에 렌더링한다 (renderScale = zoom × DPR) */
   renderPage(
     pageIdx: number,
@@ -989,7 +1016,6 @@ export class PageRenderer {
     this.cancelAll();
     this.layerSummaryCache.clear();
     this.canvaskitDiagnosticsByPage.clear();
-    this.canvaskitRenderer?.dispose();
     this.canvaskitRenderer = null;
   }
 }

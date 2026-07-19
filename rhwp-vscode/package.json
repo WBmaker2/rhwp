@@ -103,6 +103,10 @@
     "vscode:prepublish": "npm run compile",
     "package": "vsce package"
   },
+  "dependencies": {
+    "@noble/hashes": "^2.2.0",
+    "canvaskit-wasm": "^0.41.1"
+  },
   "devDependencies": {
     "@types/node": "^20.0.0",
     "@types/vscode": "^1.82.0",

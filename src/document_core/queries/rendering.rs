@@ -26,6 +26,43 @@ use crate::renderer::svg_layer::SvgLayerRenderer;
 use std::cell::RefCell;
 use std::fmt::Write as _;
 
+const MAX_EMBEDDED_FONT_BYTES: usize = 32 * 1024 * 1024;
+const MAX_EMBEDDED_FONT_BYTES_PER_PAGE: usize = 64 * 1024 * 1024;
+
+fn load_bounded_embedded_font_bytes(
+    contents: &[crate::model::bin_data::BinDataContent],
+    font_ids: &[u16],
+    per_font_limit: usize,
+    page_limit: usize,
+) -> std::collections::HashMap<u16, Vec<u8>> {
+    let mut bytes_by_id = std::collections::HashMap::new();
+    let mut attempted_ids = std::collections::HashSet::new();
+    let mut loaded_bytes = 0usize;
+
+    for &font_id in font_ids {
+        if !attempted_ids.insert(font_id) {
+            continue;
+        }
+        let remaining = page_limit.saturating_sub(loaded_bytes);
+        let load_limit = per_font_limit.min(remaining);
+        if load_limit == 0 {
+            break;
+        }
+        let Some(bytes) = contents
+            .iter()
+            .find(|content| content.id == font_id)
+            .and_then(|content| content.data.load_limited(load_limit))
+            .filter(|bytes| !bytes.is_empty())
+        else {
+            continue;
+        };
+        loaded_bytes = loaded_bytes.saturating_add(bytes.len());
+        bytes_by_id.insert(font_id, bytes);
+    }
+
+    bytes_by_id
+}
+
 // ── [#2004] 부동 전면 이미지 스택 → 인라인 재분류 (render-전용, 원본 무손상) ──
 
 /// 부동(tac=false) 그림/그림-도형의 공통 속성(읽기).
@@ -492,15 +529,47 @@ impl DocumentCore {
                 }
             }
 
-            let load_font_bytes = |id: u16| {
-                self.document
-                    .bin_data_content
-                    .iter()
-                    .find(|content| content.id == id)
-                    .map(|content| content.data.load())
-                    .unwrap_or_default()
-            };
-            let mut font_bytes_by_id = std::collections::HashMap::<u16, Vec<u8>>::new();
+            let mut embedded_font_ids = Vec::new();
+            for &(char_shape_id, language_index) in &used_font_slots {
+                let Some(font_id) = self
+                    .document
+                    .doc_info
+                    .char_shapes
+                    .get(char_shape_id as usize)
+                    .and_then(|shape| shape.font_ids.get(language_index))
+                    .copied()
+                else {
+                    continue;
+                };
+                let Some(font) = self
+                    .document
+                    .doc_info
+                    .font_faces
+                    .get(language_index)
+                    .and_then(|fonts| fonts.get(font_id as usize))
+                else {
+                    continue;
+                };
+                if font.is_embedded {
+                    if let Some(bin_data_id) = font.resolved_bin_data_id {
+                        embedded_font_ids.push(bin_data_id);
+                    }
+                }
+                if let Some(bin_data_id) = font
+                    .subst_font
+                    .as_ref()
+                    .filter(|substitute| substitute.is_embedded)
+                    .and_then(|substitute| substitute.resolved_bin_data_id)
+                {
+                    embedded_font_ids.push(bin_data_id);
+                }
+            }
+            let font_bytes_by_id = load_bounded_embedded_font_bytes(
+                &self.document.bin_data_content,
+                &embedded_font_ids,
+                MAX_EMBEDDED_FONT_BYTES,
+                MAX_EMBEDDED_FONT_BYTES_PER_PAGE,
+            );
             let mut resolved_fonts = Vec::new();
             for (char_shape_id, language_index) in used_font_slots {
                 let Some(font_id) = self
@@ -526,10 +595,7 @@ impl DocumentCore {
                 let mut resolved = None;
                 if font.is_embedded {
                     if let Some(bin_data_id) = font.resolved_bin_data_id {
-                        let bytes = font_bytes_by_id
-                            .entry(bin_data_id)
-                            .or_insert_with(|| load_font_bytes(bin_data_id));
-                        if !bytes.is_empty() {
+                        if let Some(bytes) = font_bytes_by_id.get(&bin_data_id) {
                             resolved = resolve_embedded_font_face_index(bytes, &font.name, None)
                                 .map(|face_index| (bin_data_id, None, face_index));
                         }
@@ -542,10 +608,7 @@ impl DocumentCore {
                         .filter(|substitute| substitute.is_embedded)
                     {
                         if let Some(bin_data_id) = substitute.resolved_bin_data_id {
-                            let bytes = font_bytes_by_id
-                                .entry(bin_data_id)
-                                .or_insert_with(|| load_font_bytes(bin_data_id));
-                            if !bytes.is_empty() {
+                            if let Some(bytes) = font_bytes_by_id.get(&bin_data_id) {
                                 resolved = resolve_embedded_font_face_index(
                                     bytes,
                                     substitute.face.as_str(),
@@ -885,6 +948,49 @@ impl DocumentCore {
         serde_json::to_string(&plan).map_err(|error| {
             HwpError::RenderError(format!(
                 "CanvasKit replay plan JSON 직렬화에 실패했습니다: {error}"
+            ))
+        })
+    }
+
+    pub fn get_canvaskit_document_preflight_native(
+        &self,
+        mode: &str,
+        profile: RenderProfile,
+    ) -> Result<String, HwpError> {
+        use crate::renderer::canvaskit_policy::{
+            analyze_canvaskit_document_preflight, estimate_canvaskit_page_lowering_work,
+            CanvasKitBoundedWorkCount, CanvasKitPreflightPageBuild, CanvasKitReplayMode,
+        };
+
+        let mode = CanvasKitReplayMode::from_str(mode).ok_or_else(|| {
+            HwpError::RenderError(format!(
+                "지원하지 않는 CanvasKit replay mode입니다: {mode}. allowed modes: default, compat"
+            ))
+        })?;
+        let preflight = analyze_canvaskit_document_preflight(
+            self.page_count(),
+            mode,
+            profile,
+            |page_index, remaining_work_units| -> Result<CanvasKitPreflightPageBuild, HwpError> {
+                let prelower_work = self.with_page_tree_cached(page_index, |tree| {
+                    Ok(estimate_canvaskit_page_lowering_work(
+                        tree,
+                        remaining_work_units,
+                    ))
+                })?;
+                let CanvasKitBoundedWorkCount::Complete(prelower_work_units) = prelower_work else {
+                    return Ok(CanvasKitPreflightPageBuild::WorkLimitExceeded);
+                };
+                let tree = self.build_page_layer_tree_with_profile(page_index, profile)?;
+                Ok(CanvasKitPreflightPageBuild::Complete {
+                    tree: Box::new(tree),
+                    prelower_work_units,
+                })
+            },
+        );
+        serde_json::to_string(&preflight).map_err(|error| {
+            HwpError::RenderError(format!(
+                "CanvasKit document preflight JSON 직렬화에 실패했습니다: {error}"
             ))
         })
     }
@@ -5169,6 +5275,74 @@ mod tests {
     use super::*;
     use crate::model::bin_data::BinDataContent;
     use crate::renderer::render_tree::RenderNodeType;
+
+    #[test]
+    fn embedded_font_loading_enforces_per_page_cumulative_limit() {
+        let contents = vec![
+            BinDataContent {
+                id: 1,
+                data: vec![1; 4].into(),
+                extension: "ttf".to_string(),
+            },
+            BinDataContent {
+                id: 2,
+                data: vec![2; 4].into(),
+                extension: "ttf".to_string(),
+            },
+            BinDataContent {
+                id: 3,
+                data: vec![3; 2].into(),
+                extension: "ttf".to_string(),
+            },
+        ];
+
+        let loaded = load_bounded_embedded_font_bytes(&contents, &[1, 2, 3, 1], 4, 6);
+
+        assert_eq!(loaded.len(), 2);
+        assert_eq!(loaded.get(&1).map(Vec::len), Some(4));
+        assert!(!loaded.contains_key(&2));
+        assert_eq!(loaded.get(&3).map(Vec::len), Some(2));
+        assert_eq!(loaded.values().map(Vec::len).sum::<usize>(), 6);
+    }
+
+    #[test]
+    fn embedded_font_loading_rejects_oversized_lazy_data_without_unbounded_load() {
+        use crate::model::bin_data::{BinDataBytes, BinDataResolver};
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        #[derive(Debug)]
+        struct OversizedLazyFontResolver {
+            bounded_limit: AtomicUsize,
+        }
+
+        impl BinDataResolver for OversizedLazyFontResolver {
+            fn resolve(&self, key: &str) -> Vec<u8> {
+                panic!("font loading must remain bounded: {key}")
+            }
+
+            fn resolve_limited(&self, _key: &str, max_bytes: usize) -> Option<Vec<u8>> {
+                self.bounded_limit.store(max_bytes, Ordering::SeqCst);
+                None
+            }
+        }
+
+        let resolver = std::sync::Arc::new(OversizedLazyFontResolver {
+            bounded_limit: AtomicUsize::new(0),
+        });
+        let contents = vec![BinDataContent {
+            id: 1,
+            data: BinDataBytes::Lazy {
+                resolver: resolver.clone(),
+                key: "compressed-oversized-font".to_string(),
+            },
+            extension: "ttf".to_string(),
+        }];
+
+        let loaded = load_bounded_embedded_font_bytes(&contents, &[1, 1], 32, 24);
+
+        assert!(loaded.is_empty());
+        assert_eq!(resolver.bounded_limit.load(Ordering::SeqCst), 24);
+    }
 
     /// [Task #1612] `compute_hwp_used_height` 는 per-page 높이를 내야 한다. vpos 는
     /// 다페이지에서 누적값이므로 페이지 시작 오프셋을 차감하지 않으면 page N>1 에서
