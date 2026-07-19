@@ -3,7 +3,8 @@
 - 이슈: #2396
 - assignee: `postmelee`
 - 브랜치: `codex/issue-2396-custom-scheme-legacy-request`
-- 기준선: `upstream/devel@af5902b6`
+- 최초 기준선: `upstream/devel@af5902b6`
+- 최신 통합 기준선: `upstream/devel@9b2216c8` (`6f0d1cdc`)
 - 수행계획서: `mydocs/plans/task_m100_2396.md`
 - 구현계획서: `mydocs/plans/task_m100_2396_impl.md`
 
@@ -75,12 +76,14 @@ Stage 1에서 첫 테스트의 timeout을 재현했고, PR review 보정 후 세
 - custom scheme v1 MessageChannel connect, iframe custom scheme origin 허용, custom scheme allowlist,
   host 인증 정책은 이번 범위에 포함하지 않는다.
 - Vite chunk-size/browser externalization과 wasm-pack prebuilt fallback 경고는 기존 비차단 build 경고다.
-- push, PR 생성과 이슈 close는 별도 작업지시자 승인 전까지 수행하지 않는다.
+- 최종 PR head CI 확인, merge와 이슈 close는 별도 작업지시자 판단 범위다.
 
 ## 완료 판단
 
-수행계획서의 기능·보안·검증 완료 기준을 모두 충족했다. 로컬 브랜치는 PR 준비 상태이며, PR 초안은
-`mydocs/report/task_m100_2396_pr_draft.md`에 기록한다.
+수행계획서의 기능·보안·로컬 검증 완료 기준을 충족했다. PR review에서 발견한 v1 connect 권한 범위
+확대도 `5e25b0b0`에서 보정했다. 최종 merge 판단은 최신 PR head의 relevant checks와 작업지시자 승인을
+전제로 한다. PR 본문 초안은 `mydocs/report/task_m100_2396_pr_draft.md`, 리뷰 기록은
+`mydocs/pr/archives/pr_2398_review.md`에 둔다.
 
 ## PR 생성 결과
 
@@ -92,4 +95,5 @@ Stage 1에서 첫 테스트의 timeout을 재현했고, PR review 보정 후 세
 
 초기 CI 실패는 job step이 하나도 실행되지 않고 `runner_id=0`인 GitHub 계정 billing blocker였다. 이후
 billing lock 해소와 `devel` 통합 head `c8bc5644`에서 CI, Render Diff, CodeQL이 통과했다. PR review 보정
-커밋을 push하면 최신 head 기준 relevant checks를 다시 확인해야 한다.
+커밋 `5e25b0b0`에서도 CI, Render Diff, CodeQL이 모두 통과했다. 최신 `devel@9b2216c8` 통합과 최종 review
+문서 커밋 뒤의 PR head relevant checks는 merge 전에 다시 확인해야 한다.
