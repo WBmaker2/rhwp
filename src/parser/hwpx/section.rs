@@ -6690,6 +6690,31 @@ mod tests {
     }
 
     #[test]
+    fn picture_pattern_8_8_effect_is_preserved() {
+        // 방출측이 내는 PATTERN_8_8 효과가 기본값 RealPic 으로 되돌아가지 않아야 한다.
+        let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+<hs:sec xmlns:hp="http://www.hancom.co.kr/hwpml/2011/paragraph"
+        xmlns:hs="http://www.hancom.co.kr/hwpml/2011/section">
+  <hp:p paraPrIDRef="0" styleIDRef="0">
+    <hp:run charPrIDRef="0">
+      <hp:pic id="1" zOrder="0" textWrap="SQUARE" textFlow="BOTH_SIDES">
+        <hp:img binaryItemIDRef="image1" effect="PATTERN_8_8"/>
+      </hp:pic>
+    </hp:run>
+  </hp:p>
+</hs:sec>"#;
+        let section = parse_hwpx_section(xml).unwrap();
+        let Control::Picture(picture) = &section.paragraphs[0].controls[0] else {
+            panic!("첫 컨트롤은 그림이어야 함");
+        };
+        assert_eq!(
+            picture.image_attr.effect,
+            crate::model::image::ImageEffect::Pattern8x8,
+            "PATTERN_8_8 그림 효과가 RealPic 으로 유실되면 안 됨"
+        );
+    }
+
+    #[test]
     fn test_parse_hwpx_masterpage_line_materializes_shape_common_attr() {
         let xml = r##"<?xml version="1.0" encoding="UTF-8"?>
 <masterPage xmlns:hp="http://www.hancom.co.kr/hwpml/2011/paragraph"

@@ -2634,23 +2634,35 @@ mod tests {
 
     #[test]
     fn parse_char_pr_captures_sym_mark() {
-        // symMark(강조점)은 종전에 파서가 no-op 으로 무시해 hwpx 재로드 시 NONE 으로 유실됐다
-        // (useKerning[Finding 20]과 동형). 방출측 sym_mark_str 의 역함수로 emphasis_dot 를 보존한다.
-        let xml = r##"<?xml version="1.0" encoding="UTF-8"?>
+        // symMark(강조점)은 종전에 파서가 no-op 으로 무시해 hwpx 재로드 시 NONE 으로 유실됐다.
+        // 방출측 sym_mark_str 의 모든 유효 문자열을 역방향으로 보존한다.
+        for (sym_mark, expected) in [
+            ("NONE", 0),
+            ("DOT_ABOVE", 1),
+            ("RING_ABOVE", 2),
+            ("TILDE", 3),
+            ("CARON", 4),
+            ("SIDE", 5),
+            ("COLON", 6),
+        ] {
+            let xml = format!(
+                r##"<?xml version="1.0" encoding="UTF-8"?>
 <hh:head xmlns:hh="http://www.hancom.co.kr/hwpml/2011/head">
   <hh:refList>
     <hh:charProperties itemCnt="1">
-      <hh:charPr id="0" height="1000" textColor="#000000" shadeColor="none" useFontSpace="0" useKerning="0" symMark="DOT_ABOVE">
+      <hh:charPr id="0" height="1000" textColor="#000000" shadeColor="none" useFontSpace="0" useKerning="0" symMark="{sym_mark}">
         <hh:fontRef hangul="0" latin="0" hanja="0" japanese="0" other="0" symbol="0" user="0"/>
       </hh:charPr>
     </hh:charProperties>
   </hh:refList>
-</hh:head>"##;
-        let (doc_info, _) = parse_hwpx_header(xml).unwrap();
-        assert_eq!(
-            doc_info.char_shapes[0].emphasis_dot, 1,
-            "symMark=DOT_ABOVE 가 emphasis_dot=1 로 파싱돼야 함(NONE 유실 방지)"
-        );
+</hh:head>"##
+            );
+            let (doc_info, _) = parse_hwpx_header(&xml).unwrap();
+            assert_eq!(
+                doc_info.char_shapes[0].emphasis_dot, expected,
+                "symMark={sym_mark} 가 emphasis_dot={expected} 로 파싱돼야 함"
+            );
+        }
     }
 
     #[test]
