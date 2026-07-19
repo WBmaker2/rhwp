@@ -1,7 +1,7 @@
 # Task M100-2439 Stage 6 — 저장 flow·들여쓰기 구현과 최종 검증
 
 - 이슈: [#2439](https://github.com/edwardkim/rhwp/issues/2439)
-- 브랜치: `codex/task2439`
+- 브랜치: `fix/2439-split-table-flow`
 - 작성일: 2026-07-20
 - 코드 커밋: `64138965`
 

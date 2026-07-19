@@ -1,7 +1,7 @@
 # Task M100-2439 Stage 7 — 표 헤더 열 폭·fragment 여백·행내 컷 정합
 
 - 이슈: [#2439](https://github.com/edwardkim/rhwp/issues/2439)
-- 브랜치: `codex/task2439`
+- 브랜치: `fix/2439-split-table-flow`
 - 작성일: 2026-07-20
 - 선행 기록: [Stage 6](task_m100_2439_stage6.md)
 

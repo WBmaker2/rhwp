@@ -1,7 +1,7 @@
 # Task M100-2439 Stage 4 — 최초 한컴 PDF 비교와 판정 철회
 
 - 이슈: [#2439](https://github.com/edwardkim/rhwp/issues/2439)
-- 브랜치: `codex/task2439`
+- 브랜치: `fix/2439-split-table-flow`
 - 최초 작성일: 2026-07-19
 - 정정일: 2026-07-20
 - 정답지 SHA-256: `f36a747c5f848d90e755abe2e730d932429a324fad9b7e822964934cd8f8eca4`

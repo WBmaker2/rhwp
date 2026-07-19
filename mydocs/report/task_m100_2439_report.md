@@ -1,7 +1,7 @@
 # M100 #2439 완료 보고 — HWP 반복 표·페이지 흐름·헤더 격자 정합
 
 - 이슈: [#2439](https://github.com/edwardkim/rhwp/issues/2439)
-- 브랜치: `codex/task2439`
+- 브랜치: `fix/2439-split-table-flow`
 - 작성일: 2026-07-20
 - 재현 HWP SHA-256: `674eabe66ea0ba783ad2cd398519c9893ba94956a22d9cb94b084db00d4d2c3d`
 - 정답 PDF SHA-256: `f36a747c5f848d90e755abe2e730d932429a324fad9b7e822964934cd8f8eca4`

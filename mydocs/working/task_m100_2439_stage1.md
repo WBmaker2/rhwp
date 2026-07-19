@@ -1,7 +1,7 @@
 # Task M100-2439 Stage 1 — 반복 표 겹침 재현과 회귀 가드
 
 - 이슈: [#2439](https://github.com/edwardkim/rhwp/issues/2439)
-- 브랜치: `codex/task2439`
+- 브랜치: `fix/2439-split-table-flow`
 - 작성일: 2026-07-19
 
 ## 1. 재현 결과

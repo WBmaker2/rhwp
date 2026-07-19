@@ -1,7 +1,7 @@
 # Task M100-2439 Stage 2 — page-local visible-float exclusion 교정
 
 - 이슈: [#2439](https://github.com/edwardkim/rhwp/issues/2439)
-- 브랜치: `codex/task2439`
+- 브랜치: `fix/2439-split-table-flow`
 - 작성일: 2026-07-19
 
 ## 1. 구현 내용

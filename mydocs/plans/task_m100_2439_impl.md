@@ -1,7 +1,7 @@
 # 구현계획서 — HWP 반복 표 fresh-page placement 기준점 정합 (M100 #2439)
 
 - **이슈**: [edwardkim/rhwp#2439](https://github.com/edwardkim/rhwp/issues/2439)
-- **브랜치**: `codex/task2439`
+- **브랜치**: `fix/2439-split-table-flow`
 - **수행계획서**: [`task_m100_2439.md`](task_m100_2439.md)
 - **작성일**: 2026-07-19
 - **최종 갱신**: 2026-07-20
