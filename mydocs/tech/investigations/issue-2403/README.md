@@ -28,3 +28,13 @@ last_verified: 2026-07-19
   `model/provenance.rs` 신설(SourceFormat/SourceProvenance/
   LayoutCompatibilityProfile + 질의 2), `Document::layout_profile`,
   `pub mod provenance`. CLI output·render-tree 해시는 **무변동**.
+
+## 2단계 재고정 (2026-07-19)
+
+- 의도 delta (검토 완료): profile 질의 2 추가(hwp3_native_layout/
+  hwp5_origin_hwpx), LayoutEngine setter 교체(set_hwp3_variant+set_hwpx_source
+  → set_layout_profile). CLI output·render-tree 해시 **무변동**, 연결맵 414쪽
+  유지, 전체 스위트 284 바이너리 0 실패.
+- 계량: 소스분기 직접 참조 renderer 코어(typeset/layout/table·paragraph·shape
+  _layout) 77→8 (잔존 = 값 전달 자유 함수 파라미터 2쌍 + 이력 주석 4).
+  src 전체 176→105.

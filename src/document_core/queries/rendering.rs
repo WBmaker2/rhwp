@@ -2775,20 +2775,11 @@ impl DocumentCore {
         self.compute_render_normalized();
         let paginator = Paginator::new(self.dpi);
         let hwp3_origin_flow_spacing_before = uses_hwp3_origin_flow_spacing_before(&self.document);
-        let is_hwp5_origin_hwpx = self
-            .document
-            .hwpx_aux_entry(crate::model::document::HWP5_ORIGIN_HWPX_MARKER_PATH)
-            .is_some();
-        // [Issue #1770] rhwp HWPX→HWP 변환본(is_hwpx_variant, 마커 감지)은 IR 이
-        // HWPX 시멘틱 그대로이므로 pagination 분기도 HWPX 로 해석한다 (roundtrip
-        // 자기정합). native HWP5 는 마커가 없어 불변.
-        // 반대로 rhwp HWP5→HWPX 산출물은 HWPX ZIP 이지만 HWP5 원본의 lineSeg 부재와
-        // pagination 시멘틱을 유지해야 하므로 HWPX 전용 분기에서 제외한다.
-        let is_hwpx_source = (matches!(self.source_format, crate::parser::FileFormat::Hwpx)
-            && !is_hwp5_origin_hwpx)
-            || self.document.is_hwpx_variant;
+        // [#2403] 소스분기 파생 일원화 — HWPX 시멘틱/HWP5→HWPX 마커/HWP3 변환본
+        // 판단은 Document::layout_profile 이 단일 소유 (Issue #1770 규칙 승계).
+        let profile = self.document.layout_profile();
         let measurer = HeightMeasurer::new(self.dpi)
-            .with_hwp3_variant(self.document.is_hwp3_variant)
+            .with_hwp3_variant(profile.hwp3_layout())
             .with_hwp3_origin_flow_spacing_before(hwp3_origin_flow_spacing_before);
 
         if self.document.sections.is_empty() {
@@ -3062,15 +3053,12 @@ impl DocumentCore {
                     idx,
                     &measured.tables,
                     section.section_def.hide_empty_line,
-                    self.document.is_hwp3_variant,
+                    profile,
                     hwp3_origin_flow_spacing_before,
                     hwp3_origin_page_tolerance,
                     Some(&section.section_def.footnote_shape),
                     Some(&section.section_def.endnote_shape),
                     force_breaks.get(idx).unwrap_or(&empty_breaks),
-                    matches!(self.source_format, crate::parser::FileFormat::Hwp3),
-                    is_hwpx_source,
-                    is_hwp5_origin_hwpx,
                     endnote_deferral,
                 )
             };
@@ -4337,19 +4325,13 @@ impl DocumentCore {
         self.layout_engine.set_clip_enabled(self.clip_enabled);
         self.layout_engine
             .set_show_control_codes(self.show_control_codes);
+        // [#2403] 소스분기 파생 일원화 — paginate_pass 와 동일하게 layout_profile
+        // 단일 소유 (Issue #1770 규칙 승계). set_layout_profile 의 결합 부수효과
+        // (variant → flow spacing_before)는 다음 줄이 종전 순서대로 덮어쓴다.
         self.layout_engine
-            .set_hwp3_variant(self.document.is_hwp3_variant);
+            .set_layout_profile(self.document.layout_profile());
         self.layout_engine.set_hwp3_origin_flow_spacing_before(
             uses_hwp3_origin_flow_spacing_before(&self.document),
-        );
-        let is_hwp5_origin_hwpx = self
-            .document
-            .hwpx_aux_entry(crate::model::document::HWP5_ORIGIN_HWPX_MARKER_PATH)
-            .is_some();
-        // [Issue #1770] HWPX→HWP 변환본도 HWPX 시멘틱 (paginate_pass 와 동일 규칙).
-        self.layout_engine.set_hwpx_source(
-            (matches!(self.source_format, crate::parser::FileFormat::Hwpx) && !is_hwp5_origin_hwpx)
-                || self.document.is_hwpx_variant,
         );
         self.layout_engine.set_hwpx_page_preview(
             self.document

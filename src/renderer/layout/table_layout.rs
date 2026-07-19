@@ -1895,7 +1895,9 @@ impl LayoutEngine {
                 self.calc_para_lines_height(
                     &comp.lines,
                     p,
-                    self.is_hwp3_variant.get() && p.line_segs.is_empty() && !p.text.is_empty(),
+                    self.profile.get().hwp3_layout()
+                        && p.line_segs.is_empty()
+                        && !p.text.is_empty(),
                     !p.line_segs.is_empty(),
                     pidx,
                     cell_para_count,
@@ -1927,7 +1929,7 @@ impl LayoutEngine {
                 self.calc_para_lines_height(
                     &comp.lines,
                     para,
-                    self.is_hwp3_variant.get()
+                    self.profile.get().hwp3_layout()
                         && para.line_segs.is_empty()
                         && !para.text.is_empty(),
                     !para.line_segs.is_empty(),
@@ -4277,7 +4279,7 @@ impl LayoutEngine {
         styles: &ResolvedStyleSet,
     ) -> f64 {
         let measurer = super::super::height_measurer::HeightMeasurer::new(self.dpi)
-            .with_hwp3_variant(self.is_hwp3_variant.get());
+            .with_hwp3_variant(self.profile.get().hwp3_layout());
         measurer.cell_controls_height(&cell.paragraphs, styles, 0, 0.0)
     }
 
@@ -4852,7 +4854,7 @@ impl LayoutEngine {
                                 max_fs,
                                 ps.line_spacing_type,
                                 ps.line_spacing,
-                                self.is_hwp3_variant.get()
+                                self.profile.get().hwp3_layout()
                                     && para.line_segs.is_empty()
                                     && !para.text.is_empty(),
                             )
@@ -5209,7 +5211,7 @@ impl LayoutEngine {
             let raw_spacing_before = para_style.map(|s| s.spacing_before).unwrap_or(0.0);
             let spacing_before = if pi > 0 {
                 raw_spacing_before
-            } else if self.is_hwpx_source.get()
+            } else if self.profile.get().hwpx_stored_layout()
                 && is_block_rowbreak
                 && para_uses_synthetic_line_segs
             {
@@ -5308,7 +5310,10 @@ impl LayoutEngine {
                 // [Task #1811] HWPX RowBreak 셀의 synthetic lineSeg 는 저장 근거가 아니라
                 // reflow 산물이다. row cut 측정에서 다시 corrected_line_height 를 적용하면
                 // HWP 기준보다 줄 유닛이 커져 p4→p5 split 이 한 유닛 빨라진다.
-                if self.is_hwpx_source.get() && is_block_rowbreak && para_uses_synthetic_line_segs {
+                if self.profile.get().hwpx_stored_layout()
+                    && is_block_rowbreak
+                    && para_uses_synthetic_line_segs
+                {
                     return raw_lh;
                 }
                 // [#2112] 실제 저장 LINE_SEG 를 보유한 셀 문단은 저장 줄높이를 신뢰한다.
@@ -5825,9 +5830,10 @@ impl LayoutEngine {
                             let target_top = normalized_vpos_px(seg.vertical_pos);
                             if target_top > unit_cum {
                                 let delta = target_top - unit_cum;
-                                let suppress_hwpx_mixed_nested_gap = self.is_hwpx_source.get()
-                                    && prev_para_has_mixed_nested_table
-                                    && delta <= 24.0;
+                                let suppress_hwpx_mixed_nested_gap =
+                                    self.profile.get().hwpx_stored_layout()
+                                        && prev_para_has_mixed_nested_table
+                                        && delta <= 24.0;
                                 if !suppress_hwpx_mixed_nested_gap {
                                     para_h += delta;
                                     vpos_gap_before = true;
@@ -5904,10 +5910,11 @@ impl LayoutEngine {
                                 let target_top = normalized_vpos_px(seg.vertical_pos);
                                 if target_top > unit_cum {
                                     let delta = target_top - unit_cum;
-                                    let suppress_hwpx_mixed_nested_gap = self.is_hwpx_source.get()
-                                        && li == 0
-                                        && prev_para_has_mixed_nested_table
-                                        && delta <= 24.0;
+                                    let suppress_hwpx_mixed_nested_gap =
+                                        self.profile.get().hwpx_stored_layout()
+                                            && li == 0
+                                            && prev_para_has_mixed_nested_table
+                                            && delta <= 24.0;
                                     if !suppress_hwpx_mixed_nested_gap {
                                         lh += delta;
                                         vpos_gap_before = true;
@@ -6283,7 +6290,8 @@ impl LayoutEngine {
             crate::model::table::TablePageBreak::RowBreak
         ) && (table.col_count <= 2 || table.row_count > 5)
             && !row_has_top_and_bottom_flow;
-        let allow_midpage_reset_absorb = self.is_hwpx_source.get() || row_has_top_and_bottom_flow;
+        let allow_midpage_reset_absorb =
+            self.profile.get().hwpx_stored_layout() || row_has_top_and_bottom_flow;
         let rewind_internal_hard_break_orphan = Self::row_has_prior_rowspan_cover(table, row);
         for (i, cell) in row_cells.iter().enumerate() {
             let units = self.cell_units(cell, table, styles);
@@ -6486,7 +6494,8 @@ impl LayoutEngine {
             crate::model::table::TablePageBreak::RowBreak
         ) && (table.col_count <= 2 || table.row_count > 5)
             && !block_has_top_and_bottom_flow;
-        let allow_midpage_reset_absorb = self.is_hwpx_source.get() || block_has_top_and_bottom_flow;
+        let allow_midpage_reset_absorb =
+            self.profile.get().hwpx_stored_layout() || block_has_top_and_bottom_flow;
         for (i, cell) in cells.iter().enumerate() {
             let units = self.cell_units(cell, table, styles);
             let start = start_cut.get(i).copied().unwrap_or(0).min(units.len());
@@ -8282,7 +8291,9 @@ mod row_cut_tests {
         // HWPX 저장 LINE_SEG vpos 리셋이어도 페이지 절반 이상이 남은 중간 리셋이면
         // 로컬 좌표 재시작으로 보고 같은 쪽에 이어 담는다.
         let eng = LayoutEngine::new(96.0);
-        eng.set_hwpx_source(true);
+        eng.set_layout_profile(crate::model::provenance::LayoutCompatibilityProfile::new(
+            false, false, true, false,
+        ));
         let styles = ResolvedStyleSet::default();
         let t = rowbreak_table(vec![cell(
             0,
@@ -8303,7 +8314,9 @@ mod row_cut_tests {
         // 같은 HWPX 저장 리셋이라도 이미 페이지 하단 근처까지 채운 경우에는
         // 한컴 저장 쪽 경계로 보존한다.
         let eng = LayoutEngine::new(96.0);
-        eng.set_hwpx_source(true);
+        eng.set_layout_profile(crate::model::provenance::LayoutCompatibilityProfile::new(
+            false, false, true, false,
+        ));
         let styles = ResolvedStyleSet::default();
         let t = rowbreak_table(vec![cell(
             0,

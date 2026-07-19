@@ -715,6 +715,8 @@ src/model/path.rs: pub fn path_from_flat(parent_para_idx: usize, control_idx: us
 src/model/path.rs: pub type DocumentPath = Vec<PathSegment>
 src/model/provenance.rs: pub enum SourceFormat
 src/model/provenance.rs: pub fn hwp3_layout(&self) -> bool
+src/model/provenance.rs: pub fn hwp3_native_layout(&self) -> bool
+src/model/provenance.rs: pub fn hwp5_origin_hwpx(&self) -> bool
 src/model/provenance.rs: pub fn hwpx_stored_layout(&self) -> bool
 src/model/provenance.rs: pub struct LayoutCompatibilityProfile
 src/model/provenance.rs: pub struct SourceProvenance
@@ -1744,9 +1746,8 @@ src/renderer/layout.rs: pub fn set_file_name(&self, name: &str)
 src/renderer/layout.rs: pub fn set_hidden_empty_paras(&self, paras: &std::collections::HashSet<usize>)
 src/renderer/layout.rs: pub fn set_hidden_header_footer(&self, hidden: &std::collections::HashSet<(u32, bool)>)
 src/renderer/layout.rs: pub fn set_hwp3_origin_flow_spacing_before(&self, enabled: bool)
-src/renderer/layout.rs: pub fn set_hwp3_variant(&self, enabled: bool)
 src/renderer/layout.rs: pub fn set_hwpx_page_preview(&self, data: Option<&[u8]>)
-src/renderer/layout.rs: pub fn set_hwpx_source(&self, enabled: bool)
+src/renderer/layout.rs: pub fn set_layout_profile(
 src/renderer/layout.rs: pub fn set_pre_emitted_host_heights(&self, heights: &std::collections::HashMap<usize, f64>)
 src/renderer/layout.rs: pub fn set_pre_emitted_host_paras(&self, paras: &std::collections::HashSet<usize>)
 src/renderer/layout.rs: pub fn set_show_control_codes(&self, enabled: bool)

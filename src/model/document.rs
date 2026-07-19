@@ -287,8 +287,10 @@ impl Document {
         let hwp5_origin_hwpx = self.hwpx_aux_entry(HWP5_ORIGIN_HWPX_MARKER_PATH).is_some();
         crate::model::provenance::LayoutCompatibilityProfile::new(
             self.provenance.hwp3_lineage,
+            self.provenance.format == SourceFormat::Hwp3,
             (self.provenance.format == SourceFormat::Hwpx && !hwp5_origin_hwpx)
                 || self.provenance.hwpx_lineage,
+            hwp5_origin_hwpx,
         )
     }
 

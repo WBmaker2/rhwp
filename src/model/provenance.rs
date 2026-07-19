@@ -46,21 +46,36 @@ pub struct SourceProvenance {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct LayoutCompatibilityProfile {
     hwp3_layout: bool,
+    hwp3_native_layout: bool,
     hwpx_stored_layout: bool,
+    hwp5_origin_hwpx: bool,
 }
 
 impl LayoutCompatibilityProfile {
-    pub(crate) fn new(hwp3_layout: bool, hwpx_stored_layout: bool) -> Self {
+    pub(crate) fn new(
+        hwp3_layout: bool,
+        hwp3_native_layout: bool,
+        hwpx_stored_layout: bool,
+        hwp5_origin_hwpx: bool,
+    ) -> Self {
         Self {
             hwp3_layout,
+            hwp3_native_layout,
             hwpx_stored_layout,
+            hwp5_origin_hwpx,
         }
     }
 
     /// HWP3 계보 레이아웃 보정(ParaShape 단위 정규화 등) 적용 여부 —
-    /// 기존 `is_hwp3_variant` 분기 동치.
+    /// 기존 `is_hwp3_variant` 분기 동치 (HWP3→HWP5 변환본 휴리스틱).
     pub fn hwp3_layout(&self) -> bool {
         self.hwp3_layout
+    }
+
+    /// 원본이 HWP3 파일인지 — 변환본 휴리스틱과 분리된 HWP3 저장 LINE_SEG
+    /// 계약 분기. 기존 `is_hwp3_source` 동치.
+    pub fn hwp3_native_layout(&self) -> bool {
+        self.hwp3_native_layout
     }
 
     /// 저장 lineseg 를 HWPX 시멘틱으로 해석할지 여부(RowBreak 분할 tolerance
@@ -68,5 +83,11 @@ impl LayoutCompatibilityProfile {
     /// HWP5→HWPX 산출물이 아니거나, rhwp HWPX→HWP 변환본인 경우.
     pub fn hwpx_stored_layout(&self) -> bool {
         self.hwpx_stored_layout
+    }
+
+    /// rhwp 가 HWP5 원본에서 내보낸 HWPX 인지 — HWPX 컨테이너라도 HWP5 원본의
+    /// 저장 행 높이·pagination marker 를 보존한다. 기존 `is_hwp5_origin_hwpx` 동치.
+    pub fn hwp5_origin_hwpx(&self) -> bool {
+        self.hwp5_origin_hwpx
     }
 }

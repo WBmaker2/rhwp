@@ -1321,12 +1321,11 @@ pub struct LayoutEngine {
     /// (x, y, width, height). 미설정 시 (0, 0, 0, 0) — 호출부에서 col_area로 폴백.
     current_body_area: std::cell::Cell<(f64, f64, f64, f64)>,
     /// HWP3-origin HWP5 변환본 여부.
-    is_hwp3_variant: std::cell::Cell<bool>,
+    /// [#2403] 소스분기 질의 표면 — set_layout_profile 로 배선 (종전 hwp3_variant/
+    /// hwpx_source Cell 2개 통합).
+    profile: std::cell::Cell<crate::model::provenance::LayoutCompatibilityProfile>,
     /// HWP3 원본 및 HWP3-origin HWP5 변환본의 본문 흐름 spacing_before 보정 여부.
     use_hwp3_origin_flow_spacing_before: std::cell::Cell<bool>,
-    /// [Task #1147 v2] HWPX 원본 여부 — 빈 앵커 TopAndBottom 비-TAC 표 직후 갭을
-    /// typeset (host_line_spacing=0) 과 동일하게 0 으로 억제하기 위한 트리거.
-    is_hwpx_source: std::cell::Cell<bool>,
     /// [Task #1728 v2] RowBreak 셀-내 continuation 조각의 첫 가시 문단에서만 set.
     /// 이 문단은 셀-상단(is_column_top)이고 셀-상대 인덱스>0 이지만, 한컴은 앞 간격
     /// (spacing_before)을 유지하므로 column-top 트림을 우회해 전량 적용한다.
@@ -1417,10 +1416,9 @@ impl LayoutEngine {
             show_control_codes: std::cell::Cell::new(false),
             current_paper_width: std::cell::Cell::new(0.0),
             current_body_area: std::cell::Cell::new((0.0, 0.0, 0.0, 0.0)),
-            is_hwp3_variant: std::cell::Cell::new(false),
+            profile: std::cell::Cell::new(Default::default()),
             use_hwp3_origin_flow_spacing_before: std::cell::Cell::new(false),
             keep_continuation_column_top_spacing_before: std::cell::Cell::new(false),
-            is_hwpx_source: std::cell::Cell::new(false),
             hwpx_page_preview: std::cell::RefCell::new(None),
             cell_units_cache: std::cell::RefCell::new(std::collections::HashMap::new()),
             table_nested_text_flag_cache: std::cell::RefCell::new(std::collections::HashMap::new()),
@@ -1735,18 +1733,21 @@ impl LayoutEngine {
         self.numbering_state.borrow_mut().reset();
     }
 
-    pub fn set_hwp3_variant(&self, enabled: bool) {
-        self.is_hwp3_variant.set(enabled);
-        self.use_hwp3_origin_flow_spacing_before.set(enabled);
+    /// [#2403] 소스분기 프로파일 배선 — 종전 set_hwp3_variant + set_hwpx_source
+    /// 통합. set_hwp3_variant 의 결합 부수효과(hwp3 변환본 → flow spacing_before
+    /// 보정 동시 활성)를 그대로 승계한다; 별도 값이 필요한 호출자는 이어서
+    /// set_hwp3_origin_flow_spacing_before 로 덮어쓴다 (rendering 경로 종전 순서).
+    pub fn set_layout_profile(
+        &self,
+        profile: crate::model::provenance::LayoutCompatibilityProfile,
+    ) {
+        self.profile.set(profile);
+        self.use_hwp3_origin_flow_spacing_before
+            .set(profile.hwp3_layout());
     }
 
     pub fn set_hwp3_origin_flow_spacing_before(&self, enabled: bool) {
         self.use_hwp3_origin_flow_spacing_before.set(enabled);
-    }
-
-    /// [Task #1147 v2] HWPX 원본 소스 표시.
-    pub fn set_hwpx_source(&self, enabled: bool) {
-        self.is_hwpx_source.set(enabled);
     }
 
     /// HWPX page preview 이미지를 렌더 fallback용으로 설정한다.
@@ -4389,7 +4390,7 @@ impl LayoutEngine {
             col_content.endnote_flow && col_content.start_height < -0.5,
             col_content.endnote_flow,
         );
-        hcursor.suppress_hwpx_stale_forward = self.is_hwpx_source.get();
+        hcursor.suppress_hwpx_stale_forward = self.profile.get().hwpx_stored_layout();
         // [Task #1246] 미주 흐름 컬럼에만 between-notes 마진(HU)을 주입 → HeightCursor 가 새 미주
         // 제목 forward 흐름의 min-gap 보정에 사용. 본문 컬럼은 0 (무영향).
         if col_content.endnote_flow {
@@ -6328,7 +6329,7 @@ impl LayoutEngine {
                     iy
                 } else if is_current_visible_para_float {
                     let v_off = hwpunit_to_px(signed_hwpunit(t.common.vertical_offset), self.dpi);
-                    if self.is_hwpx_source.get() && v_off <= 0.0 {
+                    if self.profile.get().hwpx_stored_layout() && v_off <= 0.0 {
                         let flow_at_para_start = (table_y_before - para_y_for_table).abs() < 0.5;
                         table_y_before
                             + if flow_at_para_start {
@@ -6510,7 +6511,7 @@ impl LayoutEngine {
                 y_offset = if is_current_visible_para_float {
                     if signed_hwpunit(t.common.vertical_offset) > 0 {
                         table_y_before
-                    } else if self.is_hwpx_source.get() {
+                    } else if self.profile.get().hwpx_stored_layout() {
                         let following_non_positive =
                             has_following_non_positive_visible_float(para, control_index);
                         let inter_float_gap = if following_non_positive {
