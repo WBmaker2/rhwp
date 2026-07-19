@@ -2385,16 +2385,12 @@ impl DocumentCore {
         }
     }
 
-    /// 표 전체의 바운딩박스를 반환한다 (네이티브).
-    pub(crate) fn get_table_bbox_native(
+    fn validate_table_bbox_ref(
         &self,
         section_idx: usize,
         parent_para_idx: usize,
         control_idx: usize,
-    ) -> Result<String, HwpError> {
-        use crate::renderer::render_tree::{RenderNode, RenderNodeType};
-
-        // 해당 문단에 표 컨트롤이 실제로 있는지 사전 확인 (전체 페이지 순회 방지)
+    ) -> Result<(), HwpError> {
         let has_table = self
             .document
             .sections
@@ -2409,6 +2405,17 @@ impl DocumentCore {
                 section_idx, parent_para_idx, control_idx
             )));
         }
+        Ok(())
+    }
+
+    fn find_table_bbox_on_page(
+        &self,
+        section_idx: usize,
+        parent_para_idx: usize,
+        control_idx: usize,
+        page_idx: usize,
+    ) -> Result<Option<String>, HwpError> {
+        use crate::renderer::render_tree::{RenderNode, RenderNodeType};
 
         fn find_table_bbox(
             node: &RenderNode,
@@ -2437,16 +2444,33 @@ impl DocumentCore {
             None
         }
 
+        let tree = self.build_page_tree_cached(page_idx as u32)?;
+        Ok(find_table_bbox(
+            &tree.root,
+            section_idx,
+            parent_para_idx,
+            control_idx,
+            page_idx,
+        ))
+    }
+
+    /// 표 전체의 첫 번째 fragment 바운딩박스를 반환한다 (네이티브).
+    ///
+    /// page 를 모르는 기존 호출자의 호환 계약이다. pointer 처럼 현재 page 를 아는 호출자는
+    /// `get_table_bbox_at_page_native` 를 사용해야 한다.
+    pub(crate) fn get_table_bbox_native(
+        &self,
+        section_idx: usize,
+        parent_para_idx: usize,
+        control_idx: usize,
+    ) -> Result<String, HwpError> {
+        self.validate_table_bbox_ref(section_idx, parent_para_idx, control_idx)?;
+
         let total_pages = self.page_count() as usize;
         for page_num in 0..total_pages {
-            let tree = self.build_page_tree_cached(page_num as u32)?;
-            if let Some(result) = find_table_bbox(
-                &tree.root,
-                section_idx,
-                parent_para_idx,
-                control_idx,
-                page_num,
-            ) {
+            if let Some(result) =
+                self.find_table_bbox_on_page(section_idx, parent_para_idx, control_idx, page_num)?
+            {
                 return Ok(result);
             }
         }
@@ -2455,6 +2479,35 @@ impl DocumentCore {
             "표 노드를 찾을 수 없습니다 (sec={}, ppi={}, ci={})",
             section_idx, parent_para_idx, control_idx
         )))
+    }
+
+    /// 지정 page 에 배치된 표 fragment 의 바운딩박스를 반환한다 (네이티브).
+    ///
+    /// 다른 page 의 첫 fragment 로 fallback 하지 않는다. page-local pointer 좌표와 다른
+    /// fragment bbox 를 비교하면 텍스트 클릭이 표 경계로 오인될 수 있기 때문이다 (#2400).
+    pub(crate) fn get_table_bbox_at_page_native(
+        &self,
+        section_idx: usize,
+        parent_para_idx: usize,
+        control_idx: usize,
+        page_idx: usize,
+    ) -> Result<String, HwpError> {
+        self.validate_table_bbox_ref(section_idx, parent_para_idx, control_idx)?;
+        let total_pages = self.page_count() as usize;
+        if page_idx >= total_pages {
+            return Err(HwpError::RenderError(format!(
+                "페이지 인덱스 {} 범위 초과 (pageCount={})",
+                page_idx, total_pages
+            )));
+        }
+
+        self.find_table_bbox_on_page(section_idx, parent_para_idx, control_idx, page_idx)?
+            .ok_or_else(|| {
+                HwpError::RenderError(format!(
+                    "페이지 {}에서 표 노드를 찾을 수 없습니다 (sec={}, ppi={}, ci={})",
+                    page_idx, section_idx, parent_para_idx, control_idx
+                ))
+            })
     }
 
     /// [Task #919] 글상자/도형 컨트롤의 페이지 좌표 바운딩박스를 반환한다 (네이티브).

@@ -19031,6 +19031,56 @@ fn test_get_table_bbox() {
     eprintln!("표 bbox: {}", json);
 }
 
+/// #2400: page-local pointer 좌표는 같은 page 의 표 fragment bbox와 비교해야 한다.
+#[test]
+fn test_get_table_bbox_at_page_for_giant_multi_page_cell() {
+    use std::path::Path;
+
+    for path in [
+        "rhwp-studio/public/samples/issue1949_giant_cell_nested_tables_perf.hwp",
+        "samples/issue1949_giant_cell_nested_tables_perf.hwpx",
+    ] {
+        let data = std::fs::read(Path::new(path)).expect("#2400 권위 샘플 읽기");
+        let doc = HwpDocument::from_bytes(&data).expect("#2400 권위 샘플 파싱");
+        assert_eq!(doc.page_count(), 115, "{path}: page count");
+
+        let legacy: Value = serde_json::from_str(
+            &doc.get_table_bbox_native(0, 0, 2)
+                .expect("legacy 첫 fragment bbox"),
+        )
+        .expect("legacy bbox JSON");
+        let current: Value = serde_json::from_str(
+            &doc.get_table_bbox_at_page_native(0, 0, 2, 113)
+                .expect("page 113 fragment bbox"),
+        )
+        .expect("page-scoped bbox JSON");
+
+        assert_eq!(legacy["pageIndex"].as_u64(), Some(0), "{path}: legacy page");
+        assert_eq!(
+            current["pageIndex"].as_u64(),
+            Some(113),
+            "{path}: current fragment page"
+        );
+
+        let click_y = 1057.3;
+        let legacy_bottom = legacy["y"].as_f64().unwrap() + legacy["height"].as_f64().unwrap();
+        let current_bottom = current["y"].as_f64().unwrap() + current["height"].as_f64().unwrap();
+        assert!(
+            (click_y - legacy_bottom).abs() <= 5.0,
+            "{path}: 재현점은 첫 fragment 하단에 잘못 걸리는 전제"
+        );
+        assert!(
+            (click_y - current_bottom).abs() > 5.0,
+            "{path}: 현재 fragment에서는 실제 경계가 아님"
+        );
+
+        assert!(
+            doc.get_table_bbox_at_page_native(0, 0, 2, 115).is_err(),
+            "{path}: 범위 밖 page가 첫 fragment로 fallback하면 안 됨"
+        );
+    }
+}
+
 /// 표 컨트롤 삭제 테스트 (wasm_api 내부 접근)
 #[test]
 fn test_delete_table_control() {
