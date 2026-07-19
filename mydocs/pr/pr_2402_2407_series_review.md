@@ -13,3 +13,27 @@
 - **merge 권고.**
 
 (후속 4건은 순서대로 개별 검증 후 이 문서에 추가)
+
+## #2404 — hwpctl SetCellText/GetCellText (자체 발견 2건)
+
+Set 누적 삽입 → delete-후-insert (Set=replace 계약 메인테이너 확정), GetCellText
+시그니처 불일치(항상 빈 문자열, 저장소 유일 path 형식) → 인덱스 API 정합.
+red→green 2건. **merge 완료.**
+
+## #2405·#2406 — command.ts undo 쌍 (결합 검증)
+
+- #2405: charCount() 헬퍼(#2337 산물)의 유일 누락 지점(InsertTextCommand.undo)
+  적용 — astral 문자 undo 인접 소실 해소. UTF-16 커서 관례 경계 유지.
+- #2406: 3문단+ 선택 삭제 undo 분할점 미갱신 — 잠복 이유(2문단 반복 1회
+  무증상) 분석 동봉.
+- 결합 트리 tsc/369, red→green 4건. **둘 다 merge 완료.**
+
+## #2407 — 표 리사이즈 hover marker 도달 불가
+
+pageHint 유일 대입 지점 미기록 → 캐시 비교 항상 참 → marker 갱신 사문.
+red→green 2건. **merge 완료 — 연작 5건 완결.**
+
+## 총평 (2026-07-19)
+
+kevin9327: 문서 기여 → 코드 연작 5건(전건 red→green·원장 규율·경계 명시,
+자체 발견 4건) 확장 완결. 완결 코멘트 게시.
