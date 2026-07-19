@@ -179,6 +179,11 @@ python tools/object_visual_regression.py --preset ovr5 -o out/ovr --diff-against
 python tools/object_visual_regression.py <샘플.hwp> -o out/ovr --no-hwp --save-baseline
 python tools/object_visual_regression.py <샘플.hwp> -o out/ovr2 --no-hwp --baseline out/ovr/baseline.json
 
+# 편집-스윕 — 편집 경로 PR(vpos·pagination·undo)의 가짜 페이지 변동 검출
+# devel 과 브랜치에서 각각 스윕 → 공통/해소/신규 분류 리포트 (신규 존재 시 exit 1)
+cargo run --release --example edit_sweep -- samples -o out/sweep/branch.tsv
+cargo run --release --example edit_sweep -- --compare out/sweep/devel.tsv out/sweep/branch.tsv -o out/sweep/report.md
+
 # 라운드트립 시각 기하 회귀
 cargo run --release --bin rhwp -- render-diff <샘플.hwp>
 
