@@ -1311,6 +1311,14 @@ impl DocumentCore {
 
             let mut new_bf = self.document.doc_info.border_fills[bf_idx].clone();
             new_bf.borders[dir] = new_border;
+            // 파싱된 문서의 BorderFill 은 원본 BORDER_FILL 레코드 바이트를 raw_data 로
+            // 들고 있고(parser/doc_info.rs), 직렬화기는 raw_data 가 있으면 필드 대신 그
+            // 바이트를 그대로 쓴다(serializer/doc_info.rs). 비우지 않으면 위에서 바꾼
+            // borders[dir] 이 저장 시 사라져 이웃 셀의 공유 변이 옛 테두리로 되돌아간다.
+            // border_fills_equal(helpers.rs)이 raw_data 를 비교에서 제외하므로 아래
+            // 중복 검색도 이를 걸러내지 못한다. 같은 커맨드의 형제
+            // create_border_fill_from_json(html_table_import.rs)은 이미 raw_data 를 비운다.
+            new_bf.raw_data = None;
 
             // 동일한 BorderFill 검색/추가
             let bf_id = {
@@ -3002,5 +3010,119 @@ mod table_attr_save_roundtrip_tests {
             matches!(vrel, VertRelTo::Para),
             "vertRelTo 변경이 HWP5 저장에서 유실됨 (실제: {vrel:?})"
         );
+    }
+}
+
+#[cfg(test)]
+mod neighbor_border_raw_data_tests {
+    //! 이웃 셀 테두리 갱신의 raw_data 유실 회귀 테스트.
+    //!
+    //! update_neighbor_borders 는 이웃 셀의 BorderFill 을 clone 해 한 방향만 바꾸는데,
+    //! 파싱된 문서에서 물려온 raw_data 를 비우지 않으면 직렬화기가 원본 바이트를 그대로
+    //! 써서 방금 바꾼 방향이 저장 시 사라진다. 이웃 셀의 공유 변이 옛 테두리로 되돌아간다.
+    //! 같은 커맨드의 형제 create_border_fill_from_json 은 이미 raw_data 를 비운다.
+
+    use crate::document_core::DocumentCore;
+    use crate::model::control::Control;
+    use crate::model::document::{Document, Section};
+    use crate::model::paragraph::Paragraph;
+    use crate::model::style::{BorderFill, BorderLine, BorderLineType};
+    use crate::model::table::{Cell, Table};
+
+    /// 2 칸짜리 표 한 줄. 셀 0(target)과 셀 1(neighbor)이 세로 변을 공유한다.
+    fn core_with_two_cell_row() -> DocumentCore {
+        let mut doc = Document::default();
+
+        // border_fills[0] (id=1): target 셀(0)의 fill — 이 테스트에서는 무관.
+        let mut bf_target = BorderFill::default();
+        bf_target.raw_data = Some(vec![0xAA; 39]);
+        doc.doc_info.border_fills.push(bf_target);
+
+        // border_fills[1] (id=2): 이웃 셀(1)의 fill — clone 되어 갱신되는 대상.
+        let mut bf_neighbor = BorderFill::default();
+        bf_neighbor.raw_data = Some(vec![0xBB; 39]);
+        doc.doc_info.border_fills.push(bf_neighbor);
+
+        let mut table = Table::default();
+        table.row_count = 1;
+        table.col_count = 2;
+        table.cells = vec![
+            Cell {
+                row: 0,
+                col: 0,
+                col_span: 1,
+                row_span: 1,
+                border_fill_id: 1,
+                ..Default::default()
+            },
+            Cell {
+                row: 0,
+                col: 1,
+                col_span: 1,
+                row_span: 1,
+                border_fill_id: 2,
+                ..Default::default()
+            },
+        ];
+
+        let mut para = Paragraph::default();
+        para.controls.push(Control::Table(Box::new(table)));
+
+        let mut section = Section::default();
+        section.paragraphs.push(para);
+        doc.sections.push(section);
+
+        let mut core = DocumentCore::new_empty();
+        core.document = doc;
+        core
+    }
+
+    #[test]
+    fn neighbor_border_update_drops_stale_raw_data() {
+        let mut core = core_with_two_cell_row();
+        let new_border = BorderLine {
+            line_type: BorderLineType::Double,
+            width: 3,
+            color: 0x00FF0000,
+        };
+        // target = 셀 0, 우측 엣지(target_col=0, span=1)를 셀 1 이 공유 → 셀 1 의 좌측(dir=0)
+        // 이 new_borders[1] 로 갱신된다("대상 셀의 우측 엣지 공유 → 이웃 좌측").
+        core.update_neighbor_borders(
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            &[
+                BorderLine::default(),
+                new_border,
+                BorderLine::default(),
+                BorderLine::default(),
+            ],
+        );
+
+        let table = match &core.document.sections[0].paragraphs[0].controls[0] {
+            Control::Table(t) => t,
+            _ => panic!("표 컨트롤이어야 함"),
+        };
+        let updated_bf_id = table.cells[1].border_fill_id;
+        assert_ne!(
+            updated_bf_id, 2,
+            "테두리가 바뀌었으니 새 BorderFill 이 push 돼야 함"
+        );
+
+        let bf = &core.document.doc_info.border_fills[(updated_bf_id as usize) - 1];
+        assert!(
+            bf.raw_data.is_none(),
+            "raw_data 가 남으면 저장 시 이웃 셀의 공유 변이 옛 테두리로 되돌아간다"
+        );
+        assert_eq!(
+            bf.borders[0].width, 3,
+            "이웃 셀 기준 좌측 테두리가 갱신돼야 함"
+        );
+        assert!(matches!(bf.borders[0].line_type, BorderLineType::Double));
     }
 }

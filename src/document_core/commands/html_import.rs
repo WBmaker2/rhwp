@@ -842,6 +842,13 @@ impl DocumentCore {
             0
         };
         let mut cs = self.document.doc_info.char_shapes[base_id as usize].clone();
+        // 파싱된 문서의 CharShape 는 원본 CHAR_SHAPE 레코드 바이트를 raw_data 로 들고 있고
+        // (parser/doc_info.rs), 직렬화기는 raw_data 가 있으면 필드 대신 그 바이트를 그대로
+        // 쓴다(serializer/doc_info.rs). 아래에서 굵기·색·크기를 바꿔도 raw_data 를 비우지
+        // 않으면 저장 시 원본 서식 바이트가 나가 붙여넣은 서식이 통째로 사라진다.
+        // PartialEq 가 raw_data 를 비교에서 제외하므로 아래 중복 검색도 이를 걸러내지 못한다.
+        // CharShapeMods::apply_to(model/style.rs)가 같은 이유로 첫 줄에서 raw_data 를 비운다.
+        cs.raw_data = None;
 
         // CSS 속성 파싱 및 적용
         let css_lower = css.to_lowercase();
@@ -936,6 +943,9 @@ impl DocumentCore {
             .get(base_id as usize)
             .cloned()
             .unwrap_or_default();
+        // CharShape 쪽과 동일 — 원본 PARA_SHAPE 바이트를 비우지 않으면 정렬·줄간격 변경이
+        // 저장 시 사라진다(ParaShapeMods::apply_to 와 같은 처리).
+        ps.raw_data = None;
 
         let css_lower = css.to_lowercase();
 
@@ -996,5 +1006,55 @@ impl DocumentCore {
             }
         }
         None
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::model::document::Document;
+    use crate::model::style::{CharShape, ParaShape};
+
+    /// 파싱을 거친 문서를 흉내낸다 — CharShape/ParaShape 가 원본 레코드 바이트를
+    /// raw_data 로 들고 있는 상태(parser/doc_info.rs 가 하는 일).
+    fn core_with_parsed_shapes() -> DocumentCore {
+        let mut doc = Document::default();
+        let mut cs = CharShape::default();
+        cs.raw_data = Some(vec![0xAA; 72]);
+        doc.doc_info.char_shapes.push(cs);
+        let mut ps = ParaShape::default();
+        ps.raw_data = Some(vec![0xBB; 54]);
+        doc.doc_info.para_shapes.push(ps);
+        let mut core = DocumentCore::new_empty();
+        core.document = doc;
+        core
+    }
+
+    // HTML 붙여넣기가 만드는 CharShape/ParaShape 는 char_shapes[0]/para_shapes[0] 의 clone
+    // 이라 원본 raw_data 를 물고 온다. 직렬화기는 raw_data 가 있으면 필드 대신 그 바이트를
+    // 그대로 쓰므로(serializer/doc_info.rs), 비우지 않으면 붙여넣은 서식이 저장 시 사라진다.
+    // PartialEq 가 raw_data 를 제외하므로 중복 검색도 이를 걸러내지 못한다.
+
+    #[test]
+    fn html_paste_char_shape_drops_stale_raw_data() {
+        let mut core = core_with_parsed_shapes();
+        let id = core.css_to_char_shape_id("font-weight:bold;color:#ff0000", false, false, false);
+        let cs = &core.document.doc_info.char_shapes[id as usize];
+        assert!(cs.bold, "전제: CSS 가 반영돼야 함");
+        assert!(
+            cs.raw_data.is_none(),
+            "raw_data 가 남으면 저장 시 원본 서식 바이트가 나가 붙여넣은 서식이 사라진다"
+        );
+    }
+
+    #[test]
+    fn html_paste_para_shape_drops_stale_raw_data() {
+        let mut core = core_with_parsed_shapes();
+        let id = core.css_to_para_shape_id("text-align:center");
+        let ps = &core.document.doc_info.para_shapes[id as usize];
+        assert!(
+            ps.raw_data.is_none(),
+            "raw_data 가 남으면 정렬·줄간격 변경이 저장 시 사라진다"
+        );
     }
 }

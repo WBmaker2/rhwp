@@ -2,7 +2,7 @@
 kind: guide
 status: active
 canonical: mydocs/tech/README.md
-last_verified: 2026-07-17
+last_verified: 2026-07-19
 ---
 
 # tech 문서 지도
@@ -25,6 +25,7 @@ last_verified: 2026-07-17
 | 기술 채택·비채택 | [ThorVG 결정 기록](thorvg_decision.md) | [Issue #112-115 ThorVG PoC 조사](investigations/issue-112/README.md) |
 | OLE chart renderer | [OLE chart renderer 선택 결정](hwp_ole_chart_renderer_architecture_decision_1251.md) | [Issue #1251 시각 차이 조사](investigations/issue-1251/README.md) |
 | CI cache 정책 이력 | [Issue #1664 cache 정책 결정](ci_cache_policy_1664.md) | 현재 동작은 `.github/workflows/ci.yml` 재확인 |
+| WASM toolchain 버전 | [wasm-pack 버전 고정 정책](wasm_pack_version_policy.md) | 현재 설치 동작은 `.github/actions/install-wasm-pack/action.yml`과 `Dockerfile` 재확인 |
 | 이슈별 기술 조사 | [이슈별 기술 조사 지도](investigations/README.md) | [Issue #511 IR wrap 조사](investigations/issue-511/README.md), [Issue #1151 picture TAC 조사](investigations/issue-1151/README.md), [Issue #1584 이후 HWPX 잔여 IR 차이 조사](investigations/issue-1584/README.md), [Issue #1658 페이지네이션 조사](investigations/issue-1658/README.md), [Issue #1772 잔여 OVER 조사](investigations/issue-1772/README.md), [Issue #2125 font ownership 조사](investigations/issue-2125/README.md) |
 
 ## 현재 구조를 읽는 법
