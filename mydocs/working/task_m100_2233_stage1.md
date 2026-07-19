@@ -1,6 +1,7 @@
 # Task M100 #2233 Stage 1 완료 보고 — wasm-pack pin 이식·로컬 검증
 
 - 이슈: [#2233](https://github.com/edwardkim/rhwp/issues/2233)
+- 신규 PR: [#2420](https://github.com/edwardkim/rhwp/pull/2420) — Draft
 - source PR: [#2274](https://github.com/edwardkim/rhwp/pull/2274) — closed, unmerged
 - 브랜치: `codex/issue-2233-wasm-pack-pin`
 - 최초 기준: `upstream/devel@537639445332e85b76eb29c76e1dae4d8930369f`
@@ -109,6 +110,6 @@ fresh dev WASM을 빌드하고 consumer gate를 통과하는지를 최신 PR hea
 - [x] source PR/commit provenance와 contributor credit 보존
 - [x] targeted local gate 통과
 - [x] 신규 PR 본문 초안 준비
-- [ ] 작업지시자 승인 후 remote push·PR 생성
+- [x] 작업지시자 승인 후 remote push·Draft PR #2420 생성
 - [ ] 신규 PR 최신 head의 CI / CodeQL / Render Diff 통과
 - [ ] merge와 Issue #2233 close는 별도 승인 후 처리

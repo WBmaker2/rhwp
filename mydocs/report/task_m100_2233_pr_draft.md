@@ -1,5 +1,15 @@
 # PR 초안 — #2233 wasm-pack 0.15.0 pin 및 Actions/Docker 정합화
 
+## 생성 결과
+
+- PR: [#2420](https://github.com/edwardkim/rhwp/pull/2420)
+- 상태: Draft / open
+- base: `devel`
+- head: `task_m100_2233-wasm-pack-pin`
+- 생성일: 2026-07-19
+- 생성 직후 `CI preflight`, `CodeQL preflight`, `Render Diff preflight`: PASS
+- 본 CI / CodeQL / Render Diff: 진행 중
+
 ## 제목
 
 ```text
@@ -66,18 +76,16 @@ artifact 정책은 변경하지 않습니다.
 같은 결합 트리에서 다시 통과했습니다.
 ```
 
-## 생성 명령 초안
+## 생성 기록
 
-remote push와 PR 생성은 작업지시자 승인 후 실행한다.
+작업지시자 승인 후 아래 경로로 remote branch와 Draft PR을 생성했다.
 
 ```bash
-git push upstream HEAD:task_m100_2233-wasm-pack-pin
+git push -u upstream HEAD:task_m100_2233-wasm-pack-pin
 gh pr create --repo edwardkim/rhwp \
   --base devel \
   --head task_m100_2233-wasm-pack-pin \
+  --draft \
   --title "[CI] wasm-pack 0.15.0 pin 및 Actions/Docker toolchain 정합화 (#2233)" \
   --body-file /private/tmp/rhwp-2233-pr-body.md
 ```
-
-실제 생성 시에는 위 본문 코드 블록을 임시 body file 또는 `--body-file` 입력으로 사용하되, 승인 전
-remote branch나 GitHub PR을 만들지 않는다.
