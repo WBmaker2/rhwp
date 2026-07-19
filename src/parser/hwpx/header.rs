@@ -1963,7 +1963,8 @@ fn parse_alignment(attr: &quick_xml::events::attributes::Attribute) -> Alignment
         "RIGHT" => Alignment::Right,
         "CENTER" => Alignment::Center,
         "DISTRIBUTE" => Alignment::Distribute,
-        "DISTRIBUTE_SPACE" => Alignment::Justify,
+        // OWPML의 DISTRIBUTE_SPACE는 나눔 정렬(공백에만 배분)이다.
+        "DISTRIBUTE_SPACE" => Alignment::Split,
         _ => Alignment::Justify,
     }
 }
@@ -2382,7 +2383,7 @@ mod tests {
         let cases = [
             ("CENTER", Alignment::Center),
             ("DISTRIBUTE", Alignment::Distribute),
-            ("DISTRIBUTE_SPACE", Alignment::Justify),
+            ("DISTRIBUTE_SPACE", Alignment::Split),
         ];
 
         for (value, expected) in cases {
