@@ -114,7 +114,7 @@ function selectProtectedCell(this: any, hit: any): void {
     this.tableObjectRenderer?.clear();
     this.eventBus.emit('table-object-selection-changed', false);
   }
-  this.cursor.moveTo(hit);
+  this.cursor.moveToHit(hit);
   this.cursor.resetPreferredX();
   if (!this.cursor.enterCellSelectionMode('protected')) return;
   this.active = true;
@@ -211,7 +211,7 @@ function finishCellSelectionDrag(this: any, e: MouseEvent): void {
       this.cursor.exitCellSelectionMode();
       this.cellSelectionRenderer?.clear();
       this.cursor.clearSelection();
-      this.cursor.moveTo(hit);
+      this.cursor.moveToHit(hit);
       this.cursor.resetPreferredX();
       this.cursor.setAnchor();
       this.active = true;
@@ -945,7 +945,7 @@ export function onClick(this: any, e: MouseEvent): void {
     if (hit.parentParaIndex !== undefined && hit.controlIndex !== undefined && !hit.isTextBox) {
       if (this.isTableBorderClick(pageIdx, pageX, pageY, hit.sectionIndex, hit.parentParaIndex, hit.controlIndex)) {
         this.cursor.clearSelection();
-        this.cursor.moveTo(hit); // 셀 위치로 이동 (유효한 렌더링 위치)
+        this.cursor.moveToHit(hit); // 셀 위치로 이동 (유효한 렌더링 위치)
         this.cursor.enterTableObjectSelectionDirect(hit.sectionIndex, hit.parentParaIndex, hit.controlIndex);
         this.active = true;
         this.caret.hide();
@@ -1003,7 +1003,7 @@ export function onClick(this: any, e: MouseEvent): void {
         this.pictureObjectRenderer?.clear();
         this.eventBus.emit('picture-object-selection-changed', false);
         this.cursor.clearSelection();
-        this.cursor.moveTo(hit);
+        this.cursor.moveToHit(hit);
         this.cursor.resetPreferredX();
         this.cursor.setAnchor();
         this.active = true;
@@ -1088,7 +1088,7 @@ export function onClick(this: any, e: MouseEvent): void {
     if (hit.isTextBox) {
       this.exitPictureObjectSelectionIfNeeded();
       this.cursor.clearSelection();
-      this.cursor.moveTo(hit);
+      this.cursor.moveToHit(hit);
       this.cursor.resetPreferredX();
       this.cursor.setAnchor();
       this.active = true;
@@ -1142,7 +1142,7 @@ export function onClick(this: any, e: MouseEvent): void {
             const pos = this.cursor.getPosition();
             if (pos.parentParaIndex === picHit.ppi && pos.controlIndex === picHit.ci) {
               this.cursor.clearSelection();
-              this.cursor.moveTo(hit);
+              this.cursor.moveToHit(hit);
               this.cursor.resetPreferredX();
               this.cursor.setAnchor();
               this.active = true;
@@ -1214,7 +1214,7 @@ export function onClick(this: any, e: MouseEvent): void {
     if (e.shiftKey) {
       // Shift+클릭: 현재 위치에서 클릭 위치까지 선택 확장
       this.cursor.setAnchor(); // anchor가 없으면 현재 커서 위치를 anchor로
-      this.cursor.moveTo(hit);
+      this.cursor.moveToHit(hit);
       this.active = true;
       this.updateCaret();
       this.textarea.focus();
@@ -1223,7 +1223,7 @@ export function onClick(this: any, e: MouseEvent): void {
 
     // 일반 클릭: 커서 배치 + 드래그 시작
     this.cursor.clearSelection();
-    this.cursor.moveTo(hit);
+    this.cursor.moveToHit(hit);
     this.cursor.resetPreferredX();
     this.prepareClickHerePointerEntry?.(pageX);
     this.cursor.setAnchor(); // 드래그 시작점(anchor) 설정

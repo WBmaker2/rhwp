@@ -1449,7 +1449,7 @@ export class InputHandler {
           return;
         }
       }
-      this.cursor.moveTo(hit);
+      this.cursor.moveToHit(hit);
       this.updateCaretDuringDrag();
     }
   }

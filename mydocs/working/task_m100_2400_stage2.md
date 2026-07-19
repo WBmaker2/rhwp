@@ -122,3 +122,66 @@ PR 직전 `upstream/devel@3eac4ae0`으로 3개 작업 커밋을 충돌 없이 re
 - #2215 selection page range 4 passed
 - #717 table cell hit-test 4 passed
 - #919 textbox hit-test 5 passed
+
+## 8. 작업지시자 수동 검증 후 캐럿 기하 보완
+
+작업지시자가 Draft PR #2425 로컬 서버에서 UI 114쪽 `어 있는 경우` 앞을 클릭했을 때
+표 객체 선택은 해소됐지만 클릭 위치에 캐럿이 보이지 않는 잔여 증상을 확인했다. 최신 빌드
+미반영이 아니라 pointer hit 이후 같은 page에서 수행되는 경로 기반 캐럿 재조회가 다른
+continuation run을 선택한 것이 원인이었다.
+
+| 단계 | page | x | y | 결과 |
+| --- | ---: | ---: | ---: | --- |
+| `hitTest.cursorRect` | 113 | 150.8 | 1049.3 | `어` 앞의 정확한 위치 |
+| 기존 `CursorState.updateRect()` 재조회 | 113 | 670.9 | 1023.7 | 같은 page의 이전 줄 끝 |
+| 기존 화면 caret | 113 | 670.9 | 1023.7 | 화면 x 약 924px로 밀림 |
+
+페이지 번호만 비교하던 기존 폴백은 두 결과가 모두 page 113이라 불일치를 감지하지 못했다.
+이를 전역 좌표 허용 오차로 보정하지 않고, 방금 수행한 pointer hit 경로에만
+`moveToHit()`을 도입했다. hit-test가 `cursorRect`를 제공하면 이를 직접 사용하고 좌표가 없는
+호환 경로에서만 기존 경로 재조회를 수행한다. 일반 편집·키보드 이동은 기존 `moveTo()` 재조회를
+유지해 오래된 pointer 좌표를 재사용하지 않는다.
+
+작업지시자의 후속 수동 확인에서 클릭 후 약간의 지연도 관찰됐다. 깨끗한 브라우저 세션에서
+계측한 결과, 최초 pointer 클릭은 `moveToHit()`의 불필요한 선행 `updateRect()`가 legacy
+`getCursorRectByPath()` 전체 탐색을 유발해 약 26.6초를 사용했다. 위 direct-hit 정책으로 이
+탐색을 제거했다. 반복 클릭 중앙값 약 252ms 가운데 약 242ms는 별도 `hitTestFootnote()` 경로로
+확인되어 #2400의 캐럿 기하 수정과 분리해 성능 후속 #2428로 추적한다.
+
+### 최초 클릭 탐색 제거 후 재계측
+
+같은 HWP의 UI 114쪽 offset 77/78을 12회 번갈아 클릭했다.
+
+| 구간 | 호출 수 | 첫 클릭 | p50 | p95 |
+| --- | ---: | ---: | ---: | ---: |
+| 전체 `mousedown` 처리 | 12 | 268.6ms | 258.1ms | 268.6ms |
+| `moveToHit` | 12 | 0ms | 0ms | 0ms |
+| `getCursorRectByPathNear` | 0 | - | - | - |
+| legacy `getCursorRectByPath` | 0 | - | - | - |
+| `hitTestFootnote` | 12 | 248.7ms | 248.2ms | 248.8ms |
+
+최초 클릭 약 26.6초의 cursor lookup은 0회로 제거됐다. 캐럿은 계속
+`pageIndex=113, x=150.8, y=1049.3, height=16`에 진입했다. 남은 warm 지연은 #2428의
+각주 page-local fast-negative/prefilter 범위로 분리했다.
+
+### 보완 검증
+
+- `npm --prefix rhwp-studio test`: 452 passed
+- `npm --prefix rhwp-studio run build`: 통과
+- HWP/HWPX UI 114쪽 offset 77:
+  - `tableObjectSelected=false`
+  - cursor rect `(150.8, 1049.3)`
+  - DOM caret 화면 x 약 404px로 `어` 앞에 표시
+  - 같은 fragment 실제 하단 클릭은 표 객체 선택 유지
+- #2215 UI 114→115 실제 pointer drag HWP/HWPX:
+  - selection 유지, highlight 3개, 복사 문자열 동일
+  - HWP drag p95 5.5ms / rect p95 1.4ms
+  - HWPX drag p95 4.7ms / rect p95 1.3ms
+- HWP/HWPX page 0/1, 55/56, 113/114의 전·중·후반 텍스트 클릭 12건:
+  - 표 객체 오인 0건
+  - 기대 page/cell paragraph/offset 캐럿 일치 12건
+- 후속 성능 이슈: [#2428](https://github.com/edwardkim/rhwp/issues/2428)
+
+일회성 계측 probe와 스크린샷은 `/private/tmp`에만 유지한다. 작업지시자는 같은 7716 서버에서
+UI 114쪽 `어` 앞의 시각 캐럿 진입이 정상화됐음을 확인했다. #2400의 잔여 게이트는 이 보완을
+Draft PR #2425에 반영하고 CI·리뷰를 받는 것이다.
