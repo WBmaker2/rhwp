@@ -1,3 +1,10 @@
+---
+kind: decision
+status: active
+canonical: mydocs/tech/wasm_pack_version_policy.md
+last_verified: 2026-07-19
+---
+
 # wasm-pack 버전 고정 정책 (#2233)
 
 ## 배경
@@ -14,7 +21,7 @@ Actions·Docker 모두 **wasm-pack 0.15.0** 으로 고정한다.
 | 경로 | 설치 방식 | 버전 지정 위치 |
 |------|----------|---------------|
 | GitHub Actions | prebuilt 릴리스 바이너리(빠름, 컴파일 없음) | `.github/actions/install-wasm-pack/action.yml` 의 `WASM_PACK_VERSION` |
-| WASM Docker | `cargo install wasm-pack@<ver>` | `Dockerfile` 6행 |
+| WASM Docker | `cargo install wasm-pack@<ver>` | `Dockerfile`의 `cargo install wasm-pack@<ver>` 명령 |
 
 Actions 는 composite action `./.github/actions/install-wasm-pack` 하나를 6개
 워크플로우(ci·deploy-pages·full-renderer-sweep·npm-publish·render-diff)가 참조하므로
