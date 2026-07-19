@@ -435,6 +435,12 @@ struct TypesetState {
     /// 한글 저장 vpos 는 하단 틀도 문서순으로 누적하므로, 후속 틀의 vpos 동기화
     /// (#1611) 시 이 값을 차감해야 본문 텍스트 끝 위치가 복원된다.
     bottom_fixed_consumed_flow: f64,
+    /// [#2279 footer-오염] 이 페이지에 PAGE-앵커(vertRelTo=Page, vertAlign=Top)
+    /// 절대배치 비-TAC 표가 배치됐는가. 이 표들의 저장 vpos 누적은 절대 위치
+    /// 산물이라 본문 흐름과 무관하게 부풀며(36496000 pi3: 저장 스텝 +482px vs
+    /// 흐름 +143px), 이후 footer 의 저장 vpos 동기화(target_y)를 오염시킨다.
+    /// 켜져 있으면 footer 는 stored 동기화 없이 흐름 좌표로 판정한다.
+    page_has_page_abs_top_table: bool,
     /// 첫 각주 여부
     is_first_footnote_on_page: bool,
     /// 각주 구분선 오버헤드
@@ -1760,6 +1766,7 @@ impl TypesetState {
             current_footnote_height: 0.0,
             current_bottom_fixed_exclusion: 0.0,
             bottom_fixed_consumed_flow: 0.0,
+            page_has_page_abs_top_table: false,
             is_first_footnote_on_page: true,
             footnote_separator_overhead,
             footnote_between_notes_margin,
@@ -2021,6 +2028,7 @@ impl TypesetState {
         self.current_footnote_height = 0.0;
         self.current_bottom_fixed_exclusion = 0.0;
         self.bottom_fixed_consumed_flow = 0.0;
+        self.page_has_page_abs_top_table = false;
         self.is_first_footnote_on_page = true;
         self.current_zone_y_offset = 0.0;
         self.current_zone_layout = None;
@@ -13834,6 +13842,18 @@ impl TypesetEngine {
         is_last_placed: bool,
         styles: &ResolvedStyleSet,
     ) {
+        // [#2279 footer-오염] PAGE-앵커 Top 절대배치 표 기록 — 같은 쪽 후속
+        // footer 의 저장 vpos 동기화 차단용. 이 표들의 저장 누적은 절대 위치
+        // 산물이라 본문 흐름 좌표가 아니다(36496000 pi3 실측).
+        if !table.common.treat_as_char
+            && matches!(
+                table.common.vert_rel_to,
+                crate::model::shape::VertRelTo::Page
+            )
+            && matches!(table.common.vert_align, crate::model::shape::VertAlign::Top)
+        {
+            st.page_has_page_abs_top_table = true;
+        }
         let vertical_offset = Self::get_table_vertical_offset(table);
         let is_visible_para_float =
             is_para_topbottom_float(&table.common) && para_has_non_whitespace_text(para);
@@ -15312,7 +15332,14 @@ impl TypesetEngine {
                 // 있으면(본문이 짧은데 vpos 가 page-bottom 앵커/누적 노이즈), vpos 동기화는
                 // 본문 직후에 들어갈 footer 를 spurious 하게 다음 쪽으로 민다(+1쪽 over-push).
                 // vpos 가 흐름을 plausibly 따를 때(cur_h + block_height 이내)만 동기화한다.
-                let sync_h = if target_y <= st.current_height + block_height {
+                // [#2279 footer-오염] 같은 쪽에 PAGE-앵커 Top 절대배치 표가 있으면
+                // 저장 누적이 절대 위치 산물로 부풀어(36496000 pi3: 저장 스텝
+                // +482px vs 흐름 +143px) target_y 가 본문 끝이 아니다 — 동기화를
+                // 건너뛰고 흐름 좌표로 판정한다(한글 PDF 본문 끝 ~520px = 흐름
+                // 517.3px 실측 일치, stored 861.2px 는 허상. 한글 1쪽 vs +1 유령).
+                let sync_h = if !st.page_has_page_abs_top_table
+                    && target_y <= st.current_height + block_height
+                {
                     st.current_height.max(target_y)
                 } else {
                     st.current_height
