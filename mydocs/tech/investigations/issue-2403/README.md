@@ -38,3 +38,15 @@ last_verified: 2026-07-19
 - 계량: 소스분기 직접 참조 renderer 코어(typeset/layout/table·paragraph·shape
   _layout) 77→8 (잔존 = 값 전달 자유 함수 파라미터 2쌍 + 이력 주석 4).
   src 전체 176→105.
+
+## 3단계 (2026-07-19)
+
+- document_core 필드 읽기 40곳 → profile/provenance 질의 (가변 차용 겹침 31곳
+  호이스팅, 루프 내 1곳 루프 밖 이동) + 자유 함수 3곳. **document_core 필드
+  읽기 0 달성.**
+- 규약 명문화: parser_architecture.md "소스 출처와 레이아웃 호환 정책" 절 +
+  CONTRIBUTING 코드 스타일 항목.
+- 게이트: 전체 스위트 0 실패, clippy 0, CLI·render-tree 무변동, **API 표면
+  delta 0**, 연결맵 414 유지.
+- 최종 계량: 소스분기 계열 참조 **176 → 87** — 잔존 전부 원점(파서 확정
+  지점 18)·모델 shim 선언·테스트 초기화·값 전달 파라미터·주석.

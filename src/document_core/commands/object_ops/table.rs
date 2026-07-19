@@ -737,6 +737,7 @@ impl DocumentCore {
         for i in para_idx..fresh_end.min(self.document.sections[section_idx].paragraphs.len()) {
             self.reflow_paragraph(section_idx, i);
         }
+        let doc_hwp3_layout = self.document.layout_profile().hwp3_layout();
         crate::renderer::composer::recalculate_section_vpos(
             &mut self.document.sections[section_idx].paragraphs,
             para_idx,
@@ -744,7 +745,7 @@ impl DocumentCore {
             None,
             &self.styles,
             self.dpi,
-            self.document.is_hwp3_variant,
+            doc_hwp3_layout,
         );
 
         // --- 6. 스타일 갱신 + 리플로우 + 페이지네이션 ---
