@@ -708,7 +708,10 @@ mod tests {
         // power >= 64 는 `1usize << power` 가 shift overflow(debug 패닉 / release 마스킹).
         let mut d = minimal_header();
         d[30..32].copy_from_slice(&64u16.to_le_bytes());
-        assert!(LenientCfbReader::open(&d).is_err(), "shift overflow 대신 Err 이어야 함");
+        assert!(
+            LenientCfbReader::open(&d).is_err(),
+            "shift overflow 대신 Err 이어야 함"
+        );
 
         // power 0·1 은 sector_size 가 1·2 라 DIFAT 순회의 `sector_size / 4 - 1` 이 언더플로.
         for bad in [0u16, 1u16] {
@@ -727,7 +730,10 @@ mod tests {
     fn lenient_open_rejects_out_of_range_mini_sector_size_power() {
         let mut d = minimal_header();
         d[32..34].copy_from_slice(&64u16.to_le_bytes());
-        assert!(LenientCfbReader::open(&d).is_err(), "shift overflow 대신 Err 이어야 함");
+        assert!(
+            LenientCfbReader::open(&d).is_err(),
+            "shift overflow 대신 Err 이어야 함"
+        );
     }
 
     #[test]
