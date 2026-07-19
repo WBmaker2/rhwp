@@ -1494,8 +1494,7 @@ impl LayoutEngine {
                 .get(&para_index)
                 .copied()
                 .unwrap_or(0.0);
-            let eff_off = (hwpunit_to_px(vert_off_signed, self.dpi) - host_h).max(0.0);
-            eff_off
+            (hwpunit_to_px(vert_off_signed, self.dpi) - host_h).max(0.0)
         } else {
             0.0
         };
