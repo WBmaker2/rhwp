@@ -62,3 +62,20 @@ package contracts")·본문 모두 근거 서술 없음. CanvasKit AA 차이 추
 **판정: 인프라(preflight/session/진단/계약 테스트) 수용 가치 크나, 기본
 요청의 auto 전환은 시기상조.** 기본 canvas2d 유지 + auto 는 명시 opt-in
 강등, ink-mask 원복, fidelity 3축 + 표식 공백 해소 후 기본 전환 재제안 요청.
+
+## 재검증 (2026-07-19, 개정 head)
+
+seo-rii 반영: ①기본 canvas2d 복귀·auto opt-in 강등 ②marks 를 preflight
+blocker 편입(revision 재판정 + 복귀 회귀 테스트) ③ink-mask 0.0185 원복 —
+나아가 간격 결함의 근인(일반 TextRun 의 serialized positions 미사용)을
+규명해 drawGlyphs 확정 위치 재생으로 수정 (실측 0.0185→0.0079).
+
+- 일괄 검증: Rust 스위트/clippy/fmt/tsc/studio 446/빌드 전건 green,
+  wasm Docker 재빌드 후 실기동.
+- 작업지시자 시각 판정 (스크린샷 002 2장): **통과** — 줄 배분·bold 개선,
+  synam-001 1쪽 fidelity 상당 개선. 잔존(글자겹침·원문자 글리프 소실)은
+  opt-in 경로 한계로 후속 개선 트랙.
+
+## 처리 결과
+
+merge 승인(작업지시자 통과 의견) — 개선 확인 코멘트 + 스크린샷 첨부 후 merge.
