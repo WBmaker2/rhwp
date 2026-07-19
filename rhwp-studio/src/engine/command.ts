@@ -180,7 +180,7 @@ function cellPathJson(pos: DocumentPosition): string {
 }
 
 /** cellPath 의 최내곽(마지막) 엔트리의 cellParaIndex 를 지정 값으로 바꾼 pathJson.
- *  중첩 셀 선택 삭제의 undo 저장에서 각 문단 텍스트를 ...ByPath 로 읽을 때 사용한다. */
+ *  중첩 셀의 문단별 ByPath 호출(삭제 undo 저장과 문자 서식 적용/undo)에 쓴다. */
 function cellPathJsonForPara(pos: DocumentPosition, cellParaIndex: number): string {
   const path = (pos.cellPath ?? []).map((e) => ({ ...e }));
   if (path.length > 0) path[path.length - 1].cellParaIndex = cellParaIndex;
@@ -670,24 +670,26 @@ export class ApplyCharFormatCommand implements EditCommand {
     const propsJson = JSON.stringify(this.props);
 
     if (isCell(start)) {
+      // 중첩 셀 좌표 축 정합: flat controlIndex/cellIndex 는 cellPath[0](최외곽)이라 중첩
+      // 셀에서 바깥 셀에 서식을 적용한다. 최내곽 셀을 ...ByPath 로 라우팅하고 문단 인덱스는
+      // cellPath[last](cellParaIndexOf)에서 읽는다. undo(restoreCharShapeIds)도 같은 축.
       const sec = start.sectionIndex;
       const ppi = start.parentParaIndex!;
-      const ci = start.controlIndex!;
-      const cei = start.cellIndex!;
-      const startPara = start.cellParaIndex!;
-      const endPara = end.cellParaIndex!;
+      const startPara = cellParaIndexOf(start);
+      const endPara = cellParaIndexOf(end);
 
       this.entries = [];
       for (let p = startPara; p <= endPara; p++) {
+        const pathP = cellPathJsonForPara(start, p);
         const from = p === startPara ? start.charOffset : 0;
-        const to = p === endPara ? end.charOffset : wasm.getCellParagraphLength(sec, ppi, ci, cei, p);
+        const to = p === endPara ? end.charOffset : wasm.getCellParagraphLengthByPath(sec, ppi, pathP);
         if (to <= from) continue;
 
-        const prevProps = wasm.getCellCharPropertiesAt(sec, ppi, ci, cei, p, from);
+        const prevProps = wasm.getCellCharPropertiesAtByPath(sec, ppi, pathP, from);
         this.entries.push({ paraIndex: p, startOffset: from, endOffset: to, beforeCharShapeId: prevProps.charShapeId });
 
-        wasm.applyCharFormatInCell(sec, ppi, ci, cei, p, from, to, propsJson);
-        const afterProps = wasm.getCellCharPropertiesAt(sec, ppi, ci, cei, p, from);
+        wasm.applyCharFormatInCellByPath(sec, ppi, pathP, from, to, propsJson);
+        const afterProps = wasm.getCellCharPropertiesAtByPath(sec, ppi, pathP, from);
         this.entries[this.entries.length - 1].afterCharShapeId = afterProps.charShapeId;
       }
     } else {
@@ -725,9 +727,10 @@ export class ApplyCharFormatCommand implements EditCommand {
       if (charShapeId === undefined) continue;
 
       if (isCell(start)) {
-        wasm.setCharShapeIdInCell(
-          start.sectionIndex, start.parentParaIndex!, start.controlIndex!, start.cellIndex!,
-          entry.paraIndex, entry.startOffset, entry.endOffset, charShapeId,
+        // 중첩 셀 축 정합: 최내곽 셀에 서식 ID 복원(execute 와 동일 축).
+        wasm.setCharShapeIdInCellByPath(
+          start.sectionIndex, start.parentParaIndex!, cellPathJsonForPara(start, entry.paraIndex),
+          entry.startOffset, entry.endOffset, charShapeId,
         );
       } else {
         wasm.setCharShapeId(start.sectionIndex, entry.paraIndex, entry.startOffset, entry.endOffset, charShapeId);
