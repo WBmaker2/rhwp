@@ -13,7 +13,7 @@ fix(rhwp-studio): custom scheme 최상위 legacy 요청 복구
 
 - custom URL scheme으로 로드된 top-level same-window `rhwp-studio`에서 legacy `rhwp-request`를 허용합니다.
 - iframe parent의 HTTP(S) origin 검사와 parent source 검사를 유지합니다.
-- custom scheme iframe parent와 forged sibling 거부를 회귀 테스트로 고정합니다.
+- custom scheme top-level v1 connect, iframe parent와 forged sibling 거부를 회귀 테스트로 고정합니다.
 
 ## Background
 
@@ -23,14 +23,15 @@ HTTP(S)가 아니어서 `ready`, `pageCount`, `getPageSvg`, `exportHwp` 등이 t
 
 ## Changes
 
-- top-level same-window 여부를 parent/host window identity로 판정합니다.
+- top-level same-window legacy 요청 여부를 parent/host window identity와 message type으로 판정합니다.
 - unusable origin은 iframe 환경에서 계속 거부합니다.
 - source가 parent와 다른 요청은 환경과 무관하게 계속 거부합니다.
-- top-level 허용과 iframe/sibling 거부 unit regression tests를 추가합니다.
+- top-level legacy 허용과 v1 connect/iframe/sibling 거부 unit regression tests를 추가합니다.
 
 ## Security boundary
 
-- 허용: `event.source === parentWindow`이고 `parentWindow === hostWindow`인 top-level same-window
+- 허용: `event.source === parentWindow`이고 `parentWindow === hostWindow`인 top-level same-window legacy `rhwp-request`
+- 거부: custom scheme top-level v1 `rhwp-connect`
 - 거부: custom scheme iframe parent
 - 거부: parent가 아닌 forged sibling
 - 유지: 기존 HTTP(S) iframe MessageChannel/legacy 경로
@@ -39,8 +40,8 @@ custom scheme allowlist, protocol version과 public API는 변경하지 않습�
 
 ## Validation
 
-- `node --test rhwp-studio/tests/embed-protocol.test.ts`: 14/14 PASS
-- `npm --prefix rhwp-studio test`: 364/364 PASS
+- `node --test rhwp-studio/tests/embed-protocol.test.ts`: 15/15 PASS
+- `npm --prefix rhwp-studio test`: 365/365 PASS
 - `wasm-pack build --target web --out-dir pkg --dev`: PASS
 - `npm --prefix rhwp-studio run build`: PASS
 - `git diff --check`: PASS

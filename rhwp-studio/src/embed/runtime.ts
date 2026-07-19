@@ -116,9 +116,11 @@ export function installEmbedRuntime(options: EmbedRuntimeOptions): () => void {
   let binding: { origin: string; sessionId: string; port: MessagePort } | null = null;
   const onMessage = (event: MessageEvent) => {
     const transferredPorts = Array.from(event.ports);
+    const isTopLevelLegacyRequest = isTopLevelSameWindow
+      && event.data?.type === 'rhwp-request';
     if (
       event.source !== options.parentWindow
-      || (!isUsableParentOrigin(event.origin) && !isTopLevelSameWindow)
+      || (!isUsableParentOrigin(event.origin) && !isTopLevelLegacyRequest)
     ) {
       releasePorts(transferredPorts);
       return;

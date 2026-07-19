@@ -27,6 +27,8 @@
 
 ### negative cases
 
+- `hostWindow === parentWindow`인 top-level 환경에서도 custom origin v1 `rhwp-connect`는 거부한다.
+- 거부된 v1 connect의 port를 정리하고, 이후 legacy `ready`가 정상 응답하는지 확인한다.
 - `hostWindow !== parentWindow`인 iframe 환경에서 exact parent source가 custom origin을 사용하면 거부한다.
 - sibling 객체를 source로 사용한 custom origin 요청도 거부한다.
 - 두 요청 모두 handler 호출과 response가 없고 transferred port가 닫히는지 확인한다.
@@ -45,12 +47,13 @@ const isTopLevelSameWindow = options.parentWindow === options.hostWindow;
 
 ```text
 source가 parent가 아니면 거부
-origin이 HTTP(S)가 아니고 top-level same-window도 아니면 거부
+origin이 HTTP(S)가 아니고 top-level same-window legacy rhwp-request도 아니면 거부
 그 밖에는 기존 connect/legacy 분기로 진행
 ```
 
 `isUsableParentOrigin()` 자체는 변경하지 않는다. custom scheme 문자열 allowlist도 추가하지 않는다.
-따라서 iframe의 origin 규칙과 source identity 경계는 기존과 동일하다.
+따라서 iframe의 origin 규칙과 source identity 경계는 기존과 동일하며, v1 MessageChannel connect도
+계속 HTTP(S) origin에서만 binding을 설치한다.
 
 ## Stage 3 상세 — 검증
 
@@ -74,11 +77,11 @@ git diff --check
 |---|---|
 | custom scheme을 iframe까지 허용 | window identity를 top-level same-window로 한정하고 negative test 고정 |
 | forged sibling이 우회 | `event.source === parentWindow` 조건을 유지하고 source mismatch test 고정 |
-| MessageChannel binding 변화 | protocol helper와 binding 로직은 변경하지 않고 전체 embed tests 실행 |
+| custom scheme에서 MessageChannel binding까지 열림 | 예외 type을 legacy `rhwp-request`로 제한하고 v1 connect 거부·port 정리 테스트 고정 |
 | 생성물이 커밋에 포함 | 각 단계 커밋 전 `git status --short --ignored`와 staged name 검사 |
 
 ## 롤백
 
-Stage 2의 runtime 조건 변경 한 곳과 Stage 1의 회귀 테스트 두 건을 단계 커밋 단위로 되돌릴 수 있다.
+Stage 2의 runtime 조건 변경 한 곳과 회귀 테스트 세 건을 단계 커밋 단위로 되돌릴 수 있다.
 비준수 이전 구현은 단계 진행 중 별도 backup ref로만 보존하고, 정상 단계 이력과 최종 검증을 확인한 뒤
 삭제한다. 정상 작업 이력에는 재사용하지 않는다.
