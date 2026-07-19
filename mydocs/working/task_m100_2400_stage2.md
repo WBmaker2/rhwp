@@ -86,21 +86,39 @@ UI 114→115 drag를 HWP/HWPX에서 실제 pointer로 다시 수행했다.
 | `issue_717_table_cell_hit_test` | 4 passed |
 | `issue_nested_table_border` | 2 passed |
 | `issue_919_textbox_hit_test` | 5 passed |
-| `npm --prefix rhwp-studio test` | 418 passed |
+| `npm --prefix rhwp-studio test` | 418 passed (최종 rebase 후 449 passed) |
 | `npm --prefix rhwp-studio run build` | 통과 |
 | `git diff --check` | 통과 |
 
 개발용 `wasm-pack build --dev --target web --out-dir pkg`도 통과했다. 실제 포인터 probe와
 스크린샷은 일회성 검증 산출물이므로 `/private/tmp`에만 유지하고 PR에는 포함하지 않는다.
 
-## 6. 남은 단계
+## 6. 전체 CI
 
-수행·구현 계획에 따라 full CI는 focused 결과 공유와 별도 승인 뒤 PR 직전에 실행한다.
+focused 결과 공유와 별도 승인 뒤 PR 전 전체 CI를 실행했다.
 
 ```text
-cargo test --verbose
-cargo clippy --all-targets -- -D warnings
+cargo test --verbose                         통과
+cargo clippy --all-targets -- -D warnings  통과
 ```
 
-full CI 통과 후 변경 요약과 실제 pointer 근거를 #2400에 공유하고 push/PR 생성 승인을
-받는다.
+`cargo test --verbose`는 library 2,288 passed / 0 failed / 7 ignored를 포함해 전체 integration,
+round-trip, visual baseline, doc-test를 완료했다. #1949 전체 115쪽 렌더, #2185 단일 문자 편집,
+#2214 cache coherence, #2215 page-hinted selection 등 장시간 회귀도 모두 통과했다.
+
+다음 단계는 변경 요약과 실제 pointer 근거를 #2400에 공유하고 push/PR 생성 승인을 받는
+것이다.
+
+## 7. 최신 devel rebase 검증
+
+PR 직전 `upstream/devel@3eac4ae0`으로 3개 작업 커밋을 충돌 없이 rebase했다. 유입된 17개
+커밋은 주로 CanvasKit 렌더링 강화와 CFB 헤더 검증이며 page-scoped table hit-test와 의미
+충돌은 없었다.
+
+최종 rebase 후 다음 focused 검증을 다시 통과했다.
+
+- 신규 #2400 HWP/HWPX native 회귀 1 passed
+- Studio 449 passed, production build 통과
+- #2215 selection page range 4 passed
+- #717 table cell hit-test 4 passed
+- #919 textbox hit-test 5 passed
