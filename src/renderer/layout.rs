@@ -6330,6 +6330,26 @@ impl LayoutEngine {
                 } else {
                     0.0
                 };
+                let has_preceding_coanchored_float = is_current_visible_para_float
+                    && para.controls.iter().take(control_index).any(|control| {
+                        matches!(control, Control::Table(previous)
+                            if is_para_topbottom_float(&previous.common))
+                    });
+                let profile = self.profile.get();
+                let issue2439_visible_host_stack = profile.native_hwp5_layout()
+                    && page_content.column_contents.len() == 1
+                    && is_current_visible_para_float
+                    && signed_hwpunit(t.common.vertical_offset) > 0
+                    && has_preceding_coanchored_float
+                    && para
+                        .controls
+                        .iter()
+                        .filter(|control| matches!(control, Control::Table(_)))
+                        .count()
+                        == 2
+                    && para.line_segs.iter().any(|seg| {
+                        seg.tag & crate::model::paragraph::LineSeg::TAG_IMPLEMENTATION_PROPERTY == 0
+                    });
                 let table_y_start = if let Some((_, _, _, lane_top, _)) = para_float_lane_info {
                     lane_top
                 } else if let Some(abs_y) = paper_page_square_empty_top {
@@ -6385,7 +6405,13 @@ impl LayoutEngine {
                             // 복원한다(한컴: 표-표 간격 = 후행 표 offset). visible host 는
                             // part 3(host-title-line)이 간격을 처리하므로 여기선 zone 하단만.
                             let restore = if is_current_visible_para_float {
-                                0.0
+                                if issue2439_visible_host_stack && zone.owner_para == para_index {
+                                    // #2439: 같은 저장 host의 후행 표가 선행 표 아래로
+                                    // 밀려나도 자신의 outer-top은 사라지지 않는다.
+                                    visible_outer_top_px
+                                } else {
+                                    0.0
+                                }
                             } else {
                                 v_off.max(0.0)
                             };
@@ -6519,7 +6545,17 @@ impl LayoutEngine {
                 };
                 y_offset = if is_current_visible_para_float {
                     if signed_hwpunit(t.common.vertical_offset) > 0 {
-                        table_y_before
+                        if issue2439_visible_host_stack {
+                            // #2439: 저장된 두 표 visible-host 형상은 후행 표가 선행
+                            // 표 아래로 밀려난 높이까지 host 흐름이 실제로 소비한다.
+                            // typeset의 table_bottom + outer-bottom + LineSeg 간격과
+                            // 같은 경계에서 뒤의 서명문을 시작시킨다.
+                            table_visual_end
+                                + visible_outer_bottom_px
+                                + para_line_spacing_px(para, self.dpi)
+                        } else {
+                            table_y_before
+                        }
                     } else if self.profile.get().hwpx_stored_layout() {
                         let following_non_positive =
                             has_following_non_positive_visible_float(para, control_index);
@@ -6560,9 +6596,17 @@ impl LayoutEngine {
                         // (한컴: 섹션 표와 다음 섹션 제목 사이 간격 = 표 아래 외곽여백).
                         let margin_bottom_px =
                             hwpunit_to_px(t.outer_margin_bottom as i32, self.dpi);
+                        let host_line_spacing_px = if issue2439_visible_host_stack {
+                            // 마지막 co-anchored 표 뒤의 host 서명문은 표 하단 여백과
+                            // 저장 LineSeg 간격을 모두 지난 뒤 시작한다. exclusion에
+                            // 포함해 뒤의 post-text 흐름과 typeset을 같은 경계로 맞춘다.
+                            para_line_spacing_px(para, self.dpi)
+                        } else {
+                            0.0
+                        };
                         visible_float_exclusions.push(VisibleFloatExclusion {
                             top: table_visual_top,
-                            bottom: table_visual_end + margin_bottom_px,
+                            bottom: table_visual_end + margin_bottom_px + host_line_spacing_px,
                             owner_para: para_index,
                         });
                     }
@@ -6992,7 +7036,83 @@ impl LayoutEngine {
                 let reserved_height = (y_offset - lane_top).max(0.0);
                 let lanes = para_float_lanes.entry(para_index).or_default();
                 lanes.place(x_start, x_end, raw_top, reserved_height);
-                let lane_flow_bottom = if is_current_empty_para_float {
+                let single_positive_empty_float_before_plain_text =
+                    self.profile.get().native_hwp5_layout()
+                        && is_current_empty_para_float
+                        && para
+                            .controls
+                            .iter()
+                            .filter(|control| matches!(control, Control::Table(_)))
+                            .count()
+                            == 1
+                        && para
+                            .controls
+                            .iter()
+                            .filter(|control| {
+                                matches!(control, Control::Table(table)
+                                    if is_para_topbottom_float(&table.common))
+                            })
+                            .count()
+                            == 1
+                        && para.controls.get(control_index).is_some_and(|control| {
+                            matches!(control, Control::Table(table)
+                                if is_para_topbottom_float(&table.common)
+                                    && matches!(table.common.vert_rel_to,
+                                        crate::model::shape::VertRelTo::Para)
+                                    && matches!(table.page_break,
+                                        crate::model::table::TablePageBreak::RowBreak)
+                                    && signed_hwpunit(table.common.vertical_offset) > 0)
+                        })
+                        && para.line_segs.iter().any(|seg| {
+                            seg.tag & crate::model::paragraph::LineSeg::TAG_IMPLEMENTATION_PROPERTY
+                                == 0
+                                && seg.line_height > 0
+                        })
+                        && paragraphs.get(para_index + 1).is_some_and(|next| {
+                            para_has_non_whitespace_text(next) && next.controls.is_empty()
+                        });
+                let lane_flow_bottom = if single_positive_empty_float_before_plain_text {
+                    // #2439: a single empty-host TopAndBottom float followed by an ordinary
+                    // text paragraph must clear the table's painted lane. `global + reserved`
+                    // below deliberately omits the visual vertical offset; using it here put
+                    // the signature line inside the table by exactly that offset.
+                    let stored_rowbreak_host_tail = para
+                        .controls
+                        .get(control_index)
+                        .and_then(|control| match control {
+                            Control::Table(table)
+                                if self.profile.get().native_hwp5_layout()
+                                    && matches!(
+                                        table.common.vert_rel_to,
+                                        crate::model::shape::VertRelTo::Para
+                                    )
+                                    && matches!(
+                                        table.page_break,
+                                        crate::model::table::TablePageBreak::RowBreak
+                                    ) => para
+                                .line_segs
+                                .iter()
+                                .find(|seg| {
+                                    seg.tag
+                                        & crate::model::paragraph::LineSeg::TAG_IMPLEMENTATION_PROPERTY
+                                        == 0
+                                        && seg.line_height > 0
+                                })
+                                .map(|seg| {
+                                    hwpunit_to_px(
+                                        seg.line_height + seg.line_spacing.max(0),
+                                        self.dpi,
+                                    )
+                                        + hwpunit_to_px(
+                                            table.outer_margin_bottom as i32,
+                                            self.dpi,
+                                        )
+                                }),
+                            _ => None,
+                        })
+                        .unwrap_or(0.0);
+                    lanes.max_bottom() + stored_rowbreak_host_tail
+                } else if is_current_empty_para_float {
                     // Empty-anchor TopAndBottom tables can encode a visual
                     // vertical offset separately from the flow height measured
                     // by pagination. Keep the table painted at lane_top, but

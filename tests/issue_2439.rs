@@ -9,6 +9,10 @@
 //! - page-fitting float B cannot fit the remainder and is deferred whole to page 2;
 //! - `AFTER FLOAT` must resume below B's exclusion, never inside B.
 
+use rhwp::model::control::Control;
+use rhwp::model::paragraph::LineSeg;
+use rhwp::model::provenance::{SourceFormat, SourceProvenance};
+use rhwp::model::table::TablePageBreak;
 use rhwp::renderer::render_tree::{RenderNode, RenderNodeType};
 use rhwp::wasm_api::HwpDocument;
 use std::fs;
@@ -17,6 +21,7 @@ use std::path::Path;
 const SAMPLE: &str = "samples/hwpx/issue2439_page_local_float_exclusion.hwpx";
 const ZERO_OFFSET_STACK_SAMPLE: &str =
     "samples/issue2439_zero_offset_coanchored_float_exclusion.hwp";
+const POSITIVE_EMPTY_HOST_SAMPLE: &str = "samples/issue1549_empty_host_float_clamp.hwpx";
 const HOST_PI: usize = 1;
 const TABLE_A_CI: usize = 0;
 const TABLE_B_CI: usize = 1;
@@ -25,6 +30,28 @@ fn load_doc(sample: &str) -> HwpDocument {
     let path = Path::new(env!("CARGO_MANIFEST_DIR")).join(sample);
     let bytes = fs::read(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
     HwpDocument::from_bytes(&bytes).unwrap_or_else(|e| panic!("parse {sample}: {e}"))
+}
+
+fn load_with_native_hwp5_provenance(sample: &str) -> HwpDocument {
+    let mut doc = load_doc(sample);
+    let mut model = doc.document().clone();
+    // The compact geometry fixture is HWPX so it can be reviewed as source. Rebinding only its
+    // provenance exercises the exact native-HWP5 compatibility gate without checking the
+    // user-provided reproduction document into the repository.
+    model.provenance = SourceProvenance {
+        format: SourceFormat::Hwp5,
+        hwp3_lineage: false,
+        hwpx_lineage: false,
+    };
+    let host = &mut model.sections[0].paragraphs[1];
+    host.line_segs[0].tag &= !LineSeg::TAG_IMPLEMENTATION_PROPERTY;
+    let Control::Table(table) = &mut host.controls[0] else {
+        panic!("positive empty-host fixture must contain a table control");
+    };
+    table.page_break = TablePageBreak::RowBreak;
+    doc.set_document(model);
+    assert!(doc.document().layout_profile().native_hwp5_layout());
+    doc
 }
 
 fn find_table_bbox(
@@ -140,5 +167,25 @@ fn zero_offset_coanchored_float_reserves_its_full_zone_for_later_siblings() {
         host_text_top + 0.5 >= second_bottom,
         "visible host text emitted after the co-anchored table group must resume below the last \
          table: B=[{second_top:.1},{second_bottom:.1}], text_top={host_text_top:.1}",
+    );
+}
+
+#[test]
+fn positive_offset_empty_host_float_advances_flow_to_its_painted_bottom() {
+    let doc = load_with_native_hwp5_provenance(POSITIVE_EMPTY_HOST_SAMPLE);
+    let page = doc
+        .build_page_render_tree(0)
+        .expect("build positive-offset empty-host render tree");
+
+    let (table_top, table_bottom) =
+        find_table_bbox(&page.root, 1, 0).expect("single positive-offset table bbox");
+    let (following_top, _) =
+        find_text_bbox(&page.root, "filler paragraph 01").expect("following paragraph bbox");
+
+    assert!(
+        following_top + 0.5 >= table_bottom,
+        "following flow must start at or below the actual painted bottom of a positive-offset \
+         empty-host TopAndBottom float: table=[{table_top:.1},{table_bottom:.1}], \
+         following_top={following_top:.1}",
     );
 }

@@ -8292,7 +8292,7 @@ mod row_cut_tests {
         // 로컬 좌표 재시작으로 보고 같은 쪽에 이어 담는다.
         let eng = LayoutEngine::new(96.0);
         eng.set_layout_profile(crate::model::provenance::LayoutCompatibilityProfile::new(
-            false, false, true, false,
+            false, false, true, false, false,
         ));
         let styles = ResolvedStyleSet::default();
         let t = rowbreak_table(vec![cell(
@@ -8315,7 +8315,7 @@ mod row_cut_tests {
         // 한컴 저장 쪽 경계로 보존한다.
         let eng = LayoutEngine::new(96.0);
         eng.set_layout_profile(crate::model::provenance::LayoutCompatibilityProfile::new(
-            false, false, true, false,
+            false, false, true, false, false,
         ));
         let styles = ResolvedStyleSet::default();
         let t = rowbreak_table(vec![cell(
