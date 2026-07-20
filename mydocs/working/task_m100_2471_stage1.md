@@ -1,4 +1,4 @@
-# task 2471 stage 1 - 각주 hit-test fast-reject 통합
+# 작업 2471 단계 1 - 각주 hit-test fast-reject 통합
 
 ## 배경
 

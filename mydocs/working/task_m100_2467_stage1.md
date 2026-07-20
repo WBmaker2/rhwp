@@ -1,4 +1,4 @@
-# task 2467 stage 1 - G8 HWPX to HWP 컨테이너 재귀 통합
+# 작업 2467 단계 1 - G8 HWPX-HWP 컨테이너 재귀 통합
 
 ## 배경
 

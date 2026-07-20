@@ -1,4 +1,4 @@
-# task 2465 stage 1 - G7 HWP5 serializer 보존 통합
+# 작업 2465 단계 1 - G7 HWP5 serializer 보존 통합
 
 ## 배경
 
