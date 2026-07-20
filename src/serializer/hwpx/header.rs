@@ -837,6 +837,11 @@ fn tab_leader_str(f: u8) -> &'static str {
         6 => "LONG_DASH",
         7 => "CIRCLE",
         8 => "DOUBLE_SLIM",
+        // 종전엔 9/10/11 이 _ => "NONE" 으로 떨어져 이중/삼중선 탭 리더가 저장 시 유실됐다.
+        // 파서(parse_tab_item)는 이 문자열들을 각각 9/10/11 로 받으므로 왕복 보존된다.
+        9 => "THIN_THICK",
+        10 => "THICK_THIN",
+        11 => "TRIM",
         _ => "NONE",
     }
 }
@@ -1276,7 +1281,9 @@ fn write_style<W: Write>(w: &mut Writer<W>, id: u16, st: &Style) -> Result<(), S
             ("paraPrIDRef", &st.para_shape_id.to_string()),
             ("charPrIDRef", &st.char_shape_id.to_string()),
             ("nextStyleIDRef", &st.next_style_id.to_string()),
-            ("langID", "1042"),
+            // 파서가 Style.lang_id 로 읽는 값을 그대로 되돌린다. 종전 "1042"
+            // 하드코딩은 비한국어 langID(예: 1033)를 왕복마다 1042 로 바꿨다.
+            ("langID", &st.lang_id.to_string()),
             ("lockForm", "0"),
         ],
     )
@@ -1320,6 +1327,23 @@ use super::utils::start_tag;
 mod tests {
     use super::*;
     use crate::parser::hwpx::parse_hwpx;
+
+    #[test]
+    fn write_style_emits_ir_lang_id() {
+        // 파서가 읽은 Style.lang_id 가 그대로 방출돼야 한다.
+        // 종전엔 "1042" 하드코딩으로 비한국어 langID 가 왕복마다 뭉개졌다.
+        let st = Style {
+            lang_id: 1033,
+            ..Default::default()
+        };
+        let mut w: Writer<Vec<u8>> = Writer::new(Vec::new());
+        write_style(&mut w, 0, &st).expect("write_style");
+        let xml = String::from_utf8(w.into_inner()).unwrap();
+        assert!(
+            xml.contains(r#"langID="1033""#),
+            "Style.lang_id 가 방출돼야 함: {xml}"
+        );
+    }
 
     #[test]
     fn write_header_runs_on_empty_document() {
@@ -2039,5 +2063,14 @@ mod tests {
 
         assert_eq!(xml.matches("<hh:paraHead").count(), 10);
         assert!(xml.starts_with(r#"<hh:numbering id="1" start="0">"#));
+    }
+
+    #[test]
+    fn tab_leader_str_emits_double_and_triple_line_types() {
+        // fill_type 9/10/11 이 "NONE" 으로 유실되지 않고 파서가 받는 문자열로 방출돼야 한다.
+        assert_eq!(tab_leader_str(9), "THIN_THICK");
+        assert_eq!(tab_leader_str(10), "THICK_THIN");
+        assert_eq!(tab_leader_str(11), "TRIM");
+        assert_eq!(tab_leader_str(8), "DOUBLE_SLIM");
     }
 }
