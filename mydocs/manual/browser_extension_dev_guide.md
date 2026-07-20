@@ -250,8 +250,25 @@ function getBlockedMessage(reason, hostname) {
 
 ### 설정은 즉시 반영, 즉시 확인 가능
 
-- 토글 변경 → 즉시 저장 → "저장되었습니다" 피드백
-- 설정 페이지 재진입 시 값이 유지되어야 함 (Safari `storage.local` 사용)
+- 토글 변경 → 실제 저장 성공 뒤에만 "저장되었습니다" 피드백
+- 설정 로드가 끝나기 전에는 입력을 비활성화해 DOM 기본값이 저장값을 덮지 않게 함
+- 저장 실패는 성공과 다른 오류 상태로 표시하고 재시도 가능하게 유지
+- 설정 페이지 재진입 시 값이 유지되어야 함
+  - Chrome/Edge: `storage.sync` key를 우선하고 `storage.local`의 마지막 정상 snapshot을 누락 key의 fallback으로 사용
+  - Safari: `storage.local` 사용
+
+### Chrome/Edge 설정 보존 계약
+
+- `runtime.onInstalled`의 `install`, `update`, `chrome_update`는 사용자 설정을 기본값으로
+  덮어쓰지 않는다. 깨끗한 최초 설치의 기본값은 저장소 read 시에만 적용한다.
+- options, message router, download interceptor는 하나의 settings-store adapter를 사용한다.
+- 기존 배포본과의 호환을 위해 sync의 flat key를 유지한다.
+- 유효한 sync boolean 값이 key별 권위 값이며, 해당 key가 없거나 sync read가 실패한 경우에만
+  local snapshot을 사용한다. 두 저장소 모두 값을 제공하지 못하면 자동 열기 기본값으로 조용히
+  진행하지 않고 설정 로드 실패로 처리한다.
+- local snapshot에는 설정 schema version과 갱신 시각만 포함한다. 설치·업데이트 진단에도 event
+  reason과 확장 버전만 기록하고 문서 URL이나 개인정보를 넣지 않는다.
+- 저장은 local snapshot과 sync를 모두 갱신하며, 한 단계라도 실패하면 성공 메시지를 표시하지 않는다.
 
 ---
 

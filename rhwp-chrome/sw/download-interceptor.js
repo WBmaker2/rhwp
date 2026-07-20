@@ -12,6 +12,7 @@
 
 import { openViewer } from './viewer-launcher.js';
 import { shouldInterceptDownload } from './download-interceptor-common.js';
+import { loadSettings } from './settings-store.js';
 import {
   DEFAULT_STATE_TTL_MS,
   evaluateDownloadChanged,
@@ -90,7 +91,7 @@ async function processDownloadCandidate(item, state) {
   if (!shouldInterceptDownload(item)) return;
 
   try {
-    const settings = await chrome.storage.sync.get({ autoOpen: true });
+    const settings = await loadSettings(chrome);
     const reason = settings.autoOpen ? 'opened' : 'auto-open-disabled';
     await setDownloadState(markDownloadHandled(state, Date.now(), reason));
     if (!settings.autoOpen) return;

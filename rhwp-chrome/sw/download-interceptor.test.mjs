@@ -20,20 +20,24 @@ function createChromeMock(options = {}) {
   };
   const searchItems = new Map();
   const sessionItems = new Map(Object.entries(options.session || {}));
+  const syncItems = new Map(Object.entries(options.settings || {}));
+  const localItems = new Map(Object.entries(options.localSettings || {}));
 
-  function getSessionValues(query) {
-    if (query == null) return Object.fromEntries(sessionItems);
+  function getStorageValues(items, query) {
+    if (query == null) return Object.fromEntries(items);
     if (typeof query === 'string') {
-      return { [query]: sessionItems.get(query) };
+      return items.has(query) ? { [query]: items.get(query) } : {};
     }
     if (Array.isArray(query)) {
-      return Object.fromEntries(query.map((key) => [key, sessionItems.get(key)]));
+      return Object.fromEntries(
+        query.filter((key) => items.has(key)).map((key) => [key, items.get(key)]),
+      );
     }
     if (typeof query === 'object') {
       return Object.fromEntries(
         Object.entries(query).map(([key, fallback]) => [
           key,
-          sessionItems.has(key) ? sessionItems.get(key) : fallback,
+          items.has(key) ? items.get(key) : fallback,
         ]),
       );
     }
@@ -78,7 +82,7 @@ function createChromeMock(options = {}) {
       session: {
         async get(query) {
           calls.sessionGet.push(query);
-          return getSessionValues(query);
+          return getStorageValues(sessionItems, query);
         },
         async set(items) {
           calls.sessionSet.push(items);
@@ -95,8 +99,19 @@ function createChromeMock(options = {}) {
         },
       },
       sync: {
-        async get(defaults) {
-          return { ...defaults, ...(options.settings || {}) };
+        async get(query) {
+          return getStorageValues(syncItems, query);
+        },
+        async set(items) {
+          for (const [key, value] of Object.entries(items)) syncItems.set(key, value);
+        },
+      },
+      local: {
+        async get(query) {
+          return getStorageValues(localItems, query);
+        },
+        async set(items) {
+          for (const [key, value] of Object.entries(items)) localItems.set(key, value);
         },
       },
     },
