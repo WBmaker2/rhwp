@@ -5,7 +5,7 @@
 # 3. safari-web-extension-converter로 Xcode 프로젝트 재생성
 # 4. xcodebuild로 macOS 빌드
 
-set -e
+set -e -o pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
