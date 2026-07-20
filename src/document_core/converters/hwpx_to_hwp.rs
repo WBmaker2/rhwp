@@ -1738,7 +1738,10 @@ mod tests {
             ..Default::default()
         });
         let refs2 = collect_object_border_fill_refs(&doc2);
-        assert!(refs2.contains(&9), "표 캡션 안 표의 border_fill 이 수집돼야 함");
+        assert!(
+            refs2.contains(&9),
+            "표 캡션 안 표의 border_fill 이 수집돼야 함"
+        );
     }
 
     #[test]
