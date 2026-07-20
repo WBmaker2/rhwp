@@ -62,7 +62,9 @@ WASM을 생성하고 Vite를 재시작한 뒤 동일 시나리오가 통과했�
 - upstream issue: [#2513](https://github.com/edwardkim/rhwp/issues/2513)
 - 작업 branch: `fix/issue-2513`
 - PR base: `edwardkim/rhwp:devel`
-- fork push: 진행 전
-- upstream PR: 생성 전
-- reviewer 요청: 진행 전
+- fork push: `cskwork/rhwp:fix/issue-2513` 완료
+- upstream PR: [#2518](https://github.com/edwardkim/rhwp/pull/2518), base `devel`, OPEN
+- reviewer 요청: 공식 `RequestReviews`는 contributor 권한 부족으로 거부됨
+- 대체 요청: [PR 댓글](https://github.com/edwardkim/rhwp/pull/2518#issuecomment-5018473005)에서 `@edwardkim` 태그 완료
+- GitHub Actions: preflight 성공, 나머지 check 진행 중
 - issue close/merge: 수행하지 않음

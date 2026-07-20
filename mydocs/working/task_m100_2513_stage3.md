@@ -62,5 +62,9 @@ rtk git status --short --branch
 
 - Stage 3 및 PR·리뷰 요청: 2026-07-20 작업지시자 승인 완료
 - 전체 gate: PASS
-- fork push·upstream PR·리뷰 요청: 다음 작업
+- fork push: `cskwork/rhwp:fix/issue-2513` 완료
+- upstream PR: [#2518](https://github.com/edwardkim/rhwp/pull/2518), base `devel`, OPEN
+- 공식 reviewer 지정: contributor 권한 부족으로 GitHub `RequestReviews` 거부
+- 대체 리뷰 요청: [PR 댓글](https://github.com/edwardkim/rhwp/pull/2518#issuecomment-5018473005)에서 `@edwardkim` 태그 완료
+- GitHub Actions: preflight 3개 성공, 나머지 CI/CodeQL/Render Diff 진행 중
 - issue close/merge: 수행하지 않음
