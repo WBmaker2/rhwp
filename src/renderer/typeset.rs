@@ -379,12 +379,21 @@ const HWPX_ROWBREAK_SPLIT_ROW_OVERFLOW_TOLERANCE_PX: f64 = 64.0;
 /// [Task #2085] 표 분할 첫 조각에 남길 최소 상단 높이 / RowBreak 말미 빈 행 허용 오버플로.
 const MIN_TOP_KEEP_PX: f64 = 25.0;
 
-/// Row-internal splits are painted with the visible cells' vertical padding.  The cut walker
-/// reports content-only progress (`RowCutResult::consumed_height`), so orphan protection must use
-/// the same padded height that the partial-table renderer paints.
+/// Row-internal splits normally keep the established content-only orphan threshold.  The narrow
+/// native-HWP #2439 contract instead compares the painted fragment, including visible cell
+/// padding, because that is the height that actually remains on the page.
 #[inline]
-fn row_split_meets_min_top_keep(visible_fragment_height: f64) -> bool {
-    visible_fragment_height >= MIN_TOP_KEEP_PX
+fn row_split_meets_min_top_keep(
+    content_height: f64,
+    painted_height: f64,
+    use_painted_height: bool,
+) -> bool {
+    let keep_height = if use_painted_height {
+        painted_height
+    } else {
+        content_height
+    };
+    keep_height >= MIN_TOP_KEEP_PX
 }
 
 /// Flow spacing repeated around a proven non-TAC RowBreak table fragment.
@@ -15216,13 +15225,20 @@ impl TypesetEngine {
                 break;
             }
             // 분할 행의 표시 높이(per-cell content+visible pad). advance_row_cut 의
-            // consumed_height 는 패딩을 제외하므로, orphan 판정도 렌더러가 실제로
-            // 그리는 이 높이를 사용해야 한다 (#2439: content 24px + pad 3.8px).
+            // consumed_height 는 패딩을 제외하므로, 좁은 #2439 strict 경로의 orphan
+            // 판정은 렌더러가 실제로 그리는 이 높이를 사용한다(content 24px + pad 3.8px).
             let split_total =
                 layout_engine.row_cut_content_height(table, r, row_start_cut, &res.end_cut, styles);
-            // [Task #713] sliver(orphan) 회피 — 페이지 시작 행이 아니면서
-            // 패딩을 포함한 가시 조각이 너무 작으면 행 전체를 다음 페이지로 미룬다.
-            if r > cursor_row && !row_split_meets_min_top_keep(split_total) {
+            // [Task #713] sliver(orphan) 회피 — 일반 표는 기존 content-only 기준을
+            // 유지한다. 패딩 포함 painted 기준은 좁은 #2439 구조 증거가 성립한
+            // strict 표에만 적용한다.
+            if r > cursor_row
+                && !row_split_meets_min_top_keep(
+                    res.consumed_height,
+                    split_total,
+                    strict_painted_bottom_fit,
+                )
+            {
                 end_row = r;
             } else {
                 let split_candidate_rows_height = consumed + cs_before + split_total;
@@ -15259,8 +15275,11 @@ impl TypesetEngine {
                             styles,
                         );
                         let cand2 = consumed + cs_before + split_total2;
-                        if row_split_meets_min_top_keep(split_total2)
-                            && cand2 <= avail_for_rows + split_row_overflow_tolerance
+                        if row_split_meets_min_top_keep(
+                            res2.consumed_height,
+                            split_total2,
+                            strict_painted_bottom_fit,
+                        ) && cand2 <= avail_for_rows + split_row_overflow_tolerance
                         {
                             end_row = r + 1;
                             split_end_cut = res2.end_cut.clone();
@@ -15280,7 +15299,11 @@ impl TypesetEngine {
                         && split_candidate_rows_height
                             <= avail_for_rows + BOTTOM_SQUEEZE_TOLERANCE_PX
                         && (avail_for_rows - consumed) <= BOTTOM_SQUEEZE_MAX_REST_PX
-                        && row_split_meets_min_top_keep(split_total)
+                        && row_split_meets_min_top_keep(
+                            res.consumed_height,
+                            split_total,
+                            strict_painted_bottom_fit,
+                        )
                     {
                         if std::env::var("RHWP_DIAG_SCAN").is_ok() {
                             eprintln!(
@@ -18003,8 +18026,12 @@ mod tests {
             cut.consumed_height,
         );
         assert!(
-            row_split_meets_min_top_keep(visible_height),
-            "the padded per-cell cut must remain on the current page: {visible_height}",
+            !row_split_meets_min_top_keep(cut.consumed_height, visible_height, false),
+            "ordinary RowBreak tables must keep the content-only orphan guard",
+        );
+        assert!(
+            row_split_meets_min_top_keep(cut.consumed_height, visible_height, true),
+            "the strict #2439 padded cut must remain on the current page: {visible_height}",
         );
     }
 
