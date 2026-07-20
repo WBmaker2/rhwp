@@ -39,9 +39,9 @@
   - 사람이 review/compare/overlay를 확인했다. 차이는 주로 한컴 PDF와 로컬 font/glyph
     rendering 차이이며, 쪽 경계, 표/문단 순서, 잘림 후보는 발견되지 않았다.
 
-![PR #2470 p1 visual review](assets/pr_2470/pr_2470_kftc_press_review_001.png)
+![PR #2470 p1 visual review](../assets/pr_2470/pr_2470_kftc_press_review_001.png)
 
-![PR #2470 all-page visual review](assets/pr_2470/pr_2470_kftc_press_review_contact_sheet.png)
+![PR #2470 all-page visual review](../assets/pr_2470/pr_2470_kftc_press_review_contact_sheet.png)
 
 ## 리스크와 권고
 
