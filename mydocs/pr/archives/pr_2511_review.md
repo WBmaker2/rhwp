@@ -21,7 +21,8 @@
 - 누적 통합 브랜치에서 `CARGO_INCREMENTAL=0 cargo test --profile release-test --tests`, `CARGO_INCREMENTAL=0 cargo clippy --all-targets -- -D warnings`, `cargo fmt --all -- --check`, `wasm-pack build --target web --out-dir pkg`를 통과했다.
 - shared `file-signature` 회귀 6개, Chrome/Firefox production build, unsigned Safari Xcode build를 통과했다. Safari `build.sh`의 서명 실패는 로컬 인증서·CoreSimulator 환경 제약이며 source build 실패가 아니다.
 
-- headless hml-open.check E2E에서 HML 문서 열기·저장·재열기를 확인했다. 이는 Studio HML 사용자 흐름 근거이며 Chrome/Firefox/Safari 확장 URL 식별은 shared signature 회귀와 각 확장 build로 별도 검증했다.
+- headless hml-open.check E2E에서 HML 문서 열기·저장·재열기를 확인했다. 이는 Studio HML 사용자 흐름 근거다.
+- 실제 Chrome unpacked extension E2E에서 정적 및 동적 `.hml` 링크에 확장 표식·badge가 붙고, trusted badge click이 viewer에 원본 URL을 전달해 `samples/hml/formatting_table.hml`을 1쪽 canvas로 렌더링함을 확인했다. 상태 바는 `formatting_table.hml — 1페이지`를 표시했다. 이 과정에서 동적으로 추가된 `<a>` 자체를 누락하던 공통 observer 경로는 Chrome/Firefox/Safari content script 보정으로 함께 해결했다.
 
 ## 리스크와 권고
 - HML 허용은 비어 있지 않은 `HWPML` root와 Version을 확인하는 bounded parser로 제한해 HTML/JSON/손상 입력을 계속 거부한다.

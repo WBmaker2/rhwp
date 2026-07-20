@@ -578,7 +578,8 @@
   // ─── 링크 처리 ───
 
   function processLinks(root = document) {
-    const anchors = root.querySelectorAll('a[href]');
+    const anchors = root.matches?.('a[href]') ? [root] : [];
+    anchors.push(...root.querySelectorAll('a[href]'));
     for (const anchor of anchors) {
       if (anchor.hasAttribute(PROCESSED_ATTR)) continue;
       if (!isHwpLink(anchor)) continue;

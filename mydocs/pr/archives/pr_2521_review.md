@@ -26,6 +26,8 @@
 - README 계열의 Rust 테스트 수는 실제 `--list` 결과를 기준으로 `3,400+`로 보수적으로 정정했다.
 - E2E runner는 `runTest()` Promise가 종료 전에 유실되지 않도록 저장 포맷 시나리오와 text-flow 시나리오를
   top-level `await`로 완료 대기하게 했다.
+- Chrome/Firefox/Safari content script가 동적으로 추가된 `<a>` 노드 자신도 처리하도록 보정했다. 이전에는
+  하위 링크만 순회해 동적 HWP/HWPX/HML 링크가 누락될 수 있었다.
 
 ## 검증
 
@@ -36,6 +38,9 @@
   shared HML signature 회귀를 통과했다.
 - headless browser E2E에서 HWP→HWPX 및 HWPX→HWP 저장 UI, MIME/파일 매직, 재열기를 확인했고, HML 열기·저장·재열기,
   text-flow의 2쪽 생성과 Backspace 문단 병합도 통과했다.
+- 실제 Chrome unpacked extension E2E에서 정적·동적 `.hml` 링크가 badge를 받고, badge click이
+  `samples/hml/formatting_table.hml`을 extension viewer의 1쪽 canvas로 렌더링하는 것을 확인했다. shared 및
+  Chrome/Firefox 확장 Node 회귀 57개도 통과했다.
 
 ## 렌더 영향 판정
 
