@@ -6,7 +6,7 @@
 | 작성자 / base | jangster77 / `devel` |
 | 대상 | kevin9327의 열린 원 PR 39건 (`#2464`~`#2511`, 결번 제외) |
 | 검토자 | @jangster77 |
-| 판단 | 최신 head CI 성공을 조건으로 수용 |
+| 판단 | ClickHere 회귀 보정 후 최신 head CI 성공을 조건으로 수용 |
 
 ## 통합 범위
 
@@ -31,7 +31,9 @@
 
 ## 검증
 
-- `CARGO_INCREMENTAL=0 cargo test --profile release-test --tests` 통과.
+- 최초 CI의 `issue_258_clickhere_form_mode`는 ClickHere 복사/붙여넣기 3건을 실패했다. `Field`를 일반 이동형 문자 컨트롤로 분류하면서 `split_at()`의 보이는 문자 offset이 한 칸씩 어긋난 것이 원인이다.
+- 보정 뒤 `CARGO_INCREMENTAL=0 cargo test --profile release-test --test issue_258_clickhere_form_mode` 13건과 [#2480](https://github.com/edwardkim/rhwp/pull/2480) 병합 undo·visible-offset 분할 회귀를 통과했다.
+- 전체 release-test의 최종 근거는 이 보정을 포함한 최신 PR head CI로 갱신한다. 최초 CI 이전의 전체 회귀 성공 기록만으로는 merge 근거로 사용하지 않는다.
 - `CARGO_INCREMENTAL=0 cargo clippy --all-targets -- -D warnings` 통과.
 - `cargo fmt --all -- --check`, `wasm-pack build --target web --out-dir pkg` 통과.
 - npm editor `npm test` 18/18, `npm pack --dry-run`, Chrome/Firefox production build, unsigned Safari Xcode build,
@@ -52,7 +54,7 @@
 
 ## Merge 전 조건과 후속
 
-- [#2521](https://github.com/edwardkim/rhwp/pull/2521) 최신 head의 필수 GitHub Actions가 모두 성공해야 한다.
+- [#2521](https://github.com/edwardkim/rhwp/pull/2521) 최신 head의 필수 GitHub Actions가 모두 성공해야 한다. 특히 `issue_258_clickhere_form_mode`를 포함하는 default-feature test shard가 성공해야 한다.
 - 작업지시자의 merge 승인을 받은 뒤에만 merge한다.
 - merge 뒤 `upstream/devel`을 동기화하고, 각 원 PR에 통합 PR 링크와 해당 개별 검토 문서의 결론을 남긴 뒤
   직접 적용 또는 상위 통합 흡수 여부에 따라 close한다. merge SHA, close 결과, 코멘트 URL은 GitHub 원천 기록으로

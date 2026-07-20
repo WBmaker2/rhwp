@@ -303,7 +303,6 @@ impl Paragraph {
                 | Control::Endnote(_)
                 | Control::AutoNumber(_)
                 | Control::CharOverlap(_)
-                | Control::Field(_)
         )
     }
 
@@ -925,6 +924,15 @@ impl Paragraph {
         }
         self.field_ranges = kept_field_ranges;
 
+        // Field는 보이는 문자 오프셋에서 한 글자를 차지하지 않는다. 다만 새 문단으로
+        // 이관되는 FieldRange가 참조하는 Field control은 범위와 함께 이동해야 한다.
+        // 일반 이동형 컨트롤로 분류하면 split의 논리 offset 계산에 Field가 더해져
+        // ClickHere 복사/붙여넣기 경계가 한 글자씩 어긋난다.
+        let moved_field_control_indices: std::collections::HashSet<usize> = new_field_ranges
+            .iter()
+            .map(|field_range| field_range.control_idx)
+            .collect();
+
         // 5-2. controls 분할
         //
         // TAC 그림/표/수식 등은 본문에서 한 글자처럼 취급되므로 문단 분할 시
@@ -939,8 +947,9 @@ impl Paragraph {
 
         for (ci, ctrl) in old_controls.into_iter().enumerate() {
             let data = old_ctrl_data.get(ci).cloned().flatten();
-            let move_to_new = Self::is_split_movable_control(&ctrl)
-                && control_positions.get(ci).copied().unwrap_or(usize::MAX) >= char_offset;
+            let move_to_new = (Self::is_split_movable_control(&ctrl)
+                && control_positions.get(ci).copied().unwrap_or(usize::MAX) >= char_offset)
+                || moved_field_control_indices.contains(&ci);
 
             if move_to_new {
                 moved_control_idx_map.insert(ci, new_controls.len());

@@ -879,6 +879,43 @@ fn test_undo_split_moves_merged_clickhere_field_to_restored_paragraph() {
 }
 
 #[test]
+fn test_split_moves_field_with_range_without_consuming_visible_offset() {
+    let mut para = Paragraph {
+        text: "AABB".to_string(),
+        char_count: 13,
+        char_offsets: vec![0, 1, 2, 3],
+        controls: vec![Control::Field(crate::model::control::Field {
+            field_type: crate::model::control::FieldType::ClickHere,
+            ..Default::default()
+        })],
+        field_ranges: vec![FieldRange {
+            start_char_idx: 2,
+            end_char_idx: 4,
+            control_idx: 0,
+        }],
+        has_para_text: true,
+        ..Default::default()
+    };
+
+    // Field는 새 문단으로 이관되지만, split offset 2는 보이는 "AA" 뒤여야 한다.
+    let restored = para.split_at(2);
+
+    assert_eq!(para.text, "AA");
+    assert!(para.controls.is_empty());
+    assert!(para.field_ranges.is_empty());
+    assert_eq!(restored.text, "BB");
+    assert!(matches!(restored.controls.as_slice(), [Control::Field(_)]));
+    assert_eq!(
+        restored
+            .field_ranges
+            .iter()
+            .map(|range| (range.start_char_idx, range.end_char_idx, range.control_idx))
+            .collect::<Vec<_>>(),
+        vec![(0, 2, 0)]
+    );
+}
+
+#[test]
 fn test_char_shape_id_at() {
     let para = Paragraph {
         text: "ABCDE".to_string(),
