@@ -24,6 +24,22 @@ export const DEFAULT_SETTINGS = Object.freeze({
  * sync 를 읽을 수 없는 동시에 local snapshot 도 없으면 기본값으로 조용히 진행하지 않고 실패한다.
  */
 export async function loadSettings(chromeApi = globalThis.chrome, options = {}) {
+  const resolved = await resolveSettings(chromeApi, options);
+  return resolved.settings;
+}
+
+/**
+ * 탭 생성처럼 사용자가 원치 않을 수 있는 자동 동작은 sync 상태를 확인할 수 있을 때만 허용한다.
+ * UI는 local snapshot으로 복구할 수 있지만, sync read 실패 중 local true만으로 자동 열기를
+ * 승인하지 않는다.
+ */
+export async function loadSettingsForAutomaticActions(chromeApi = globalThis.chrome, options = {}) {
+  const resolved = await resolveSettings(chromeApi, options);
+  if (resolved.syncReadable) return resolved.settings;
+  return { ...resolved.settings, autoOpen: false };
+}
+
+async function resolveSettings(chromeApi, options) {
   const now = options.now ?? Date.now;
   const syncArea = requireStorageArea(chromeApi, 'sync');
   const localArea = requireStorageArea(chromeApi, 'local');
@@ -61,12 +77,12 @@ export async function loadSettings(chromeApi = globalThis.chrome, options = {}) 
     }
   }
 
-  return settings;
+  return { settings, syncReadable: syncResult.ok };
 }
 
 /**
- * local snapshot 을 먼저 기록한 뒤 호환 가능한 flat sync key 를 저장한다.
- * 어느 단계에서든 실패하면 호출자가 성공 UI를 표시하지 않도록 rejection 을 전달한다.
+ * 권위 저장소인 sync 기록에 실패하면 rejection 을 전달한다. local snapshot 은 복구용
+ * best-effort 백업이므로 실패해도 이미 성공한 sync 저장을 실패로 되돌리지 않는다.
  */
 export async function saveSettings(chromeApi = globalThis.chrome, candidate, options = {}) {
   const now = options.now ?? Date.now;
@@ -75,7 +91,6 @@ export async function saveSettings(chromeApi = globalThis.chrome, candidate, opt
   const localArea = requireStorageArea(chromeApi, 'local');
   const syncArea = requireStorageArea(chromeApi, 'sync');
 
-  await localArea.set({ [LOCAL_BACKUP_KEY]: createSnapshot(settings, updatedAt) });
   await syncArea.set({
     ...settings,
     [SYNC_META_KEY]: {
@@ -83,6 +98,11 @@ export async function saveSettings(chromeApi = globalThis.chrome, candidate, opt
       updatedAt,
     },
   });
+  try {
+    await localArea.set({ [LOCAL_BACKUP_KEY]: createSnapshot(settings, updatedAt) });
+  } catch (error) {
+    console.warn('[rhwp-settings] local backup 저장 실패:', error);
+  }
 
   return settings;
 }

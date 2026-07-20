@@ -10,9 +10,10 @@ Chrome/Edge 확장에서 사용자가 끈 `한글파일 자동보기(autoOpen=fa
 누락, storage 읽기 실패, Service Worker 재시작, 확장 설치·업데이트 수명주기 이후에도 보존될
 수 있는 이중 저장·복구 구조를 구현했다.
 
-정적 검사 결과, Chrome 업데이트 자체가 설정을 초기화한다고 단정할 수는 없었다. 대신 설치 시
-기본값 재기록, options 초기화 경쟁, 저장 오류 무시, local 복구 부재가 실제 원복처럼 보일 수
-있는 코드 결함임을 확인하고 모두 제거했다.
+수정 빌드와 스토어 v0.2.8 모두 정상 수명주기 테스트를 통과했으므로 Chrome 업데이트 자체가
+설정을 초기화하는 원 제보는 재현되지 않았다. 이번 작업은 설치 시 기본값 재기록, options 초기화
+경쟁, 저장 오류 무시, local 복구 부재에 대한 방어 로직과 관측 가능한 오류 처리로 범위를 명확히
+한다.
 
 ## 주요 변경
 
@@ -23,14 +24,20 @@ Chrome/Edge 확장에서 사용자가 끈 `한글파일 자동보기(autoOpen=fa
 - 설치·업데이트 이벤트는 사용자 설정을 쓰지 않고 최소 local 진단 메타데이터만 기록한다.
 - options, message router, download interceptor가 하나의 settings adapter를 사용한다.
 - 저장소·수명주기·options 경쟁/오류·기존 다운로드 동작 회귀 테스트를 추가했다.
+- sync 상태를 읽지 못하면 local `true`만으로 자동 탭을 열지 않는 fail-closed 정책을 적용했다.
+- 동일 download id 동시 이벤트를 in-flight 선점으로 직렬화하고 handled/terminal 최신 상태를
+  보존해 탭 1개 불변식을 강화했다.
+- sync 저장을 권위 성공 조건으로 삼고 local snapshot 실패는 복구 백업 경고로 분리했다.
 
 세부 원인, 저장소 우선순위, 수동 체크리스트는
-[Stage 1](../working/task_m100_2656_stage1.md)에 기록했다.
+[Stage 1](../working/task_m100_2656_stage1.md)에 기록했다. 과거 탭 다발 맥락과 사후 보강은
+[Stage 2](../working/task_m100_2656_stage2.md)에 기록했다.
 
 ## 검증
 
 - 변경 JavaScript `node --check`: 통과
-- Chrome 확장 테스트: 31 passed, 0 failed
+- Chrome 확장 테스트: 37 passed, 0 failed
+- 공통 다운로드 판정·상태 머신 테스트: 40 passed, 0 failed
 - 확장 dist 계약 테스트: 3 passed, 0 failed
 - locale JSON parse: 통과
 - source/dist 핵심 모듈 byte 비교: 통과
@@ -45,6 +52,10 @@ Service Worker 재시작, 비활성화/재활성화, 브라우저 재실행, 압
 실제 Chrome Web Store 선배포는 필요하지 않다. 업데이트 이벤트의 설정 무변경 계약은 자동
 테스트로 검증하며, 동일 경로 압축해제 Reload로 배포 전 수명주기 smoke test를 할 수 있다.
 Web Store 업데이트 뒤의 확인은 별도 배포 인수 항목이다.
+
+작업지시자의 설정 수명주기 1~7 테스트는 통과했다. 보강 후 최종 수동 인수는 자동 열기를 켠
+상태에서 과거 HWP 기록을 둔 채 Reload/Chrome 재실행 시 탭이 열리지 않고, 새 HWP 한 건은 탭
+정확히 1개를 여는지 확인하는 두 항목이다.
 
 ## 배포 상태
 

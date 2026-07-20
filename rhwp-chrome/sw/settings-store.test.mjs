@@ -8,6 +8,7 @@ import {
   SETTINGS_SCHEMA_VERSION,
   SYNC_META_KEY,
   loadSettings,
+  loadSettingsForAutomaticActions,
   saveSettings,
 } from './settings-store.js';
 
@@ -73,6 +74,17 @@ test('sync read failure falls back to the local backup', async () => {
   assert.equal(settings.autoOpen, false);
 });
 
+test('automatic actions fail closed when sync cannot confirm a local true value', async () => {
+  const env = createChromeStorageMock({
+    local: { [LOCAL_BACKUP_KEY]: snapshot(DEFAULT_SETTINGS) },
+  });
+  env.syncArea.failNextGet(new Error('sync unavailable'));
+
+  const settings = await loadSettingsForAutomaticActions(env.chrome, { now: () => 105 });
+
+  assert.equal(settings.autoOpen, false);
+});
+
 test('load fails when neither storage area can provide a trustworthy value', async () => {
   const env = createChromeStorageMock();
   env.syncArea.failNextGet(new Error('sync unavailable'));
@@ -111,6 +123,26 @@ test('save rejects instead of reporting success when sync persistence fails', as
     saveSettings(env.chrome, { ...DEFAULT_SETTINGS, autoOpen: false }),
     /sync write failed/,
   );
+});
+
+test('local backup failure does not prevent authoritative sync persistence', async () => {
+  const env = createChromeStorageMock();
+  const next = { ...DEFAULT_SETTINGS, autoOpen: false };
+  env.localArea.failNextSet(new Error('local backup failed'));
+
+  const originalWarn = console.warn;
+  console.warn = () => {};
+  try {
+    const saved = await saveSettings(env.chrome, next, { now: () => 201 });
+    assert.deepEqual(saved, next);
+  } finally {
+    console.warn = originalWarn;
+  }
+
+  assert.deepEqual(env.syncArea.dump(), {
+    ...next,
+    [SYNC_META_KEY]: { schemaVersion: SETTINGS_SCHEMA_VERSION, updatedAt: 201 },
+  });
 });
 
 test('invalid stored values never replace boolean settings', async () => {
