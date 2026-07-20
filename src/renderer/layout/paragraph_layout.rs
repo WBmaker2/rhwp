@@ -181,6 +181,38 @@ fn is_caption_cell_context(cell_ctx: Option<&CellContext>) -> bool {
         .is_some_and(|entry| entry.cell_index == CAPTION_CELL_SENTINEL)
 }
 
+/// HWP5 원본 LineSeg가 저장한 column-relative 줄 시작점을 일반 본문 줄에 적용한다.
+///
+/// ParaShape의 margin/indent는 재조판 기본값이고, 원본 LineSeg.column_start는 해당
+/// 줄의 확정 좌표다. 다만 cs+sw가 단 너비와 같은 일반 줄에만 적용한다. 그림 어울림,
+/// 표 셀, 합성 LineSeg는 각각 별도 좌표계를 사용하므로 caller가 `eligible=false`로
+/// 제외해 column_start가 이중 적용되지 않게 한다.
+fn authoritative_stored_line_start_px(
+    styled_margin_left: f64,
+    line_seg: Option<&LineSeg>,
+    column_width_hu: i32,
+    dpi: f64,
+    eligible: bool,
+) -> f64 {
+    let Some(line_seg) = line_seg else {
+        return styled_margin_left;
+    };
+    let full_width_line = line_seg.column_start > 0
+        && line_seg.segment_width > 0
+        && line_seg
+            .column_start
+            .saturating_add(line_seg.segment_width)
+            .saturating_sub(column_width_hu)
+            .abs()
+            <= 200;
+    let authoritative = line_seg.tag & LineSeg::TAG_IMPLEMENTATION_PROPERTY == 0;
+    if !eligible || !authoritative || !full_width_line {
+        return styled_margin_left;
+    }
+
+    styled_margin_left.max(hwpunit_to_px(line_seg.column_start, dpi))
+}
+
 fn composed_line_char_end(comp: &ComposedParagraph, line_idx: usize) -> usize {
     if let Some(next) = comp.lines.get(line_idx + 1) {
         return next.char_start;
@@ -2996,7 +3028,7 @@ impl LayoutEngine {
             // - 내어쓰기(ind<0): 첫줄 margin_left, 다음줄 margin_left+|indent|
             let line_indent =
                 crate::renderer::equation_tac_flow::paragraph_line_indent(indent, line_idx);
-            let effective_margin_left = margin_left + line_indent;
+            let styled_margin_left = margin_left + line_indent;
 
             // [Task #489] Picture/Shape Square wrap (어울림) 시 LINE_SEG.cs/sw 적용.
             // 한컴이 인코딩한 정답값을 그대로 사용 (휴리스틱 없음).
@@ -3069,19 +3101,35 @@ impl LayoutEngine {
                 && comp_line.column_start > 0
                 && comp_line.segment_width > 0
                 && comp_line.segment_width < col_area_w_hu;
-            let (effective_col_x, effective_col_w) = if (has_picture_shape_square_wrap
+            let uses_stored_segment_geometry = (has_picture_shape_square_wrap
                 || line_has_inline_tac_table
                 || precomputed_body_wrap_line
                 || empty_stored_wrap_line)
                 && comp_line.segment_width > 0
-                && (line_avail_hu < col_area_w_hu - 200 || cs_significant)
-            {
+                && (line_avail_hu < col_area_w_hu - 200 || cs_significant);
+            let (effective_col_x, effective_col_w) = if uses_stored_segment_geometry {
                 let cs_px = hwpunit_to_px(comp_line.column_start, self.dpi);
                 let sw_px = hwpunit_to_px(comp_line.segment_width, self.dpi);
                 (col_area.x + cs_px, sw_px)
             } else {
                 (col_area.x, col_area.width)
             };
+            let profile = self.profile.get();
+            let hwp5_stored_line_start_eligible = cell_ctx.is_none()
+                && self.is_body_flow_col_area(col_area)
+                && matches!(alignment, Alignment::Justify | Alignment::Left)
+                && wrap_anchor.is_none()
+                && !uses_stored_segment_geometry
+                && composed.numbering_text.is_none()
+                && para.map(|p| p.controls.is_empty()).unwrap_or(false)
+                && profile.native_hwp5_layout();
+            let effective_margin_left = authoritative_stored_line_start_px(
+                styled_margin_left,
+                para.and_then(|p| p.line_segs.get(line_idx)),
+                col_area_w_hu,
+                self.dpi,
+                hwp5_stored_line_start_eligible,
+            );
 
             // 인라인 Shape가 있는 줄: 텍스트 y를 Shape 하단 baseline에 맞춤
             let text_y = if has_tac_shape
@@ -6389,6 +6437,9 @@ pub(crate) struct ParaInlineState {
     /// 현재 line 의 최대 picture height (line wrap 임계 + 다음 line advance 용)
     pub line_height: f64,
 }
+
+#[cfg(test)]
+mod issue_2439_lineseg_indent_tests;
 
 #[cfg(test)]
 mod issue_1151_v3_helper_tests {
