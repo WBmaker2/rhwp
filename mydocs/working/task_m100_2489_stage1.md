@@ -21,3 +21,12 @@
 - `#2489`의 수치가 현재 목록과 다르면 문서 숫자를 임의로 유지하지 않고 실제 결과에 맞춰
   메인터너 보정한다.
 - 패키지 배포, GitHub 릴리스, 원격 push는 수행하지 않는다.
+
+## 결과
+
+- `cargo test --profile release-test --tests -- --list`는 `3,405`개 테스트를 열거했다. 따라서
+  `#2489`의 `5,500+` 표기는 적용하지 않고, README·영문 README·기여 가이드 모두에서 검증 가능한
+  `3,400+`로 보정했다.
+- 한국어와 영문 변경 이력 모두 최상단에 `Unreleased` 섹션이 있다.
+- `.mailmap` 적용 뒤 `git check-mailmap`은 cskwork와 lpaiu-cs의 과거 이름·이메일을 각각 하나의
+  canonical GitHub noreply 정체성으로 반환한다.
