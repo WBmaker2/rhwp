@@ -8,8 +8,8 @@ fix(renderer): HWP 반복 표 헤더 격자와 페이지 흐름 정합 (#2439)
 
 ## 본문
 
-아래 본문에서 `PR_NUMBER`와 `ASSET_COMMIT_SHA`는 Draft PR 번호를 확보하고 compare PNG를
-커밋한 뒤 실제 값으로 치환한다.
+compare PNG는 저장소에 커밋하지 않는다. PR 본문을 GitHub Web에서 편집하면서 각 페이지
+위치에 직접 첨부하고, GitHub가 생성한 첨부 URL을 사용한다.
 
 ```markdown
 ## 변경 요약
@@ -96,60 +96,59 @@ offset, 단일 표, 비합성 저장 LineSeg, 뒤따르는 일반 텍스트라�
 
 ### 1쪽
 
-[![1쪽 rhwp/PDF 비교](https://raw.githubusercontent.com/postmelee/rhwp/ASSET_COMMIT_SHA/mydocs/pr/assets/prPR_NUMBER_issue2439_compare_p001.png)](https://raw.githubusercontent.com/postmelee/rhwp/ASSET_COMMIT_SHA/mydocs/pr/assets/prPR_NUMBER_issue2439_compare_p001.png)
+<!-- GitHub Web에서 compare_001.png를 여기에 첨부 -->
 
 ### 2쪽
 
-[![2쪽 rhwp/PDF 비교](https://raw.githubusercontent.com/postmelee/rhwp/ASSET_COMMIT_SHA/mydocs/pr/assets/prPR_NUMBER_issue2439_compare_p002.png)](https://raw.githubusercontent.com/postmelee/rhwp/ASSET_COMMIT_SHA/mydocs/pr/assets/prPR_NUMBER_issue2439_compare_p002.png)
+<!-- GitHub Web에서 compare_002.png를 여기에 첨부 -->
 
 ### 3쪽
 
-[![3쪽 rhwp/PDF 비교](https://raw.githubusercontent.com/postmelee/rhwp/ASSET_COMMIT_SHA/mydocs/pr/assets/prPR_NUMBER_issue2439_compare_p003.png)](https://raw.githubusercontent.com/postmelee/rhwp/ASSET_COMMIT_SHA/mydocs/pr/assets/prPR_NUMBER_issue2439_compare_p003.png)
+<!-- GitHub Web에서 compare_003.png를 여기에 첨부 -->
 
 ### 4쪽
 
-[![4쪽 rhwp/PDF 비교](https://raw.githubusercontent.com/postmelee/rhwp/ASSET_COMMIT_SHA/mydocs/pr/assets/prPR_NUMBER_issue2439_compare_p004.png)](https://raw.githubusercontent.com/postmelee/rhwp/ASSET_COMMIT_SHA/mydocs/pr/assets/prPR_NUMBER_issue2439_compare_p004.png)
+<!-- GitHub Web에서 compare_004.png를 여기에 첨부 -->
 
 ### 5쪽
 
-[![5쪽 rhwp/PDF 비교](https://raw.githubusercontent.com/postmelee/rhwp/ASSET_COMMIT_SHA/mydocs/pr/assets/prPR_NUMBER_issue2439_compare_p005.png)](https://raw.githubusercontent.com/postmelee/rhwp/ASSET_COMMIT_SHA/mydocs/pr/assets/prPR_NUMBER_issue2439_compare_p005.png)
+<!-- GitHub Web에서 compare_005.png를 여기에 첨부 -->
 
 ### 6쪽
 
-[![6쪽 rhwp/PDF 비교](https://raw.githubusercontent.com/postmelee/rhwp/ASSET_COMMIT_SHA/mydocs/pr/assets/prPR_NUMBER_issue2439_compare_p006.png)](https://raw.githubusercontent.com/postmelee/rhwp/ASSET_COMMIT_SHA/mydocs/pr/assets/prPR_NUMBER_issue2439_compare_p006.png)
+<!-- GitHub Web에서 compare_006.png를 여기에 첨부 -->
 
 ### 7쪽
 
-[![7쪽 rhwp/PDF 비교](https://raw.githubusercontent.com/postmelee/rhwp/ASSET_COMMIT_SHA/mydocs/pr/assets/prPR_NUMBER_issue2439_compare_p007.png)](https://raw.githubusercontent.com/postmelee/rhwp/ASSET_COMMIT_SHA/mydocs/pr/assets/prPR_NUMBER_issue2439_compare_p007.png)
+<!-- GitHub Web에서 compare_007.png를 여기에 첨부 -->
 
 ### 8쪽
 
-[![8쪽 rhwp/PDF 비교](https://raw.githubusercontent.com/postmelee/rhwp/ASSET_COMMIT_SHA/mydocs/pr/assets/prPR_NUMBER_issue2439_compare_p008.png)](https://raw.githubusercontent.com/postmelee/rhwp/ASSET_COMMIT_SHA/mydocs/pr/assets/prPR_NUMBER_issue2439_compare_p008.png)
+<!-- GitHub Web에서 compare_008.png를 여기에 첨부 -->
 
 ### 9쪽
 
-[![9쪽 rhwp/PDF 비교](https://raw.githubusercontent.com/postmelee/rhwp/ASSET_COMMIT_SHA/mydocs/pr/assets/prPR_NUMBER_issue2439_compare_p009.png)](https://raw.githubusercontent.com/postmelee/rhwp/ASSET_COMMIT_SHA/mydocs/pr/assets/prPR_NUMBER_issue2439_compare_p009.png)
+<!-- GitHub Web에서 compare_009.png를 여기에 첨부 -->
 
 ### 10쪽
 
-[![10쪽 rhwp/PDF 비교](https://raw.githubusercontent.com/postmelee/rhwp/ASSET_COMMIT_SHA/mydocs/pr/assets/prPR_NUMBER_issue2439_compare_p010.png)](https://raw.githubusercontent.com/postmelee/rhwp/ASSET_COMMIT_SHA/mydocs/pr/assets/prPR_NUMBER_issue2439_compare_p010.png)
+<!-- GitHub Web에서 compare_010.png를 여기에 첨부 -->
 
 ## 관련 이슈
 
 Closes #2439
 ```
 
-## 생성 조건
+## 게시 상태와 이미지 첨부
 
+- PR: [#2512](https://github.com/edwardkim/rhwp/pull/2512)
 - base: `edwardkim/rhwp:devel`
 - head: `postmelee:fix/2439-split-table-flow`
 - 상태: Draft
 - compare 원본: `/private/tmp/rhwp-issue2439-sweep-stage7-final2-20260720/issue2439-answer/compare/`
-- 게시 순서:
-  1. 현재 브랜치를 push하고 이미지 섹션 전 본문으로 Draft PR을 생성한다.
-  2. 발급된 PR 번호로 `mydocs/pr/assets/pr{N}_issue2439_compare_p001.png`부터
-     `p010.png`까지 복사한다.
-  3. 이미지 commit을 push한다.
-  4. 본문 템플릿의 `PR_NUMBER`와 `ASSET_COMMIT_SHA`를 치환해 PR 본문을 갱신한다.
+- 이미지 첨부 순서:
+  1. GitHub Web에서 PR 본문을 편집한다.
+  2. 각 페이지 제목 아래에 `compare_001.png`부터 `compare_010.png`까지 직접 첨부한다.
+  3. 미리보기에서 10개 이미지와 페이지 순서를 확인한 뒤 저장한다.
 
-GitHub CLI 인증을 복구한 뒤 위 순서로 게시한다.
+compare PNG는 저장소 경로에 추가하지 않는다.
