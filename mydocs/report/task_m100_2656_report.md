@@ -37,6 +37,7 @@ Chrome/Edge 확장에서 사용자가 끈 `한글파일 자동보기(autoOpen=fa
 
 - 변경 JavaScript `node --check`: 통과
 - Chrome 확장 테스트: 37 passed, 0 failed
+- Chrome 옵션 UI 테스트 CI gate: 4 passed, 0 failed
 - 공통 다운로드 판정·상태 머신 테스트: 40 passed, 0 failed
 - 확장 dist 계약 테스트: 3 passed, 0 failed
 - locale JSON parse: 통과
@@ -63,5 +64,10 @@ Chrome/OS 시작 지연으로 판정했으며 이 PR의 회귀로 다루지 않�
 
 ## 배포 상태
 
-로컬 구현, 테스트, dist 빌드, 수동 인수, 문서화까지 완료했다. remote push, PR 생성, GitHub 이슈
-코멘트는 저장소 지침에 따라 사용자 승인 전에는 수행하지 않는다.
+로컬 구현, 테스트, dist 빌드, 수동 인수, 문서화까지 완료하고
+[Draft PR #2658](https://github.com/edwardkim/rhwp/pull/2658)을 `devel` 대상으로 생성했다.
+
+PR 생성 뒤 CI의 기존 확장 테스트 명령이 `rhwp-chrome/sw/*.test.mjs`만 실행해 저장 실패와 초기 로딩
+경쟁을 검증하는 루트의 `options.test.mjs`를 누락한다는 점을 확인했다. 별도 옵션 UI 테스트 단계를
+추가해 4개 테스트를 PR gate에 연결했다. 실제 Chromium에 압축해제 확장을 로드하는 E2E는 브라우저
+바이너리·영속 프로필·다운로드 fixture를 도입하는 별도 범위이므로 후속 이슈/PR로 분리한다.
