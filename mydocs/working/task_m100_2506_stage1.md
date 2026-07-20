@@ -10,3 +10,8 @@
 1. Confirm the Chrome sources no longer contain a duplicated extension version literal.
 2. Confirm the content script sets the DOM attribute before injecting the page-context helper.
 3. Run JavaScript syntax checks and a local Chrome production build without publishing or installing an extension.
+
+## Correction
+
+- The contributor helper initially read `data-rhwp-extension-version`, while the Chrome content script, Firefox implementation, and extension build guide use `data-hwp-extension-version`.
+- Keep the established `data-hwp-extension-version` contract and add a source-level regression test for the producer/consumer pair and injection ordering.

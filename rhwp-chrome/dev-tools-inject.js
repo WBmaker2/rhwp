@@ -4,7 +4,7 @@
   'use strict';
   if (window.rhwpDev) return;
 
-  const VERSION = document.documentElement.getAttribute('data-rhwp-extension-version') || 'unknown';
+  const VERSION = document.documentElement.getAttribute('data-hwp-extension-version') || 'unknown';
 
   window.rhwpDev = {
     inspect() {
