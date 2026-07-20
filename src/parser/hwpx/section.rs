@@ -2394,7 +2394,8 @@ fn parse_picture(
                                 // 종전엔 표 파서만 되읽어, 그림/도형/차트/OLE 는 prevent_page_break
                                 // 이 0 으로 유실됐다(표 파서와 동형으로 보강).
                                 b"holdAnchorAndSO" => {
-                                    common.prevent_page_break = if parse_bool(&attr) { 1 } else { 0 };
+                                    common.prevent_page_break =
+                                        if parse_bool(&attr) { 1 } else { 0 };
                                 }
                                 b"vertRelTo" => {
                                     common.vert_rel_to = match attr_str(&attr).as_str() {
@@ -3922,7 +3923,6 @@ fn parse_shape_object(
                 raw_trailing: Vec::new(),
             }),
             started_right_or_bottom: object_ids.is_reverse_hv,
-            ..Default::default()
         }),
         b"arc" => ShapeObject::Arc(ArcShape {
             common,
@@ -5940,7 +5940,8 @@ fn parse_common_shape_children(
                                 // 종전엔 표 파서만 되읽어, 그림/도형/차트/OLE 는 prevent_page_break
                                 // 이 0 으로 유실됐다(표 파서와 동형으로 보강).
                                 b"holdAnchorAndSO" => {
-                                    common.prevent_page_break = if parse_bool(&attr) { 1 } else { 0 };
+                                    common.prevent_page_break =
+                                        if parse_bool(&attr) { 1 } else { 0 };
                                 }
                                 _ => {}
                             }
