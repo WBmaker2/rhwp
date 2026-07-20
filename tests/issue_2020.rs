@@ -265,14 +265,12 @@ fn issue_2020_bokhak_receipt_seal_line_and_stamp_align() {
             && (82.0..=88.0).contains(&stamp_circle.height),
         "빨간 도장 원은 한컴 PDF 기준 위치/크기를 따라야 함: circle={stamp_circle:?}"
     );
-    // [#2430] 한양신명조 ASCII 실측 교정으로 (year)/(month)/(day) 런이 한컴
-    // 정합 폭으로 좁아지며(문자별 PDF 실측 일치), 종전 과대폭이 우연 상쇄하던
-    // 공백런 갭 결손(한컴 48.8/48.3/136.4px vs rhwp 43.7/43.5/111px — 배분
-    // 정렬/공백 신축 모델링 별건)이 드러나 ㊞ 가 15px 좌측 이동(한컴 Δcx
-    // 20.9px, rhwp 36.2px). 상한을 40 으로 완화하되 "원 내부 왼쪽" 의도는
-    // 유지 — 공백런 축은 후속 이슈로 추적.
+    // [#2509 복원] receipt_date_stamp_shift_px(도장 −21px 핵) 제거 + #2430 메트릭
+    // 교정으로 ㊞ 가 오라클 정위치(text x=635.56, Δcx=20.6px)로 복귀 — 한컴 Δcx
+    // 20.9px 와 정합. #2510 로 인해 임시 완화했던 상한 40 을 원래 28 로 복원한다
+    // (#2509 종결). 20.6px 은 "원 내부 왼쪽" [15,28] 정중앙.
     assert!(
-        (15.0..=40.0).contains(&(circle_cx - text_cx)) && (text_cy - circle_cy).abs() <= 8.0,
+        (15.0..=28.0).contains(&(circle_cx - text_cx)) && (text_cy - circle_cy).abs() <= 8.0,
         "날짜 옆 `㊞`은 빨간 도장 원 중심이 아니라 한컴처럼 원 내부 왼쪽에 놓여야 함: text=({text_cx:.1},{text_cy:.1}) circle=({circle_cx:.1},{circle_cy:.1})"
     );
 
