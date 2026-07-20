@@ -15,3 +15,9 @@
 
 - The contributor helper initially read `data-rhwp-extension-version`, while the Chrome content script, Firefox implementation, and extension build guide use `data-hwp-extension-version`.
 - Keep the established `data-hwp-extension-version` contract and add a source-level regression test for the producer/consumer pair and injection ordering.
+
+## Result
+
+- Chrome now reads its version from `chrome.runtime.getManifest().version` and passes the same established DOM attribute to the page-context DevTools helper.
+- The regression test verifies the dynamic source, producer/consumer attribute agreement, and ordering before helper injection.
+- The focused Chrome test suite passed 15 tests, and the local production extension build completed without publishing or installing it.
