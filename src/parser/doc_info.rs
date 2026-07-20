@@ -649,7 +649,11 @@ fn parse_char_shape(data: &[u8]) -> Result<CharShape, DocInfoError> {
 fn parse_tab_def(data: &[u8]) -> Result<TabDef, DocInfoError> {
     let mut r = ByteReader::new(data);
     let attr = r.read_u32().unwrap_or(0);
-    let tab_count = r.read_u32().unwrap_or(0) as usize;
+    // tab_count 는 파일에서 온 u32 다. 남은 바이트로 실제 담을 수 있는 개수
+    // (탭당 4+1+1+2=8바이트)로 상한을 둔다. 종전엔 상한이 없어 아래 루프의
+    // remaining()<8 가드가 돌기도 전에 Vec::with_capacity 가 최대 ~34GB 예약을
+    // 시도해 OOM abort 로 이어졌다. 정상 파일에선 값이 그대로라 동작 불변.
+    let tab_count = (r.read_u32().unwrap_or(0) as usize).min(r.remaining() / 8);
 
     let mut tabs = Vec::with_capacity(tab_count);
     for _ in 0..tab_count {
@@ -891,6 +895,19 @@ fn parse_style(data: &[u8]) -> Result<Style, DocInfoError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn parse_tab_def_bounds_hostile_tab_count() {
+        // 악의적 tab_count(0xFFFFFFFF)가 Vec::with_capacity 로 ~34GB 예약을
+        // 시도해 OOM abort 되면 안 된다. 남은 바이트 기준으로 상한이 걸려
+        // 빈 탭 목록으로 정상 반환해야 한다.
+        let data = [0u8, 0, 0, 0, 0xFF, 0xFF, 0xFF, 0xFF];
+        let tab_def = parse_tab_def(&data).expect("악성 입력도 graceful 하게 처리");
+        assert!(
+            tab_def.tabs.is_empty(),
+            "남은 바이트가 없으므로 탭은 비어야 함"
+        );
+    }
 
     // 레코드 바이트 생성 헬퍼
     fn make_record(tag_id: u16, level: u16, data: &[u8]) -> Vec<u8> {
