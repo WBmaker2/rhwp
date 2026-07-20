@@ -24,3 +24,12 @@
 1. `actionlint`로 변경된 네 workflow를 검사한다.
 2. YAML 파싱과 `git diff --check`를 수행한다.
 3. 네 workflow의 action version이 기존 CI 정책과 일치하는지 검색으로 확인한다.
+
+## 결과
+
+- 네 workflow의 action 참조가 `actions/cache@v5`, `actions/upload-artifact@v7`,
+  `actions/download-artifact@v8`, `actions/checkout@v5`로 현행 CI 정책과 일치한다.
+- 변경된 YAML 네 파일은 정상 파싱됐고, `git diff --check`도 통과했다.
+- `actionlint`는 `release-binary.yml`과 `render-diff.yml`에 이미 있던 shellcheck 정보 경고
+  8건만 보고했다. 해당 baseline 경고를 제외한 actionlint 검사는 통과했으며, 이번 action version
+  변경과 관련된 문법·정책 오류는 없었다.
