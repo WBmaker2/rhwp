@@ -515,8 +515,12 @@ impl HeightMeasurer {
         );
         let spacing_after = para_style.map(|s| s.spacing_after).unwrap_or(0.0);
 
-        // [Task #1042 Stage 6c] line_segs.empty paragraph 의 compose_lines fallback
-        // 결과를 단 너비 기반으로 recompose — paragraph_layout (Stage 6b) 와 동일.
+        // [Task #1042 Stage 6c][#2632] line_segs.empty paragraph 의 compose_lines
+        // fallback 결과를 단 너비 기반으로 recompose — typeset(format_paragraph)·
+        // render(layout_partial_paragraph) 와 동일한 본문 래퍼(recompose_for_body_width)
+        // 사용. 종전엔 셀 전용 recompose_for_cell_width 를 써 restyle_fallback_runs_
+        // by_char_shapes(글자모양별 run 재분할)를 건너뛰어, 글자모양이 섞인 본문
+        // NO_LS 문단의 측정 폭/줄수가 typeset/render 와 어긋났다.
         let recomposed: Option<ComposedParagraph> = match (composed, column_width_px) {
             // [#2553] line_segs.is_empty() 를 match guard 에 두면 저장 line_segs 가 있는
             // 문단이 곧장 `_ => None` 으로 떨어져 아래 stale 재래핑 분기에 도달할 수 없다.
