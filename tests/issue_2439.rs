@@ -71,6 +71,52 @@ fn isolated_positive_empty_host_doc(top_margin_delta: i16) -> HwpDocument {
     doc
 }
 
+fn split_positive_empty_host_doc() -> HwpDocument {
+    const ROW_COUNT: u16 = 30;
+
+    let mut doc = load_with_native_hwp5_provenance(POSITIVE_EMPTY_HOST_SAMPLE);
+    let mut model = doc.document().clone();
+    model.sections[0].paragraphs[0]
+        .controls
+        .retain(|control| !matches!(control, Control::Table(_)));
+
+    let Control::Table(table) = &mut model.sections[0].paragraphs[1].controls[0] else {
+        panic!("positive empty-host fixture must contain a table control");
+    };
+    let template_cell = table
+        .cells
+        .first()
+        .cloned()
+        .expect("positive empty-host fixture must contain one cell");
+    let row_size = table.row_sizes.first().copied().unwrap_or(1);
+    let mut cells = Vec::with_capacity(usize::from(ROW_COUNT));
+    for row in 0..ROW_COUNT {
+        let mut cell = template_cell.clone();
+        cell.row = row;
+        cell.is_header = row == 0;
+        if row > 0 {
+            let paragraph = cell
+                .paragraphs
+                .first_mut()
+                .expect("template cell must contain one paragraph");
+            let text_len = paragraph.text.chars().count();
+            paragraph.delete_text_at(0, text_len);
+            paragraph.insert_text_at(0, &format!("split row {row:02}"));
+        }
+        cells.push(cell);
+    }
+
+    table.row_count = ROW_COUNT;
+    table.row_sizes = vec![row_size; usize::from(ROW_COUNT)];
+    table.cells = cells;
+    table.cell_grid = (0..usize::from(ROW_COUNT)).map(Some).collect();
+    table.repeat_header = true;
+    table.common.height = template_cell.height.saturating_mul(u32::from(ROW_COUNT));
+    table.dirty = true;
+    doc.set_document(model);
+    doc
+}
+
 fn find_table_bbox(
     root: &RenderNode,
     host_para_index: usize,
@@ -225,4 +271,63 @@ fn positive_offset_empty_host_float_advances_flow_to_its_painted_bottom() {
          PartialTable fragment: base_top={isolated_base_top:.2}, larger_top={larger_margin_top:.2}, \
          expected_delta={expected_delta:.2}",
     );
+}
+
+#[test]
+fn positive_offset_empty_host_rowbreak_continuation_advances_following_flow() {
+    let doc = split_positive_empty_host_doc();
+    let mut table_fragments = Vec::new();
+    let mut following_text = None;
+
+    for page_index in 0..doc.page_count() {
+        let page = doc
+            .build_page_render_tree(page_index)
+            .unwrap_or_else(|e| panic!("build split-table page {}: {e}", page_index + 1));
+        if let Some((table_top, table_bottom)) = find_table_bbox(&page.root, 1, 0) {
+            let repeated_header = find_text_bbox(&page.root, "C11").is_some();
+            table_fragments.push((page_index, table_top, table_bottom, repeated_header));
+        }
+        if following_text.is_none() {
+            following_text =
+                find_text_bbox(&page.root, "filler paragraph 01").map(|bbox| (page_index, bbox));
+        }
+    }
+
+    assert!(
+        table_fragments.len() >= 2,
+        "the synthetic RowBreak table must produce PartialTable continuation fragments"
+    );
+    assert!(
+        table_fragments
+            .iter()
+            .all(|(_, top, bottom, _)| bottom > top),
+        "every split-table fragment must retain positive painted height: {table_fragments:?}"
+    );
+    assert!(
+        table_fragments
+            .iter()
+            .all(|(_, _, _, repeated_header)| *repeated_header),
+        "the header row must repeat on every RowBreak fragment: {table_fragments:?}"
+    );
+
+    let &(last_table_page, last_table_top, last_table_bottom, _) = table_fragments
+        .last()
+        .expect("split table must have a final fragment");
+    let (following_page, (following_top, _)) =
+        following_text.expect("following paragraph must remain visible after the split table");
+    assert!(
+        following_page >= last_table_page,
+        "following text must not precede the final PartialTable fragment: table_page={}, \
+         following_page={}",
+        last_table_page + 1,
+        following_page + 1,
+    );
+    if following_page == last_table_page {
+        assert!(
+            following_top + 0.5 >= last_table_bottom,
+            "following flow must start below the final positive-offset PartialTable fragment: \
+             table=[{last_table_top:.1},{last_table_bottom:.1}], \
+             following_top={following_top:.1}"
+        );
+    }
 }
