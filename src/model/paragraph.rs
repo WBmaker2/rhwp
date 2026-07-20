@@ -901,7 +901,8 @@ impl Paragraph {
         let mut new_field_ranges: Vec<FieldRange> = Vec::new();
         let mut kept_field_ranges: Vec<FieldRange> = Vec::new();
         // 5-1a. controls 분할 시 control_idx 리매핑을 위한 맵 (old → new)
-        let mut moved_control_idx_map: std::collections::HashMap<usize, usize> = std::collections::HashMap::new();
+        let mut moved_control_idx_map: std::collections::HashMap<usize, usize> =
+            std::collections::HashMap::new();
         for fr in &self.field_ranges {
             if fr.start_char_idx >= split_pos {
                 // 완전히 새 문단 쪽 → 인덱스 조정 후 이관 (control_idx는 5-2에서 리매핑)
