@@ -15,6 +15,11 @@
 - 기여자 변경을 충돌 없이 적용했다. 같은 컨테이너 참조 수집 보강은 [#2483](https://github.com/edwardkim/rhwp/pull/2483)과 함께 검증했다.
 - HWPX-HWP 변환 focused 회귀와 최종 release-test, Clippy, WASM 빌드를 통과했다.
 
-## 후속
+## 렌더 영향 판정
 
-- 최종 통합 PR의 최신 CI 통과 뒤 수용한다.
+- HWPX→HWP 변환의 중첩 개체 보강만 다루며 renderer·typeset 출력 경로를 바꾸지 않는다. visual sweep은 필요하지 않다.
+
+## 리스크와 권고
+
+- 중첩 컨테이너 보강 범위가 넓으므로 [#2483](https://github.com/edwardkim/rhwp/pull/2483)의 참조 수집 보강과 함께 회귀를 유지한다.
+- **권고**: 누적 통합 PR에 수용. 최신 통합 PR head의 CI가 성공한 뒤에만 merge한다.

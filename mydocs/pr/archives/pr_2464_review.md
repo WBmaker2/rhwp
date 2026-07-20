@@ -15,6 +15,11 @@
 - 기여자 변경 `8f28a0add`를 충돌 없이 적용했다. renderer 직접 변경은 아니므로 visual sweep 대상이 아니다.
 - 해당 HWPX 왕복 focused 회귀와 최종 `cargo test --profile release-test --tests`, Clippy, WASM 빌드를 통과했다.
 
-## 후속
+## 렌더 영향 판정
 
-- 최종 통합 PR의 최신 CI 통과 뒤 수용한다.
+- HWPX serializer의 비표 개체 속성 보존만 다루며 renderer·layout 출력 경로를 바꾸지 않는다. visual sweep은 필요하지 않다.
+
+## 리스크와 권고
+
+- 비표 개체의 쪽나눔 방지 속성만 대상으로 한 구조 보존 변경이며, focused round-trip 회귀로 범위를 고정했다.
+- **권고**: 누적 통합 PR에 수용. 최신 통합 PR head의 CI가 성공한 뒤에만 merge한다.

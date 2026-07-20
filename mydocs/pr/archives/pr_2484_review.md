@@ -15,6 +15,11 @@
 - 기여자 변경 `dd4df82cb`를 충돌 없이 적용했다. serializer round-trip 변경으로 visual sweep 대상은 아니다.
 - HWPX round-trip focused 회귀와 최종 release-test, Clippy, WASM 빌드를 통과했다.
 
-## 후속
+## 렌더 영향 판정
 
-- 최종 통합 PR의 최신 CI 통과 뒤 수용한다.
+- HWPX 선/연결선 방향 반전 flag의 serializer 보존만 다루며 geometry 계산을 바꾸지 않는다. visual sweep은 필요하지 않다.
+
+## 리스크와 권고
+
+- 선/연결선 반전 flag의 구조 보존만 다루며 geometry 계산을 새로 바꾸지 않는다.
+- **권고**: 누적 통합 PR에 수용. 최신 통합 PR head의 CI가 성공한 뒤에만 merge한다.

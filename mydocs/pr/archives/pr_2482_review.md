@@ -15,6 +15,11 @@
 - 기여자 변경 `d7a2e556d`를 충돌 없이 적용했다. serializer 보존 변경이며 visual sweep 대상은 아니다.
 - HWP5 serializer focused 회귀와 최종 release-test, Clippy, WASM 빌드를 통과했다.
 
-## 후속
+## 렌더 영향 판정
 
-- 최종 통합 PR의 최신 CI 통과 뒤 수용한다.
+- HWP5 각주·미주 장식 문자 sentinel의 serializer 보존만 다루며 renderer 출력 경로를 바꾸지 않는다. visual sweep은 필요하지 않다.
+
+## 리스크와 권고
+
+- 닫는 장식 문자 `0`의 sentinel 의미를 보존하며 임의의 장식 문자 변환을 추가하지 않는다.
+- **권고**: 누적 통합 PR에 수용. 최신 통합 PR head의 CI가 성공한 뒤에만 merge한다.

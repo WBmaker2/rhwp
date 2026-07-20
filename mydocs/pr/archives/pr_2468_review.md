@@ -15,6 +15,11 @@
 - 기여자 변경 `fb9dbfc8a`를 충돌 없이 적용했다. 렌더 결과를 직접 바꾸지 않는 내부 계약 정리다.
 - HWP3 focused 회귀와 최종 release-test, Clippy, WASM 빌드를 통과했다.
 
-## 후속
+## 렌더 영향 판정
 
-- 최종 통합 PR의 최신 CI 통과 뒤 수용한다.
+- HWP3 분기 판단의 내부 계약 리팩터링이며 renderer·layout 출력 경로를 바꾸지 않는다. visual sweep은 필요하지 않다.
+
+## 리스크와 권고
+
+- HWP3 분기 판단을 공통 layout profile 계약으로 모으는 내부 리팩터링이므로 HWP3 focused 회귀를 유지한다.
+- **권고**: 누적 통합 PR에 수용. 최신 통합 PR head의 CI가 성공한 뒤에만 merge한다.

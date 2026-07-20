@@ -15,6 +15,11 @@
 - 기여자 변경 `50bc5a817`을 충돌 없이 적용했다. serializer 보존 변경으로 별도 visual sweep 대상은 아니다.
 - HWP5 serializer focused 회귀와 최종 release-test, Clippy, WASM 빌드를 통과했다.
 
-## 후속
+## 렌더 영향 판정
 
-- 최종 통합 PR의 최신 CI 통과 뒤 수용한다.
+- HWP5 그림 테두리 속성 word의 serializer 보존만 다루며 renderer·paint 출력 경로를 바꾸지 않는다. visual sweep은 필요하지 않다.
+
+## 리스크와 권고
+
+- 그림 테두리 속성 word의 serializer 보존만 다루므로 저장 회귀를 focused fixture로 계속 감시한다.
+- **권고**: 누적 통합 PR에 수용. 최신 통합 PR head의 CI가 성공한 뒤에만 merge한다.

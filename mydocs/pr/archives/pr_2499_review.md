@@ -4,15 +4,23 @@
 |---|---|
 | 원 PR | [#2499](https://github.com/edwardkim/rhwp/pull/2499) |
 | 작성자 / base | kevin9327 / `devel` |
-| 범위 | full-renderer-sweep action version 갱신과 과거 오늘할일 추가 |
-| 판단 | workflow 변경은 [#2501](https://github.com/edwardkim/rhwp/pull/2501)에 흡수, 오늘할일은 제외 |
+| 검토자 | @jangster77 (검토 전 지정) |
+| 규모 / 검토 스냅샷 | 2026-07-20 GitHub 조회: +11/-2, 2 files, `maintainerCanModify=true`, `mergeStateStatus=DIRTY` (동적 참고값) |
+| 범위 | full-renderer-sweep workflow 액션 version 갱신과 문서 동반 변경 |
+| 판단 | #2501 통합본으로 수용, 원 PR은 별도 적용하지 않음 |
 
-## 검토와 검증
+## 변경 범위와 통합
+- PR 본문은 full-renderer-sweep의 Actions 버전을 갱신하고 당시 작업 기록 문서를 함께 바꾸는 제안이다.
+- PR 코멘트는 검토 시점에 없었다.
+- workflow 갱신은 [#2501](https://github.com/edwardkim/rhwp/pull/2501)의 통합 커밋 `4b9dd1627`에 포함했다. PR에 있던 오래된 오늘할일 문서는 현재 작업 상태를 되돌릴 수 있어 의도적으로 제외했다.
 
-- PR 본문은 cache·artifact action 갱신을 설명했고, PR 코멘트는 없었다.
-- 같은 workflow 변경은 #2501이 포함한다. PR에 섞인 과거 `mydocs/orders/20260719.md`는 최종 PR 준비 시점에만 오늘할일을 만들도록 한 현행 규칙과 맞지 않아 적용하지 않는다.
-- #2501 기준 actionlint와 YAML 파싱, 현행 CI action version 대조를 통과했다.
+## 렌더 영향 판정
+- CI workflow 메타데이터만 변경하므로 visual sweep 대상이 아니다.
 
-## 후속
+## 검증
+- 누적 통합 브랜치에서 `CARGO_INCREMENTAL=0 cargo test --profile release-test --tests`, `CARGO_INCREMENTAL=0 cargo clippy --all-targets -- -D warnings`, `cargo fmt --all -- --check`, `wasm-pack build --target web --out-dir pkg`를 통과했다.
+- YAML parse와 actionlint를 확인했다. 기존 shellcheck 정보성 경고 8건은 변경 전부터 존재하며 해당 규칙을 제외하면 통과한다.
 
-- 최종 통합 PR에서 #2501로 supersede 처리하며, 오늘할일은 최초 push 직전에 최신 `devel` 기준으로 별도 작성한다.
+## 리스크와 권고
+- 현재 devel의 오늘할일을 과거 PR 상태로 덮어쓰지 않도록 CI 부분만 흡수한다.
+- **권고**: #2501 통합본으로 수용, 원 PR은 별도 적용하지 않음. 최신 통합 PR head의 CI가 성공한 뒤에만 merge한다.

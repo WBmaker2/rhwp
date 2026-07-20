@@ -15,6 +15,11 @@
 - 기여자 변경 `1a9ac773a`을 충돌 없이 적용했다. 저장 구조 보존 변경이므로 visual sweep 대상이 아니다.
 - HWPX round-trip focused 회귀와 최종 release-test, Clippy, WASM 빌드를 통과했다.
 
-## 후속
+## 렌더 영향 판정
 
-- 최종 통합 PR의 최신 CI 통과 뒤 수용한다.
+- HWPX 표 셀 textDirection의 저장 구조 보존만 다루며 세로쓰기 조판 알고리즘을 바꾸지 않는다. visual sweep은 필요하지 않다.
+
+## 리스크와 권고
+
+- 표 셀 textDirection 구조 보존이 범위이며 세로쓰기 조판 fidelity 개선을 별도로 주장하지 않는다.
+- **권고**: 누적 통합 PR에 수용. 최신 통합 PR head의 CI가 성공한 뒤에만 merge한다.

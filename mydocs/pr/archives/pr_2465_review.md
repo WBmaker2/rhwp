@@ -15,6 +15,11 @@
 - 기여자 변경 `9287bfb67`을 충돌 없이 적용했다. 저장 구조 보존 변경으로 별도 visual sweep은 필요하지 않다.
 - HWP5 serializer focused 회귀와 최종 release-test, Clippy, WASM 빌드를 통과했다.
 
-## 후속
+## 렌더 영향 판정
 
-- 최종 통합 PR의 최신 CI 통과 뒤 수용한다.
+- HWP5 fill serializer의 alpha 보존만 다루며 paint 알고리즘을 바꾸지 않는다. visual sweep은 필요하지 않다.
+
+## 리스크와 권고
+
+- 채우기 alpha 직렬화만 보정하며, 이미지/단색 채우기 외의 paint 처리 경로는 바꾸지 않는다.
+- **권고**: 누적 통합 PR에 수용. 최신 통합 PR head의 CI가 성공한 뒤에만 merge한다.

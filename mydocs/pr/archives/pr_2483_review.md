@@ -15,6 +15,11 @@
 - 기여자 변경 `05af4fe74`를 충돌 없이 적용했다. [#2467](https://github.com/edwardkim/rhwp/pull/2467)과 같은 재귀 컨테이너 영역을 함께 점검했다.
 - HWPX-HWP 변환 focused 회귀와 최종 release-test, Clippy, WASM 빌드를 통과했다.
 
-## 후속
+## 렌더 영향 판정
 
-- 최종 통합 PR의 최신 CI 통과 뒤 수용한다.
+- HWPX→HWP 변환의 border-fill 참조 수집만 다루며 renderer·layout 출력 경로를 바꾸지 않는다. visual sweep은 필요하지 않다.
+
+## 리스크와 권고
+
+- 중첩 컨테이너 안 개체의 border-fill 참조 수집을 [#2467](https://github.com/edwardkim/rhwp/pull/2467) 변환 보강과 함께 유지한다.
+- **권고**: 누적 통합 PR에 수용. 최신 통합 PR head의 CI가 성공한 뒤에만 merge한다.

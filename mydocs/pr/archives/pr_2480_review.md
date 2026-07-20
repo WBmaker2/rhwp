@@ -24,4 +24,3 @@
 ## 리스크와 권고
 - split 경로의 field range 소유권만 보정하며, 다른 undo 단위와 섞지 않았다.
 - **권고**: 누적 통합 PR에 수용. 최신 통합 PR head의 CI가 성공한 뒤에만 merge한다.
-

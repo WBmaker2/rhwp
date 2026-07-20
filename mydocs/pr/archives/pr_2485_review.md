@@ -15,6 +15,11 @@
 - 기여자 변경 `1c4510fa1`을 충돌 없이 적용했다. serializer round-trip 변경이며 visual sweep 대상은 아니다.
 - HWPX round-trip focused 회귀와 최종 release-test, Clippy, WASM 빌드를 통과했다.
 
-## 후속
+## 렌더 영향 판정
 
-- 최종 통합 PR의 최신 CI 통과 뒤 수용한다.
+- HWPX 바탕쪽 pageFront metadata의 serializer 보존만 다루며 바탕쪽 renderer를 바꾸지 않는다. visual sweep은 필요하지 않다.
+
+## 리스크와 권고
+
+- 바탕쪽의 표지 전용 metadata만 보존하며 바탕쪽 렌더 알고리즘 변경을 포함하지 않는다.
+- **권고**: 누적 통합 PR에 수용. 최신 통합 PR head의 CI가 성공한 뒤에만 merge한다.

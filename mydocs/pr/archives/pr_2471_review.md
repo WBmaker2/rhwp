@@ -16,6 +16,11 @@
 - 기여자 변경 `0564f976c`을 충돌 없이 적용했다. 동작 보존 성능 최적화이므로 visual sweep 대상이 아니다.
 - focused 성능/히트테스트 회귀와 최종 release-test, Clippy, WASM 빌드를 통과했다.
 
-## 후속
+## 렌더 영향 판정
 
-- 최종 통합 PR의 최신 CI 통과 뒤 [#2428](https://github.com/edwardkim/rhwp/issues/2428) 상태를 확인한다.
+- 각주 hit-test의 fast-reject 성능 경로만 다루며 renderer 출력 경로를 바꾸지 않는다. visual sweep은 필요하지 않다.
+
+## 리스크와 권고
+
+- 각주가 없는 페이지에만 적용되는 fast-reject라서 실제 각주 hit-test 경로는 보존한다.
+- **권고**: 누적 통합 PR에 수용. 최신 통합 PR head의 CI가 성공한 뒤에만 merge한다.
