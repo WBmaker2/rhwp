@@ -15,6 +15,8 @@
 - 기여자 변경 `1c4510fa1`을 충돌 없이 적용했다. serializer round-trip 변경이며 visual sweep 대상은 아니다.
 - HWPX round-trip focused 회귀와 최종 release-test, Clippy, WASM 빌드를 통과했다.
 
+- headless save-as-format E2E에서 HWP→HWPX와 HWPX→HWP 저장 UI, MIME/파일 매직, 재열기를 모두 확인했다. 이는 사용자 저장 경로 smoke이며, PR별 속성 보존의 oracle은 기존 focused Rust 회귀다.
+
 ## 렌더 영향 판정
 
 - HWPX 바탕쪽 pageFront metadata의 serializer 보존만 다루며 바탕쪽 renderer를 바꾸지 않는다. visual sweep은 필요하지 않다.

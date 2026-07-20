@@ -21,6 +21,8 @@
 - 누적 통합 브랜치에서 `CARGO_INCREMENTAL=0 cargo test --profile release-test --tests`, `CARGO_INCREMENTAL=0 cargo clippy --all-targets -- -D warnings`, `cargo fmt --all -- --check`, `wasm-pack build --target web --out-dir pkg`를 통과했다.
 - shared `file-signature` 회귀 6개, Chrome/Firefox production build, unsigned Safari Xcode build를 통과했다. Safari `build.sh`의 서명 실패는 로컬 인증서·CoreSimulator 환경 제약이며 source build 실패가 아니다.
 
+- headless hml-open.check E2E에서 HML 문서 열기·저장·재열기를 확인했다. 이는 Studio HML 사용자 흐름 근거이며 Chrome/Firefox/Safari 확장 URL 식별은 shared signature 회귀와 각 확장 build로 별도 검증했다.
+
 ## 리스크와 권고
 - HML 허용은 비어 있지 않은 `HWPML` root와 Version을 확인하는 bounded parser로 제한해 HTML/JSON/손상 입력을 계속 거부한다.
 - **권고**: collaborator 보정 포함 누적 통합 PR에 수용. 최신 통합 PR head의 CI가 성공한 뒤에만 merge한다.

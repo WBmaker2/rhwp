@@ -21,6 +21,8 @@
 - 누적 통합 브랜치에서 `CARGO_INCREMENTAL=0 cargo test --profile release-test --tests`, `CARGO_INCREMENTAL=0 cargo clippy --all-targets -- -D warnings`, `cargo fmt --all -- --check`, `wasm-pack build --target web --out-dir pkg`를 통과했다.
 - VS Code `package.json` JSON parse와 누적 WASM build를 통과했다.
 
+- headless hml-open.check E2E에서 HML 문서가 실제 canvas에 1페이지로 보이고 HML 저장·재열기와 기존 HWP 재열기까지 통과했다. VS Code selector 자체는 package metadata 검증 범위로 유지한다.
+
 ## 리스크와 권고
 - HML 지원 노출은 [#2495](https://github.com/edwardkim/rhwp/pull/2495), [#2511](https://github.com/edwardkim/rhwp/pull/2511)의 설명·브라우저 등록과 함께 정합성을 유지한다.
 - **권고**: 누적 통합 PR에 수용. 최신 통합 PR head의 CI가 성공한 뒤에만 merge한다.

@@ -21,6 +21,8 @@
 - 누적 통합 브랜치에서 `CARGO_INCREMENTAL=0 cargo test --profile release-test --tests`, `CARGO_INCREMENTAL=0 cargo clippy --all-targets -- -D warnings`, `cargo fmt --all -- --check`, `wasm-pack build --target web --out-dir pkg`를 통과했다.
 - `table_text_wrap_is_read_back_from_hml` 회귀를 포함한 전체 release-test가 통과했다.
 
+- headless hml-open.check E2E에서 HML 열기, HML 의미 보존 저장, 재열기와 기존 HWP 재열기를 모두 확인했다. 이는 HML parser/저장 UI 흐름의 browser 근거이며 표 TextWrap 보존은 focused Rust 회귀가 직접 보장한다.
+
 ## 리스크와 권고
 - HML 표 속성의 read-back 계약이 바뀌는 범위이므로 추가 serializer 변경과 분리해 유지한다.
 - **권고**: 누적 통합 PR에 수용. 최신 통합 PR head의 CI가 성공한 뒤에만 merge한다.

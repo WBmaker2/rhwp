@@ -21,6 +21,8 @@
 - 누적 통합 브랜치에서 `CARGO_INCREMENTAL=0 cargo test --profile release-test --tests`, `CARGO_INCREMENTAL=0 cargo clippy --all-targets -- -D warnings`, `cargo fmt --all -- --check`, `wasm-pack build --target web --out-dir pkg`를 통과했다.
 - [#2417](https://github.com/edwardkim/rhwp/issues/2417) 관련 회귀를 포함한 전체 release-test가 통과했다.
 
+- headless undo-contracts E2E의 실제 입력·Ctrl+Z 5개 계약과 text-flow E2E의 2페이지 생성·Backspace 문단 병합을 통과했다. field_ranges의 정확한 이관은 focused Rust 회귀가 직접 보장한다.
+
 ## 리스크와 권고
 - split 경로의 field range 소유권만 보정하며, 다른 undo 단위와 섞지 않았다.
 - **권고**: 누적 통합 PR에 수용. 최신 통합 PR head의 CI가 성공한 뒤에만 merge한다.
