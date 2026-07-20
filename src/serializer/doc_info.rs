@@ -360,9 +360,12 @@ fn serialize_fill(w: &mut ByteWriter, fill: &crate::model::style::Fill) {
                 w.write_color_ref(solid.pattern_color).unwrap();
                 w.write_i32(solid.pattern_type).unwrap();
             }
-            // 추가 채우기 속성: size(u32) + alpha(u8)
-            w.write_u32(1).unwrap();
-            w.write_u8(0).unwrap(); // alpha
+            // 추가 채우기 속성: size(u32) = 0, 이어서 미확인 바이트로 alpha(u8).
+            // hwplib 및 parse_fill(additional_size 만큼 skip 후 종류별 1바이트를
+            // alpha 로 읽음)과 정합. 종전엔 size=1·0x00 을 내보내 skip 이 alpha
+            // 자리를 먹고 alpha 가 항상 0 으로 되읽혔다.
+            w.write_u32(0).unwrap();
+            w.write_u8(fill.alpha).unwrap();
         }
         FillType::Gradient => {
             if let Some(ref grad) = fill.gradient {
@@ -394,8 +397,11 @@ fn serialize_fill(w: &mut ByteWriter, fill: &crate::model::style::Fill) {
                 w.write_u8(img.effect).unwrap();
                 w.write_u16(img.bin_data_id).unwrap();
             }
-            // 추가 채우기 속성: size(u32)
+            // 추가 채우기 속성: size(u32) = 0, 이어서 미확인 바이트로 alpha(u8).
+            // parse_fill 의 image(0x02) 경로가 종류별 1바이트를 alpha 로 읽으므로
+            // 이 바이트가 없으면 EOF 로 alpha 가 0 이 됐다.
             w.write_u32(0).unwrap();
+            w.write_u8(fill.alpha).unwrap();
         }
         FillType::None => {
             // 추가 채우기 속성: size(u32) = 0
@@ -527,7 +533,11 @@ pub fn serialize_char_shape(cs: &CharShape) -> Vec<u8> {
 
 pub fn serialize_tab_def(td: &TabDef) -> Vec<u8> {
     let mut w = ByteWriter::new();
-    w.write_u32(td.attr).unwrap();
+    // auto tab 비트(bit0=left, bit1=right)를 불리언에서 재인코딩한다. 파서는 이 두
+    // 불리언을 attr 하위 2비트로만 복원하므로(parser/doc_info.rs), HWPX 유래/IR 생성
+    // TabDef(attr=0 이고 불리언만 세팅)를 그대로 쓰면 자동 탭 설정이 저장 시 유실된다.
+    let attr = (td.attr & !0x03) | (td.auto_tab_left as u32) | ((td.auto_tab_right as u32) << 1);
+    w.write_u32(attr).unwrap();
     w.write_u32(td.tabs.len() as u32).unwrap();
     for tab in &td.tabs {
         w.write_u32(tab.position).unwrap();
