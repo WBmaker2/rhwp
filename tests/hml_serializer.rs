@@ -571,7 +571,10 @@ fn table_text_wrap_is_read_back_from_hml() {
         r#"NumberingType="Table" TextFlow="BothSides" TextWrap="TopAndBottom" ZOrder="1""#,
         1,
     );
-    assert_ne!(injected, fixture, "fixture 의 표 SHAPEOBJECT 태그를 찾지 못함");
+    assert_ne!(
+        injected, fixture,
+        "fixture 의 표 SHAPEOBJECT 태그를 찾지 못함"
+    );
 
     let core = DocumentCore::from_bytes(injected.as_bytes()).expect("주입 HML 은 파싱되어야 함");
     let table = core
