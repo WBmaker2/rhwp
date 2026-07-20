@@ -602,8 +602,8 @@ mod tests {
 
         let cases = [
             // (format, hwp3_lineage, major, 기대 native 여부)
-            (SourceFormat::Hwp3, false, 3, true), // native HWP3
-            (SourceFormat::Hwp5, true, 5, false), // HWP3→HWP5 변환본
+            (SourceFormat::Hwp3, false, 3, true),  // native HWP3
+            (SourceFormat::Hwp5, true, 5, false),  // HWP3→HWP5 변환본
             (SourceFormat::Hwp5, false, 5, false), // 일반 HWP5
             (SourceFormat::Hwpx, false, 5, false), // HWPX
         ];
