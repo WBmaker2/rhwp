@@ -8,7 +8,7 @@
 | 항목 | 값 |
 |---|---|
 | OS | Microsoft Windows 11 Pro, Version 10.0.26200.8655 |
-| 한컴오피스 한글 | HwpObject Version **12.0.0.4547** (한글 2024, COM `hwp.Version`) |
+| 한컴오피스 한글 | HwpObject Version **12.0.0.4547** (한글 2022, COM `hwp.Version`) |
 | Python / pyhwpx / PyMuPDF | 3.12.10 / 1.7.2 / 1.27.2 |
 | 측정 스크립트 | `tools/task2430/hy_ascii_ladder.py` (preflight 포함 개정판) |
 
@@ -91,4 +91,4 @@ r16/r17 대표 회귀 문서 `21868765`(안양시 행정기구 및 공무원 정
 
 출처: 자치법규정보시스템(ELIS) 공표 별표 서식 다운로드본(원명
 `21868765_[별표 2] 보건소의 부서별 분장사무(...).hwp`). PDF 는 위 환경의
-한글 2024 로 인쇄한 정답지.
+한글 2022 로 인쇄한 정답지.
