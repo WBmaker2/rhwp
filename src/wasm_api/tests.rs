@@ -24753,14 +24753,16 @@ fn issue2214_scoped_cache_coherence_preserves_transient_pagination() {
         // #2195 이후에도 44번째 입력은 target paragraph의 상대 flow advance를 바꾼다.
         // 다만 선언 셀 높이가 증가분을 흡수해 full pagination의 cut/bounds는 불변이다.
         // render_normalized warm tree는 flush 전에도 매 mutation을 즉시 반영해야 한다.
-        for inserted in 0..44 {
+        // [#2430] HY/한양 ASCII 실측 교정으로 숫자 advance 가 0.625→0.497em 으로
+        // 좁아져 줄 채움 임계가 44→56 입력으로 이동 (probe 실측, hwp/hwpx 동일).
+        for inserted in 0..56 {
             let raw = doc
                 .insert_text_in_cell_native_deferred_pagination(0, 0, 2, 2, 5, 130 + inserted, "1")
                 .expect("deferred sequential insert");
             let result: Value = serde_json::from_str(&raw).expect("edit result json");
             assert_eq!(
                 result["cellFlowChanged"].as_bool(),
-                Some(inserted == 43),
+                Some(inserted == 55),
                 "{label}: input {} flow signal",
                 inserted + 1
             );
@@ -24774,7 +24776,7 @@ fn issue2214_scoped_cache_coherence_preserves_transient_pagination() {
             .map(|(_, _, end)| *end)
             .expect("transient target end");
         let transient_rect = doc
-            .get_cursor_rect_in_cell_native(0, 0, 2, 2, 5, 174)
+            .get_cursor_rect_in_cell_native(0, 0, 2, 2, 5, 186)
             .expect("transient direct rect");
 
         doc.flush_deferred_pagination()
@@ -24788,15 +24790,15 @@ fn issue2214_scoped_cache_coherence_preserves_transient_pagination() {
             .map(|(_, _, end)| *end)
             .expect("flushed target end");
         let flushed_rect = doc
-            .get_cursor_rect_in_cell_native(0, 0, 2, 2, 5, 174)
+            .get_cursor_rect_in_cell_native(0, 0, 2, 2, 5, 186)
             .expect("flushed direct rect");
 
         eprintln!(
             "#2214 {label}: transient max={transient_max} rect={transient_rect}; flushed max={flushed_max} rect={flushed_rect}; cuts transient={transient_cut:?} flushed={flushed_cut:?}"
         );
 
-        assert_eq!(transient_max, 174, "{label}: scoped warm tree coherence");
-        assert_eq!(flushed_max, 174, "{label}: flush oracle");
+        assert_eq!(transient_max, 186, "{label}: scoped warm tree coherence");
+        assert_eq!(flushed_max, 186, "{label}: flush oracle");
         assert_eq!(
             transient_ranges, flushed_ranges,
             "{label}: transient target UTF-16 ranges must equal flush oracle"
