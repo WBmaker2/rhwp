@@ -2441,13 +2441,13 @@ fn dump_pages(args: &[String]) {
                     match args[i + 1].parse::<u32>() {
                         Ok(n) => target_page = Some(n),
                         Err(_) => {
-                            eprintln!("오류: 페이지 번호가 올바르지 않습니다.");
+                            eprintln!("오류: 페이지 번호가 올바르지 않습니다: {}", args[i + 1]);
                             return;
                         }
                     }
                     i += 2;
                 } else {
-                    eprintln!("오류: --page 뒤에 페이지 번호가 필요합니다.");
+                    eprintln!("오류: {} 뒤에 페이지 번호가 필요합니다.", args[i]);
                     return;
                 }
             }
@@ -2455,9 +2455,9 @@ fn dump_pages(args: &[String]) {
                 respect_vpos_reset = true;
                 i += 1;
             }
-            other => {
-                eprintln!("알 수 없는 옵션: {}", other);
-                i += 1;
+            _ => {
+                eprintln!("알 수 없는 옵션: {}", args[i]);
+                return;
             }
         }
     }
