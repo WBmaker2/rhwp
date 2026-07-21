@@ -1423,8 +1423,14 @@ fn serialize_shape_control(
                 serialize_group_child(child, child_comp_level, child_type_level, records);
             }
         }
-        ShapeObject::Picture(_pic) => {
-            // 그룹 내 그림: 그룹 직렬화 시 자식으로 처리됨 (단독 Picture는 Control::Picture로 직렬화)
+        ShapeObject::Picture(pic) => {
+            // [#2696] 그룹 해제(object_ops/shape.rs 의 ungroup_shape_native)는 그림
+            // 자식을 최상위 Control::Shape(ShapeObject::Picture) 로 삽입하면서
+            // char_count += 8 을 함께 적용한다. 종전에는 이 arm 이 아무
+            // 레코드도 방출하지 않아 그림이 사라질 뿐 아니라 PARA_TEXT 의 확장 컨트롤
+            // 문자와 CTRL_HEADER 개수가 어긋나 이후 컨트롤이 잘못된 위치에 결합됐다.
+            // Control::Picture 가 쓰는 검증된 경로에 그대로 위임한다.
+            serialize_picture_control(pic, level, ctrl_data_record, records);
         }
         ShapeObject::Chart(chart) => {
             // Task #195 단계 2: raw_chart_data를 그대로 보존하여 라운드트립 유지
@@ -1460,6 +1466,11 @@ fn serialize_shape_control(
                 tag_id: tags::HWPTAG_SHAPE_COMPONENT,
                 level: level + 1,
                 size: 0,
+                // [#2696] OLE 의 SHAPE_COMPONENT 는 의도적으로 base-only 다.
+                // 한컴 저장본(samples/143E433F503322BD33.hwp)의 `$ole` SHAPE_COMPONENT
+                // 실측 크기가 196B(base) 이고, 테두리/채우기/그림자 꼬리를 붙인
+                // 252B 는 같은 파일의 도형 레코드 쪽이다. #1283 이 한컴 읽기 오류를
+                // 잡으며 확정한 계약이므로 Chart arm 과 달리 확장하지 않는다.
                 data: serialize_shape_component(tags::SHAPE_OLE_ID, &drawing.shape_attr, true),
             });
             emit_ctrl_data(records);
@@ -1757,6 +1768,7 @@ fn serialize_group_child(
                 tag_id: tags::HWPTAG_SHAPE_COMPONENT,
                 level: comp_level,
                 size: 0,
+                // [#2696] 최상위 OLE arm 과 동일하게 base-only 를 유지한다(#1283 계약).
                 data: serialize_shape_component(tags::SHAPE_OLE_ID, &drawing.shape_attr, false),
             });
             serialize_text_box_if_present(&drawing, type_level, records);
