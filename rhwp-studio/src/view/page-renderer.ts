@@ -2,6 +2,7 @@ import { WasmBridge } from '@/core/wasm-bridge';
 import type { LayerRenderProfile } from '@/core/types';
 import { layerPaintOpReplayPlane } from './canvaskit/replay-plane';
 import type { CanvasKitLayerRenderer, CanvasKitRenderDiagnostics } from './canvaskit-renderer';
+import { collectVectorRawSvgDataUrls } from './raw-svg-prefetch';
 import {
   collectFlowImagePaintOps,
   visibleFlowImageBbox,
@@ -1005,7 +1006,23 @@ export class PageRenderer {
     while ((d = dataUrlRe.exec(json)) !== null) {
       enqueue(`data:${d[1]};base64,${d[2]}`);
     }
-    if (tasks.length === 0) return false;
+    // 벡터 rawSvg(차트/OLE 미리보기)는 내부 raster data URL 이 없어 위 정규식으로
+    // 잡히지 않는다. web_canvas.render_raw_svg 와 동일하게 조각을 wrap 한 SVG data URL
+    // 을 프리페치해야 비동기 로드 완료 신호를 얻어 지연 재렌더(finish)가 발동하고,
+    // WASM 캐시의 SVG 이미지가 로드 완료 상태로 flow-static overlay 에 그려진다.
+    if (json.includes('"type":"rawSvg"')) {
+      try {
+        const vectorRawSvgUrls: string[] = [];
+        collectVectorRawSvgDataUrls(JSON.parse(json), vectorRawSvgUrls);
+        for (const dataUrl of vectorRawSvgUrls) enqueue(dataUrl);
+      } catch {
+        // 파싱 실패 시 raster 프리페치 결과만 사용한다.
+      }
+    }
+    if (tasks.length === 0) {
+      // URL을 수집하지 못한 순수 rawSvg는 upstream의 조기 재렌더 경로를 사용한다.
+      return true;
+    }
     await Promise.all(tasks);
     return true;
   }

@@ -25,6 +25,7 @@ import {
 import { isExpectedCanvasKitUnsupportedOp } from '../src/view/canvaskit/diagnostics.ts';
 import type { LayerInfo, LayerPaintOp } from '../src/core/types.ts';
 import { glyphOutlinePayloadResourceKey, glyphOutlinePayloadStatus } from '../src/view/glyph-outline-payload-status.ts';
+import { collectVectorRawSvgDataUrls } from '../src/view/raw-svg-prefetch.ts';
 
 test('render backend resolver keeps Canvas2D as the compatibility default and accepts explicit aliases', () => {
   assert.equal(resolveRenderBackend(''), 'canvas2d');
@@ -413,6 +414,38 @@ test('PageRenderer deferred image rerender preserves static layer reuse policy',
   assert.match(source, /this\.reRenderPageCanvases\(pageIdx,\s*canvas,\s*renderScale,\s*policy\)/);
   assert.match(source, /this\.findOverlayLayer\(parent,\s*pageIdx,\s*'flow-static'\)/);
   assert.match(source, /if \(policy\.reuseStaticOverlay\) return/);
+});
+
+test('순수 RawSvg 프리페치는 PageLayerTree bbox 계약으로 SVG URL을 만든다', () => {
+  const urls: string[] = [];
+  collectVectorRawSvgDataUrls({
+    root: {
+      kind: 'leaf',
+      ops: [{
+        type: 'rawSvg',
+        bbox: { x: 12.5, y: 34.25, width: 56.75, height: 78.5 },
+        svg: '<g class="hwp-ooxml-chart"><path d="M0 0"/></g>',
+      }],
+    },
+  }, urls);
+
+  assert.equal(urls.length, 1);
+  assert.match(urls[0], /^data:image\/svg\+xml;base64,/);
+  const encoded = urls[0].slice(urls[0].indexOf(',') + 1);
+  const svg = Buffer.from(encoded, 'base64').toString('utf8');
+  assert.equal(
+    svg,
+    '<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" '
+      + 'width="56.750" height="78.500" viewBox="12.500 34.250 56.750 78.500">\n'
+      + '<g class="hwp-ooxml-chart"><path d="M0 0"/></g>\n</svg>',
+  );
+
+  collectVectorRawSvgDataUrls({
+    type: 'rawSvg',
+    bbox: { x: 0, y: 0, width: 1, height: 1 },
+    svg: '<image href="data:image/png;base64,AA=="/>',
+  }, urls);
+  assert.equal(urls.length, 1, '내부 raster data URL이 있는 rawSvg는 별도 프리페치하지 않는다');
 });
 
 test('CanvasView renders visible pages before deferred prefetch work', () => {

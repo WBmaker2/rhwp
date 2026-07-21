@@ -2435,10 +2435,20 @@ fn dump_pages(args: &[String]) {
         match args[i].as_str() {
             "--page" | "-p" => {
                 if i + 1 < args.len() {
-                    target_page = args[i + 1].parse().ok();
+                    // 형제 명령(export_svg/export_png/export_text)과 동일하게 파싱 실패를
+                    // 오류로 처리한다. 종전 `.parse().ok()` 는 잘못된 인자를 조용히 삼켜
+                    // 한 쪽만 요청했는데 문서 전체를 덤프했다.
+                    match args[i + 1].parse::<u32>() {
+                        Ok(n) => target_page = Some(n),
+                        Err(_) => {
+                            eprintln!("오류: 페이지 번호가 올바르지 않습니다: {}", args[i + 1]);
+                            return;
+                        }
+                    }
                     i += 2;
                 } else {
-                    i += 1;
+                    eprintln!("오류: {} 뒤에 페이지 번호가 필요합니다.", args[i]);
+                    return;
                 }
             }
             "--respect-vpos-reset" => {
@@ -2446,7 +2456,8 @@ fn dump_pages(args: &[String]) {
                 i += 1;
             }
             _ => {
-                i += 1;
+                eprintln!("알 수 없는 옵션: {}", args[i]);
+                return;
             }
         }
     }
@@ -2471,7 +2482,22 @@ fn dump_pages(args: &[String]) {
         doc.set_respect_vpos_reset(true);
     }
 
-    println!("문서 로드: {} ({}페이지)", file_path, doc.page_count());
+    let page_count = doc.page_count();
+
+    // 형제 명령(export_svg)과 동일한 범위 검사. 종전엔 검사가 없어 -p 999 가
+    // 아무것도 매칭하지 않은 빈 출력을 내, 잘못된 인자가 아니라 "쪽이 없는 문서"
+    // 처럼 보였다.
+    if let Some(p) = target_page {
+        if p >= page_count {
+            eprintln!(
+                "오류: 페이지 번호가 범위를 벗어났습니다 (0~{})",
+                page_count.saturating_sub(1)
+            );
+            return;
+        }
+    }
+
+    println!("문서 로드: {} ({}페이지)", file_path, page_count);
     print!("{}", doc.dump_page_items(target_page));
 }
 
