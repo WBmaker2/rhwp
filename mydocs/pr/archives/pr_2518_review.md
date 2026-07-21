@@ -8,7 +8,7 @@
 | 검토 범위 | `@rhwp/editor.loadFile()`의 대화상자 기본값, transport 계약, npm package surface |
 | 원 PR 규모 | +494/-21, 12 files |
 | 원 PR merge | 2026-07-21, [`a621ac1`](https://github.com/edwardkim/rhwp/commit/a621ac19c95a5bc2f79086408b17c9a6ae94f442) |
-| 최종 판단 | 수용 및 merge 완료. [#2513](https://github.com/edwardkim/rhwp/issues/2513)은 auto-close되지 않아 후속 상태 확인 대상 |
+| 최종 판단 | 수용 및 merge 완료. [#2513](https://github.com/edwardkim/rhwp/issues/2513)은 원 PR merge 뒤 자동 close됨 |
 
 ## 변경과 판단
 
@@ -46,6 +46,5 @@ SDK request option과 package 문서·테스트만 변경하며 renderer, layout
 
 ## 후속 상태
 
-원 PR은 merge됐다. `devel`이 default branch가 아니므로 PR 본문의 `Closes #2513`가 자동 close를 수행하지
-않았고, 이 docs-only 후속 PR 반영 뒤 [#2513](https://github.com/edwardkim/rhwp/issues/2513)의 해결 상태를
-수동으로 정리한다.
+원 PR merge 직후 GitHub 상태 전파를 다시 확인한 결과, [#2513](https://github.com/edwardkim/rhwp/issues/2513)은
+자동으로 close됐다. 별도 수동 close는 필요하지 않다.
