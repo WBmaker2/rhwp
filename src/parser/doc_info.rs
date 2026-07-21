@@ -927,7 +927,11 @@ mod tests {
         };
 
         let bytes = crate::serializer::doc_info::serialize_face_name(&font);
-        assert_eq!(bytes[0] & 0x80, 0x80, "대체 글꼴 있으면 attr bit7 이 서야 함");
+        assert_eq!(
+            bytes[0] & 0x80,
+            0x80,
+            "대체 글꼴 있으면 attr bit7 이 서야 함"
+        );
 
         let parsed = parse_face_name(&bytes).expect("FACE_NAME 재파싱");
         assert_eq!(
