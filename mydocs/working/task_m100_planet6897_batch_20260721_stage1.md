@@ -34,3 +34,17 @@
 - focused Rust/Node 회귀 테스트와 `cargo clippy --all-targets -- -D warnings`.
 - #2663의 HWPX/PDF 쪽수 및 visual sweep, #2665/#2669/#2671의 대상 렌더 결과.
 - 통합 후 전체 `cargo test --profile release-test --tests`.
+
+## Stage 1 결과
+
+- #2662, #2663, #2664, #2665, #2666, #2669, #2671, #2706의 원본 커밋을
+  최신 `upstream/devel` 위에 체리픽했다. 수동 충돌은 없었다.
+- focused Rust 통합 테스트 8건, OOXML chart 단위 테스트 137건, Node 테스트 5건이
+  모두 통과했다.
+- #2663 PDF는 `Hancom PDF 1.3.0.550` producer와 2쪽/8쪽 A4 메타데이터를 확인했다.
+- `win10-ted`는 오래된 `devel`이어서 clean 상태 확인 후 `c4e6faa3`까지
+  fast-forward했다. Python 3.12를 사용자 범위에 설치했고, 기본 SSH 셸·`cmd`·
+  PowerShell에서 `gen_metrics.py --verify`를 실행해 한양 4종과 휴먼명조가 모두
+  95/95 exact match임을 확인했다.
+- #2671의 기존 테스트는 SVG 전체의 data URI 존재만 검사하므로 대상 face의
+  `@font-face` 규칙을 직접 검사하도록 다음 Stage에서 보강한다.
