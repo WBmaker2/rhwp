@@ -604,3 +604,130 @@ fn test_cell_field_name_extra_roundtrip() {
     assert_eq!(extra.len(), 13);
     assert_eq!(crate::parser::control::parse_cell_field_name(&extra), None);
 }
+
+/// [#2696] 최상위 `ShapeObject::Picture` 가 실제로 직렬화되는지.
+///
+/// 그룹 해제(`ungroup_shape_native`)는 그림 자식을 최상위
+/// `Control::Shape(ShapeObject::Picture)` 로 삽입한다. 종전에는 이 arm 이 아무 레코드도
+/// 방출하지 않아 그림이 통째로 사라졌다.
+#[test]
+fn issue2696_top_level_shape_picture_is_serialized() {
+    let pic = Picture {
+        common: CommonObjAttr {
+            width: 5000,
+            height: 3000,
+            ..Default::default()
+        },
+        shape_attr: ShapeComponentAttr {
+            original_width: 5000,
+            original_height: 3000,
+            current_width: 5000,
+            current_height: 3000,
+            ..Default::default()
+        },
+        image_attr: crate::model::image::ImageAttr {
+            bin_data_id: 7,
+            ..Default::default()
+        },
+        ..Default::default()
+    };
+
+    let para = Paragraph {
+        char_count: 2,
+        text: "".to_string(),
+        char_offsets: vec![],
+        controls: vec![Control::Shape(Box::new(ShapeObject::Picture(Box::new(
+            pic,
+        ))))],
+        ..Default::default()
+    };
+    let section = Section {
+        paragraphs: vec![para],
+        raw_stream: None,
+        ..Default::default()
+    };
+
+    let bytes = serialize_section(&section);
+    let parsed = parse_body_text_section(&bytes).unwrap();
+
+    assert_eq!(
+        parsed.paragraphs[0].controls.len(),
+        1,
+        "최상위 ShapeObject::Picture 가 컨트롤 1개로 왕복돼야 함"
+    );
+    let bin_data_id = match &parsed.paragraphs[0].controls[0] {
+        Control::Picture(p) => p.image_attr.bin_data_id,
+        Control::Shape(s) => match s.as_ref() {
+            ShapeObject::Picture(p) => p.image_attr.bin_data_id,
+            other => panic!("그림 도형이 나와야 함, got {:?}", other),
+        },
+        _ => panic!("그림 컨트롤이 나와야 함"),
+    };
+    assert_eq!(bin_data_id, 7, "bin_data_id 가 왕복 보존돼야 함");
+}
+
+/// [#2696] 최상위 `ShapeObject::Picture` 가 CTRL_HEADER 를 정확히 1개 방출하는지.
+///
+/// 그룹 해제는 그림 1개당 `char_count += 8`(확장 컨트롤 문자)을 함께 적용한다
+/// (`document_core/commands/object_ops/shape.rs:2317-2321`). CTRL_HEADER 가 0개면
+/// PARA_TEXT 의 컨트롤 문자와 레코드 개수가 어긋나 **이후 컨트롤이 잘못된 문자 위치에
+/// 결합**된다. 그림 유실보다 이 짝 어긋남이 더 위험하므로 개수를 별도로 고정한다.
+#[test]
+fn issue2696_top_level_shape_picture_emits_exactly_one_ctrl_header() {
+    let pic = Picture {
+        image_attr: crate::model::image::ImageAttr {
+            bin_data_id: 7,
+            ..Default::default()
+        },
+        ..Default::default()
+    };
+    let ctrl = Control::Shape(Box::new(ShapeObject::Picture(Box::new(pic))));
+
+    let mut records: Vec<Record> = Vec::new();
+    serialize_control(&ctrl, 1, None, &mut records);
+
+    let ctrl_headers = records
+        .iter()
+        .filter(|r| r.tag_id == tags::HWPTAG_CTRL_HEADER)
+        .count();
+    assert_eq!(
+        ctrl_headers, 1,
+        "최상위 그림 1개는 CTRL_HEADER 를 정확히 1개 방출해야 함 (char_count += 8 과 1:1)"
+    );
+    assert!(
+        records
+            .iter()
+            .any(|r| r.tag_id == tags::HWPTAG_SHAPE_COMPONENT_PICTURE),
+        "SHAPE_COMPONENT_PICTURE 레코드가 함께 방출돼야 함"
+    );
+}
+
+/// [#2696] OLE 의 `SHAPE_COMPONENT` 는 **의도적으로** base-only 다.
+///
+/// 최초 조사에서 "Chart 형제 arm 은 `serialize_drawing_shape_component` 로
+/// DrawingObjAttr 전체를 기록하는데 OLE 만 base-only 이므로 비대칭 결함" 이라고
+/// 판단했으나, 한컴 저장본 `samples/143E433F503322BD33.hwp` 를 실측한 결과
+/// `$ole` ctrl id 를 가진 `SHAPE_COMPONENT` 는 **196B(base-only)** 였다. 같은
+/// 파일에서 테두리/채우기/그림자 꼬리를 가진 252B 레코드는 도형 쪽이다.
+/// 즉 base-only 가 한컴의 실제 OLE 포맷이며, `#1283` 이 한컴 읽기 오류를
+/// 잡으면서 확정한 계약이다(`tests/issue_1251_ole_chart_contents.rs` 가
+/// `shape_component.size == 196` 으로 고정).
+///
+/// 파서가 `parse_shape_component_full` 로 꼬리를 읽을 수 있는 것은 관대함이지
+/// 직렬화 의무가 아니다. 같은 오판이 반복되지 않도록 계약을 여기에 못박는다.
+#[test]
+fn issue2696_ole_shape_component_stays_base_only() {
+    let base = serialize_shape_component(tags::SHAPE_OLE_ID, &ShapeComponentAttr::default(), true);
+    let full =
+        serialize_drawing_shape_component(tags::SHAPE_OLE_ID, &DrawingObjAttr::default(), true);
+    assert!(
+        full.len() > base.len(),
+        "전제 확인: 전체 직렬화가 base 보다 길어야 이 계약이 의미를 가짐"
+    );
+    assert_eq!(
+        base.len(),
+        196,
+        "[#2696] OLE SHAPE_COMPONENT 는 한컴 실측치와 같은 196B(base-only)여야 한다 \
+         — 꼬리를 붙이면 #1283 의 한컴 호환 계약이 깨진다"
+    );
+}

@@ -509,6 +509,9 @@ struct TypesetState {
     footnote_between_notes_margin: f64,
     /// 각주 안전 여백
     footnote_safety_margin: f64,
+    /// [#2559] 현재 구역에 꼬리말 정의가 없는가. 빈 꼬리말 밴드는 각주가 먼저
+    /// 사용하므로, 이 경우에만 각주 높이의 일부를 본문 가용 높이에서 회수한다.
+    section_has_no_footer: bool,
     /// 존(zone) y 오프셋 (다단 나누기 시 누적)
     current_zone_y_offset: f64,
     /// 현재 존의 레이아웃 오버라이드
@@ -1858,6 +1861,7 @@ impl TypesetState {
             footnote_separator_overhead,
             footnote_between_notes_margin,
             footnote_safety_margin,
+            section_has_no_footer: false,
             current_zone_y_offset: 0.0,
             current_zone_layout: None,
             on_first_multicolumn_page: false,
@@ -1919,18 +1923,32 @@ impl TypesetState {
 
     /// 사용 가능한 본문 높이 (각주, 존 오프셋 차감)
     fn available_height(&self) -> f64 {
-        let base = self.layout.available_body_height();
+        let base = self.base_available_height();
         let fn_margin = if self.current_footnote_height > 0.0 {
             self.footnote_safety_margin
         } else {
             0.0
         };
+        // [#2559] 한글은 꼬리말 콘텐츠가 없는 구역에서 각주가 빈 꼬리말 밴드까지
+        // 사용하도록 배치한다. 밴드를 초과하는 각주 높이만 본문을 줄여야 조기
+        // 개행이 누적되지 않는다. 실제 꼬리말이 있으면 점유 가능성이 있으므로
+        // 보수적으로 밴드를 회수하지 않는다.
+        let footnote_penalty = (self.current_footnote_height - self.footer_band_reclaim()).max(0.0);
         (base
-            - self.current_footnote_height
+            - footnote_penalty
             - fn_margin
             - self.current_zone_y_offset
             - self.current_bottom_fixed_exclusion)
             .max(0.0)
+    }
+
+    /// [#2559] 각주가 사용할 수 있는 빈 꼬리말 밴드 높이.
+    fn footer_band_reclaim(&self) -> f64 {
+        if self.section_has_no_footer && self.current_footnote_height > 0.0 {
+            self.layout.footer_area.height.max(0.0)
+        } else {
+            0.0
+        }
     }
 
     /// 기본 가용 높이 (각주/존 미차감)
@@ -3336,6 +3354,9 @@ impl TypesetEngine {
         // 머리말/꼬리말/쪽 번호/새 번호/감추기 컨트롤 수집
         let (hf_entries, page_number_pos, new_page_numbers, page_hides) =
             Self::collect_header_footer_controls(paragraphs, section_index);
+        // [#2559] 조건부(Even/Odd)까지 포함해 어떤 꼬리말이라도 정의돼 있으면
+        // 밴드가 점유될 수 있다. 완전히 비어 있는 구역에서만 각주 회수를 허용한다.
+        st.section_has_no_footer = !hf_entries.iter().any(|(_, _, is_header, _)| !is_header);
 
         // 가시 콘텐츠(텍스트 또는 컨트롤 보유)를 가진 마지막 문단 인덱스. 이 뒤의 빈 문단들은
         // 문서 말미의 trailing 빈 문단이라, co-anchored 자리차지 표가 페이지를 채운 경우에 한해
