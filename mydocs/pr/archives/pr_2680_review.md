@@ -16,6 +16,11 @@
 조기 재렌더해 1500ms 안전망까지 차트가 비어 보이던 문제를 줄였다. 이 PR은 그 변경을 포함한 최신 `devel` 위에
 [#2522](https://github.com/edwardkim/rhwp/pull/2522)의 별도 보완만 이식한다.
 
+최신 `devel` rebase 중 [#2635](https://github.com/edwardkim/rhwp/issues/2635)의 upstream fallback도 확인했다.
+이는 프리페치 URL이 전혀 없을 때 즉시 완료해 기존 조기 재렌더를 쓰게 하는 경로다. 충돌 해소에서는 이 fallback을
+유지하고, 순수 SVG URL을 만들 수 있을 때는 그 URL의 실제 로드 완료를 기다리도록 #2680의 프리페치를 앞에
+결합했다.
+
 순수 `rawSvg`에는 내부 `data:image/...` URL이 없어 기존 raster 정규식 프리페치가 이미지 완료 신호를 만들지
 못한다. 따라서 Rust `wrap_svg_fragment`와 같은 SVG data URL을 만들어 브라우저 이미지 캐시를 먼저 채우고,
 기존 지연 재렌더가 로드 완료 이미지를 그리도록 한다. 내부 raster data URL을 가진 `rawSvg`는 이미 기존 경로가
@@ -40,7 +45,7 @@ Studio의 `getPageLayerTree` bbox 계약은 `x/y/width/height`다. 구형 `getPa
 ## 검증
 
 - `cd rhwp-studio && node --test tests/render-backend.test.ts`: 46 passed, 0 failed
-- `cd rhwp-studio && npm test`: 458 passed, 0 failed
+- `cd rhwp-studio && npm test`: 466 passed, 0 failed
 - `cd rhwp-studio && npm run build`: 성공. 기존 Vite chunk-size 경고 외 오류 없음
 - `cd rhwp-studio && node e2e/issue-2635-rawsvg-first-paint.test.mjs --mode=headless`: 400ms first-paint 통과
 - `git diff --check`: 통과
