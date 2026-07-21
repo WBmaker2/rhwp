@@ -1448,10 +1448,16 @@ pub fn recompose_stored_single_line_if_overflowing(
     if !stored_single || composed.lines.len() != 1 || cell_inner_width_px <= 0.0 {
         return;
     }
+    // [#2430] 발동 임계 ×1.05 는 측정(원패딩) vs 렌더(shrink패딩) 폭 발산(#2237)
+    // 으로 살짝(1.05~1.35×) 초과한 정합 셀까지 거짓 재래핑해 줄수를 부풀리고
+    // 쪽당 표 행 적재를 떨어뜨렸다(분할표 11건 과다분할 회귀). 본문 판
+    // `stored_lines_overflow`(#2525)와 동일하게 ×1.8 로 좁혀 정당한 장평/자간·
+    // 패딩 발산 범위(≤~1.5×)를 넘는 부실 저장만 재래핑한다. #2291 원 타깃
+    // (76자 1-lineseg = ~7.6× 초과, 절단 해소)은 임계 위라 계속 재래핑.
     let over = composed
         .lines
         .first()
-        .map(|l| estimate_composed_line_width(l, styles) > cell_inner_width_px * 1.05)
+        .map(|l| estimate_composed_line_width(l, styles) > cell_inner_width_px * 1.8)
         .unwrap_or(false);
     if std::env::var("RHWP_DIAG_CELLREWRAP").is_ok() && over {
         if let Some(l) = composed.lines.first() {
