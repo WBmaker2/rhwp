@@ -812,8 +812,10 @@ export class CharShapeDialog {
     if (!this.props) return;
     const arrIdx = this.currentLang === 0 ? -1 : this.currentLang - 1;
 
-    const ratio = parseInt(this.langInputs['cs-ratio'].value) || 100;
-    const spacing = parseInt(this.langInputs['cs-spacing'].value) || 0;
+    // 단축키 커맨드(input-handler.ts adjustCharRatio/adjustCharSpacing)와 동일하게 clamp.
+    // <input type=number>의 min/max 속성은 스피너 클릭에만 강제되고 직접 타이핑에는 적용되지 않는다.
+    const ratio = Math.max(50, Math.min(200, parseInt(this.langInputs['cs-ratio'].value) || 100));
+    const spacing = Math.max(-50, Math.min(50, parseInt(this.langInputs['cs-spacing'].value) || 0));
     const relSize = parseInt(this.langInputs['cs-relative-size'].value) || 100;
     const charOff = parseInt(this.langInputs['cs-char-offset'].value) || 0;
 
