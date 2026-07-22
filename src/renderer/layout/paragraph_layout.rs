@@ -1029,6 +1029,24 @@ fn compute_line_extra_spacing(
     }
 }
 
+/// 문단 정렬이 현재 줄의 공백 폭을 끝까지 배분해야 하는지 판정한다.
+///
+/// `Justify`는 마지막 줄과 강제 줄바꿈 줄을 제외하지만, HWP5 `Split`
+/// (HWPX `DISTRIBUTE_SPACE`, 한컴 UI의 나눔 정렬)은 문단의 마지막 줄까지
+/// 공백에 배분한다. 강제 줄바꿈 줄의 기존 억제 동작은 유지한다.
+fn needs_word_distribution(
+    alignment: Alignment,
+    is_last_line_of_para: bool,
+    is_header_footer_para: bool,
+    has_forced_break: bool,
+) -> bool {
+    match alignment {
+        Alignment::Split => !has_forced_break,
+        Alignment::Justify => (!is_last_line_of_para || is_header_footer_para) && !has_forced_break,
+        _ => false,
+    }
+}
+
 /// [Task #2067] 조판부호 모드의 인라인 컨트롤 마커 라벨 수집 — (논리 위치, 라벨).
 fn collect_shape_marker_labels(show_ctrl: bool, para: Option<&Paragraph>) -> Vec<(usize, String)> {
     if show_ctrl {
@@ -3332,12 +3350,16 @@ impl LayoutEngine {
             // 정렬별 간격 분배 계산
             let has_forced_break = comp_line.has_line_break;
             // 머리말/꼬리말은 내부 문단 인덱스를 `usize::MAX - i`로 넘긴다.
-            // HWP3 Justify와 HWPX DISTRIBUTE_SPACE/HWP5 Split은 모두 공백에만 배분한다.
-            // 머리말/꼬리말 단일 줄도 한컴처럼 영역 폭까지 공백을 벌려야 한다.
+            // Justify와 HWPX DISTRIBUTE_SPACE/HWP5 Split은 모두 공백에 배분하지만,
+            // 마지막 줄 규칙은 다르다. Split(나눔 정렬)은 마지막 줄도 영역 끝까지
+            // 배분한다. 머리말/꼬리말 Justify 단일 줄도 한컴처럼 공백을 벌린다.
             let is_header_footer_para = para_index >= usize::MAX - 1024;
-            let needs_justify = matches!(alignment, Alignment::Justify | Alignment::Split)
-                && (!is_last_line_of_para || is_header_footer_para)
-                && !has_forced_break;
+            let needs_justify = needs_word_distribution(
+                alignment,
+                is_last_line_of_para,
+                is_header_footer_para,
+                has_forced_break,
+            );
             let needs_distribute = alignment == Alignment::Distribute;
 
             let has_tabs = comp_line.runs.iter().any(|r| r.text.contains('\t'));
@@ -6372,6 +6394,81 @@ pub(crate) struct ParaInlineState {
     pub line_top_y: f64,
     /// 현재 line 의 최대 picture height (line wrap 임계 + 다음 line advance 용)
     pub line_height: f64,
+}
+
+#[cfg(test)]
+mod issue_2809_split_alignment_tests {
+    use super::{compute_line_extra_spacing, needs_word_distribution};
+    use crate::model::style::Alignment;
+    use crate::renderer::composer::{ComposedLine, ComposedTextRun};
+    use crate::renderer::style_resolver::ResolvedStyleSet;
+
+    fn split_label_line() -> ComposedLine {
+        ComposedLine {
+            runs: vec![ComposedTextRun {
+                text: "다 같 이".to_string(),
+                ..Default::default()
+            }],
+            line_height: 1120,
+            baseline_distance: 952,
+            segment_width: 6972,
+            column_start: 0,
+            line_spacing: 560,
+            has_line_break: false,
+            char_start: 0,
+        }
+    }
+
+    #[test]
+    fn split_distributes_single_last_line_but_justify_does_not() {
+        assert!(needs_word_distribution(
+            Alignment::Split,
+            true,
+            false,
+            false
+        ));
+        assert!(!needs_word_distribution(
+            Alignment::Justify,
+            true,
+            false,
+            false
+        ));
+        assert!(needs_word_distribution(
+            Alignment::Justify,
+            false,
+            false,
+            false
+        ));
+        assert!(!needs_word_distribution(
+            Alignment::Split,
+            true,
+            false,
+            true
+        ));
+    }
+
+    #[test]
+    fn split_label_assigns_positive_slack_to_interior_spaces() {
+        let line = split_label_line();
+        let (extra_word, extra_char, extra_dash) = compute_line_extra_spacing(
+            &line,
+            &ResolvedStyleSet::default(),
+            Alignment::Split,
+            true,
+            true,
+            false,
+            false,
+            false,
+            5,
+            30.0,
+            90.0,
+            40.0,
+        );
+
+        assert!((extra_word - 30.0).abs() < 0.001);
+        assert_eq!(extra_char, 0.0);
+        assert_eq!(extra_dash, 0.0);
+    }
 }
 
 #[cfg(test)]
