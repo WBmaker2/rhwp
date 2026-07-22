@@ -30,12 +30,17 @@ export async function loadSettings(chromeApi = globalThis.chrome, options = {}) 
 
 /**
  * 탭 생성처럼 사용자가 원치 않을 수 있는 자동 동작은 sync 상태를 확인할 수 있을 때만 허용한다.
- * UI는 local snapshot으로 복구할 수 있지만, sync read 실패 중 local true만으로 자동 열기를
- * 승인하지 않는다.
+ * sync read 실패 또는 기존 설치 정황이 있는 partial sync에서 autoOpen을 확인할 수 없으면
+ * fail-closed 처리한다. clean install이나 유효한 local snapshot은 기존 기본/복구 계약을 유지한다.
  */
 export async function loadSettingsForAutomaticActions(chromeApi = globalThis.chrome, options = {}) {
   const resolved = await resolveSettings(chromeApi, options);
-  if (resolved.syncReadable) return resolved.settings;
+  if (!resolved.syncReadable) {
+    return { ...resolved.settings, autoOpen: false };
+  }
+  if (resolved.syncAutoOpenKnown || resolved.localSnapshotKnown || !resolved.hasSyncEvidence) {
+    return resolved.settings;
+  }
   return { ...resolved.settings, autoOpen: false };
 }
 
@@ -44,13 +49,18 @@ async function resolveSettings(chromeApi, options) {
   const syncArea = requireStorageArea(chromeApi, 'sync');
   const localArea = requireStorageArea(chromeApi, 'local');
   const [syncResult, localResult] = await Promise.all([
-    readStorage(syncArea, [...SETTINGS_KEYS, SYNC_META_KEY]),
+    // 기존 배포본의 legacy key도 설치 이력 신호이므로 전체 sync payload를 확인한다.
+    readStorage(syncArea, null),
     readStorage(localArea, LOCAL_BACKUP_KEY),
   ]);
 
   const localSnapshot = localResult.ok
     ? normalizeSnapshot(localResult.items[LOCAL_BACKUP_KEY])
     : null;
+  const syncAutoOpenKnown = syncResult.ok
+    && typeof syncResult.items.autoOpen === 'boolean';
+  const hasSyncEvidence = syncResult.ok
+    && Object.keys(syncResult.items).length > 0;
 
   if (!syncResult.ok && !localSnapshot) {
     throw new Error('확장 설정을 불러오지 못했습니다.', { cause: syncResult.error ?? localResult.error });
@@ -67,7 +77,14 @@ async function resolveSettings(chromeApi, options) {
     }
   }
 
-  if (localResult.ok && !snapshotMatches(localSnapshot, settings)) {
+  // 기존 설치의 partial sync를 기본값으로 채운 결과는 last-known-good가 아니다.
+  // 유효한 autoOpen 근거가 생길 때까지 local에 default true를 굳히지 않는다.
+  const canCreateTrustworthySnapshot = localSnapshot
+    || syncAutoOpenKnown
+    || !hasSyncEvidence;
+  if (localResult.ok
+    && canCreateTrustworthySnapshot
+    && !snapshotMatches(localSnapshot, settings)) {
     const syncMeta = syncResult.ok ? normalizeMeta(syncResult.items[SYNC_META_KEY]) : null;
     const snapshot = createSnapshot(settings, syncMeta?.updatedAt ?? now());
     try {
@@ -77,7 +94,13 @@ async function resolveSettings(chromeApi, options) {
     }
   }
 
-  return { settings, syncReadable: syncResult.ok };
+  return {
+    settings,
+    syncReadable: syncResult.ok,
+    syncAutoOpenKnown,
+    localSnapshotKnown: Boolean(localSnapshot),
+    hasSyncEvidence,
+  };
 }
 
 /**

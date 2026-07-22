@@ -12,7 +12,7 @@ import { handleExtensionInstalled } from './sw/extension-lifecycle.js';
 chrome.runtime.onInstalled.addListener((details) => {
   setupContextMenus();
   void handleExtensionInstalled(chrome, details).catch((error) => {
-    console.warn('[rhwp-settings] 확장 수명주기 기록 실패:', error);
+    console.warn('[rhwp-settings] 확장 수명주기 처리 실패:', error);
   });
 });
 

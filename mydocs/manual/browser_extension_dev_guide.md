@@ -261,14 +261,19 @@ function getBlockedMessage(reason, hostname) {
 
 - `runtime.onInstalled`의 `install`, `update`, `chrome_update`는 사용자 설정을 기본값으로
   덮어쓰지 않는다. 깨끗한 최초 설치의 기본값은 저장소 read 시에만 적용한다.
+- `update`와 `chrome_update`에서는 sync에 쓰지 않고, 이벤트 시점에 읽을 수 있는 유효한 설정을
+  local snapshot으로 먼저 보존한 뒤 최소 수명주기 진단을 기록한다.
 - options, message router, download interceptor는 하나의 settings-store adapter를 사용한다.
 - 기존 배포본과의 호환을 위해 sync의 flat key를 유지한다.
 - 유효한 sync boolean 값이 key별 권위 값이며, 해당 key가 없거나 sync read가 실패한 경우에만
   local snapshot을 사용한다. 두 저장소 모두 값을 제공하지 못하면 자동 열기 기본값으로 조용히
   진행하지 않고 설정 로드 실패로 처리한다.
 - 옵션 UI는 sync read 실패 시 local snapshot을 복구 표시할 수 있지만, 다운로드 인터셉터처럼
-  탭을 만드는 자동 동작은 sync 상태를 읽지 못하면 local의 `true`만으로 허용하지 않는다.
-  불확실한 자동 동작은 fail-closed로 처리한다.
+  탭을 만드는 자동 동작은 sync 상태를 읽지 못하면 local의 `true`만으로 허용하지 않는다. 기존
+  sync key나 schema metadata가 남아 있는데 `autoOpen`과 local snapshot만 없는 partial sync도
+  clean install과 구분해 fail-closed 처리한다. 이때 default `true`를 local snapshot으로 굳히지 않는다.
+- sync와 local snapshot이 모두 없는 clean install은 `autoOpen=true` 기본값을 유지한다. 유효한 local
+  snapshot이 있으면 누락된 sync key를 해당 snapshot에서 복구한다.
 - local snapshot에는 설정 schema version과 갱신 시각만 포함한다. 설치·업데이트 진단에도 event
   reason과 확장 버전만 기록하고 문서 URL이나 개인정보를 넣지 않는다.
 - 저장은 권위 저장소인 sync가 성공해야 성공으로 처리한다. local snapshot은 best-effort 복구

@@ -85,6 +85,49 @@ test('automatic actions fail closed when sync cannot confirm a local true value'
   assert.equal(settings.autoOpen, false);
 });
 
+test('automatic actions keep the clean-install autoOpen default', async () => {
+  const env = createChromeStorageMock();
+
+  const settings = await loadSettingsForAutomaticActions(env.chrome, { now: () => 106 });
+
+  assert.equal(settings.autoOpen, true);
+});
+
+test('automatic actions fail closed for partial sync without a local backup', async () => {
+  const env = createChromeStorageMock({
+    sync: { useRhwpViewer: true },
+  });
+
+  const settings = await loadSettingsForAutomaticActions(env.chrome, { now: () => 107 });
+
+  assert.equal(settings.autoOpen, false);
+  assert.equal(env.localArea.dump()[LOCAL_BACKUP_KEY], undefined);
+});
+
+test('automatic actions fail closed when only sync metadata survives', async () => {
+  const env = createChromeStorageMock({
+    sync: {
+      [SYNC_META_KEY]: { schemaVersion: SETTINGS_SCHEMA_VERSION, updatedAt: 50 },
+    },
+  });
+
+  const settings = await loadSettingsForAutomaticActions(env.chrome, { now: () => 108 });
+
+  assert.equal(settings.autoOpen, false);
+  assert.equal(env.localArea.dump()[LOCAL_BACKUP_KEY], undefined);
+});
+
+test('automatic actions recover a missing sync key from a valid local backup', async () => {
+  const env = createChromeStorageMock({
+    sync: { showBadges: false },
+    local: { [LOCAL_BACKUP_KEY]: snapshot(DEFAULT_SETTINGS) },
+  });
+
+  const settings = await loadSettingsForAutomaticActions(env.chrome, { now: () => 109 });
+
+  assert.equal(settings.autoOpen, true);
+});
+
 test('load fails when neither storage area can provide a trustworthy value', async () => {
   const env = createChromeStorageMock();
   env.syncArea.failNextGet(new Error('sync unavailable'));

@@ -28,10 +28,13 @@ Chrome/Edge 확장에서 사용자가 끈 `한글파일 자동보기(autoOpen=fa
 - 동일 download id 동시 이벤트를 in-flight 선점으로 직렬화하고 handled/terminal 최신 상태를
   보존해 탭 1개 불변식을 강화했다.
 - sync 저장을 권위 성공 조건으로 삼고 local snapshot 실패는 복구 백업 경고로 분리했다.
+- update/Chrome-update 시점의 유효한 설정을 local snapshot으로 선보존하고, 기존 설치의 partial
+  sync를 clean install과 구분해 근거 없는 자동 열기와 default snapshot 생성을 막았다.
 
 세부 원인, 저장소 우선순위, 수동 체크리스트는
 [Stage 1](../working/task_m100_2656_stage1.md)에 기록했다. 과거 탭 다발 맥락과 사후 보강은
-[Stage 2](../working/task_m100_2656_stage2.md)에 기록했다.
+[Stage 2](../working/task_m100_2656_stage2.md), PR review partial-sync 보강은
+[Stage 7](../working/task_m100_2656_stage7.md)에 기록했다.
 
 ## 검증
 
@@ -44,6 +47,14 @@ Chrome/Edge 확장에서 사용자가 끈 `한글파일 자동보기(autoOpen=fa
 - source/dist 핵심 모듈 byte 비교: 통과
 - `npm --prefix rhwp-chrome run build`: 통과
 - `git diff --check`: 통과
+
+PR review 보강 후 focused 재검증 결과는 다음과 같다.
+
+- Chrome options + service worker 테스트: 41 passed, 0 failed
+- shared + Firefox 다운로드 회귀 테스트: 76 passed, 0 failed
+- Chrome/Firefox dist 계약 테스트: 3 passed, 0 failed
+- Chrome/Firefox 확장 빌드: 각각 168 modules transformed, 성공
+- source/dist `background.js`, `settings-store.js`, `extension-lifecycle.js`, `options.js` byte 비교: 통과
 
 자동화된 Chrome 제어는 `chrome://extensions` 내부 URL 접근이 보안 정책으로 차단되어 중단했고,
 우회나 사용자 기본 프로필 설치는 수행하지 않았다. 대신 작업지시자가 별도 Chrome 프로필에서 옵션
@@ -71,3 +82,9 @@ PR 생성 뒤 CI의 기존 확장 테스트 명령이 `rhwp-chrome/sw/*.test.mjs
 경쟁을 검증하는 루트의 `options.test.mjs`를 누락한다는 점을 확인했다. 별도 옵션 UI 테스트 단계를
 추가해 4개 테스트를 PR gate에 연결했다. 실제 Chromium에 압축해제 확장을 로드하는 E2E는 브라우저
 바이너리·영속 프로필·다운로드 fixture를 도입하는 별도 범위이므로 후속 이슈/PR로 분리한다.
+
+이후 [PR #2658 requested-changes review](https://github.com/edwardkim/rhwp/pull/2658#pullrequestreview-4745744846)와
+[메인테이너 재실증](https://github.com/edwardkim/rhwp/pull/2658#issuecomment-5040233424)에서 local snapshot이
+없는 기존 사용자의 partial sync 공백이 확인됐다. update/Chrome-update 선보존과 partial-sync
+fail-closed를 함께 적용하고 reviewer의 전체 재현 절차를 회귀 테스트로 고정했다. 보강 구현과 로컬
+검증은 완료했으며, commit·push·재검토 요청은 작업지시자 승인 뒤 수행한다.
