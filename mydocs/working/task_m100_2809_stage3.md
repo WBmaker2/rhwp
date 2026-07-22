@@ -53,4 +53,3 @@ glyph 눌림 또는 우측 잘림이 남으므로 결합 적용이 완료 조건
 - SVG snapshot: `8 passed; 0 failed`.
 - clippy `-D warnings`, fmt: 통과.
 - 144dpi visual sweep: `flagged=0/1`.
-- OVR5: 추적 개체가 있는 KTX/21_언어/aift 포함, 회귀 0건.

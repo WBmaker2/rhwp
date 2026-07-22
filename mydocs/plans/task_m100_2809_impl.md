@@ -55,8 +55,8 @@
   `a73d50620bf8fe96beaff72ba0e40cd34f396ec75de9798ac1fd0402e28f8e2b`.
 - 비교: 문제 2쪽을 144dpi로 맞춰 라벨의 첫/가운데/마지막 글자와 셀 좌우 경계를
   대조하고, WASM Canvas 2배율에서 동일 페이지를 다시 확인한다.
-- 사용자의 명시 요청에 따라 테스트에 사용한 원본 ZIP/HWP, 기준 PDF, native sweep,
-  WASM E2E, OVR 증적을 저장소에 함께 포함한다.
+- 사용자의 명시 요청에 따라 테스트에 사용한 원본 ZIP/HWP, 기준 PDF, 최종 review
+  PNG와 WASM E2E 보고서를 저장소에 함께 포함한다.
 
 ## 5. 위험과 완화
 
@@ -64,5 +64,5 @@
 |---|---|
 | `Justify` 마지막 줄까지 함께 벌어짐 | `Split`과 `Justify` 판정을 헬퍼에서 명시적으로 분리하고 음성 테스트를 둔다. |
 | 강제 줄바꿈 의미가 달라짐 | `Justify`와 `Split` 모두 기존 강제 줄바꿈 억제를 보존하는 음성 테스트를 둔다. |
-| 증적 재현성 부족 | 원본 HWP/PDF, 최종 review PNG, E2E HTML과 OVR 결과표의 SHA-256을 증적 README에 고정한다. |
+| 증적 재현성 부족 | 원본 HWP/PDF, 최종 review PNG와 E2E HTML의 SHA-256을 증적 README에 고정한다. |
 | 폰트 fallback에 따른 외형 차이 | 폰트 외형 대신 원문 charPr/LineSeg와 문자 좌표 span을 검증하고 HWP 2020 PDF를 기준으로 둔다. |

@@ -29,12 +29,6 @@ WASM Canvas와 실제 편집기 캡처는 E2E 실행 시 `output/e2e/task2809/`�
 - 위쪽 마지막 `이` glyph 잉크 폭: `22px`로 셀 우측에서 온전히 표시된다.
 - 즉 음수 자간은 문자 시작 위치에 반영되지만 glyph 자체를 누르거나 자르지 않는다.
 
-## 기타 검증 자료
-
-| 파일 | 내용 | SHA-256 |
-|---|---|---|
-| `ovr_diff.md` | OVR5 결과표, 추적 개체가 있는 3개 샘플 포함 | `0c67cb04f41069bbea31a491d404b19ce6638740b119fc599a7735a0b1571a9b` |
-
 중복·대용량 산출물 압축본은 커밋하지 않는다. 재현 명령의 전체 결과는 로컬
 `output/`에서 확인하고, PR에는 최종 review PNG와 판정 보고서만 포함한다.
 
@@ -50,6 +44,4 @@ python3 scripts/task1274_visual_sweep.py \
   --page 2 --dpi 144 \
   --out output/task2809-visual-stage3-final \
   --rhwp-bin target/debug/rhwp
-python3 tools/object_visual_regression.py \
-  --preset ovr5 -o output/task2809-ovr-stage3 --diff-against devel
 ```

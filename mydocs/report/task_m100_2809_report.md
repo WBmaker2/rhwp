@@ -61,7 +61,7 @@ HWP5 `Alignment::Split`(HWPX `DISTRIBUTE_SPACE`, 한컴 UI의 나눔 정렬)을
 | `mydocs/working/task_m100_2809_stage*.md` | 단계별 원인·검증 증적 기록 |
 | `rhwp-studio/e2e/issue-2809-split-alignment.test.mjs` | 실제 백엔드, 좌표 span과 최종 Canvas glyph 픽셀 폭 회귀 검증 |
 | `samples/issues/2809/*`, `pdf/issue-2809-*.pdf` | 테스트 원본 ZIP/HWP와 정상 기준 PDF |
-| `mydocs/pr/assets/task2809/*` | 최종 review PNG, WASM E2E HTML과 OVR 판정표 |
+| `mydocs/pr/assets/task2809/*` | 최종 review PNG와 WASM E2E HTML |
 
 ## 4. 증적
 
@@ -100,12 +100,6 @@ HWP 2022 PDF의 좌우 괄호는 `229.44pt / 266.88pt`, 수정 SVG 환산값은
 `229.53pt / 268.84pt`다. 기존 golden 오른쪽 `261.64pt`보다 기준에 가까워
 의도된 변경으로 판정했다.
 
-### 개체 무회귀
-
-OVR `ovr5` 5개 샘플(KTX, exam_math, 21_언어, aift, biz_plan)의 페이지 수와
-개체 수가 유지됐고, 렌더러 커밋 `063061b9d`와 `devel@aa4dc00e5` 비교에서 허용오차
-±2px 기준 회귀는 0건이다.
-
 ## 5. 검증
 
 - `CARGO_INCREMENTAL=0 cargo test --lib` — `2512 passed; 0 failed; 7 ignored`.
@@ -120,7 +114,7 @@ OVR `ovr5` 5개 샘플(KTX, exam_math, 21_언어, aift, biz_plan)의 페이지 �
 
 ## 6. 후속
 
-원본 ZIP/HWP, 기준 PDF, 최종 review PNG, WASM E2E HTML과 OVR 결과표의 SHA-256은
+원본 ZIP/HWP, 기준 PDF, 최종 review PNG와 WASM E2E HTML의 SHA-256은
 [`mydocs/pr/assets/task2809/README.md`](../pr/assets/task2809/README.md)에
 고정했다. 사용자 승인 후 원본 저장소의 임시 head 브랜치로 push하고 `devel` 기준
 Open PR을 생성한다.
