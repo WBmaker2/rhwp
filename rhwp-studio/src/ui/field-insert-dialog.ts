@@ -98,6 +98,12 @@ export class FieldInsertDialog extends ModalDialog {
       if (buttons[1]) buttons[1].textContent = '취소';
     }
 
+    // 싱글턴으로 재사용되므로 이전 삽입 값이 남지 않도록 초기 상태로 리셋한다.
+    this.guideInput.value = '입력하세요';
+    this.memoInput.value = '';
+    this.nameInput.value = '';
+    this.editableCheckbox.checked = true;
+
     this.guideInput.focus();
     this.guideInput.select();
   }
