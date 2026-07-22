@@ -83,10 +83,11 @@ pub fn write_form<W: Write>(w: &mut Writer<W>, form: &FormObject) -> Result<(), 
     let fore = color_to_hex(form.fore_color);
     let back = color_to_hex(form.back_color);
     let enabled = if form.enabled { "1" } else { "0" };
-    let checked = if form.value == 1 {
-        "CHECKED"
-    } else {
-        "UNCHECKED"
+    // value: UNCHECKED/CHECKED/INDETERMINATE 3상태 (parser 의 역방향).
+    let checked = match form.value {
+        1 => "CHECKED",
+        2 => "INDETERMINATE",
+        _ => "UNCHECKED",
     };
 
     // 공통 속성 (모든 폼 타입). 순서는 한컴 산출물을 따른다.
@@ -238,6 +239,21 @@ mod tests {
         // parse_color_str("#1A2B3C") = 0x003C2B1A. 역변환은 "#1A2B3C".
         assert_eq!(color_to_hex(0x003C2B1A), "#1A2B3C");
         assert_eq!(color_to_hex(0x00F0F0F0), "#F0F0F0");
+    }
+
+    #[test]
+    fn checkbox_emits_indeterminate_value() {
+        // value=2 (파서가 hp:checkBtn@value="INDETERMINATE" 를 읽었을 때) 는
+        // "UNCHECKED" 로 뭉개지지 않고 그대로 "INDETERMINATE" 로 출력돼야 한다.
+        let form = FormObject {
+            form_type: FormType::CheckBox,
+            name: "CheckBox".to_string(),
+            value: 2,
+            enabled: true,
+            ..Default::default()
+        };
+        let xml = to_string(|w| write_form(w, &form));
+        assert!(xml.contains(r#"value="INDETERMINATE""#), "{xml}");
     }
 
     #[test]
