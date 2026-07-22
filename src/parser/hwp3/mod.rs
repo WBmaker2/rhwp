@@ -77,6 +77,11 @@ pub(crate) fn check_record_count(count: usize) -> Result<(), io::Error> {
     Ok(())
 }
 
+// HWP3 spec (한글문서파일구조3.0.md:248) doc_info offset 122 "빈줄감춤"(0 이외=on).
+fn hwp3_hide_empty_line(doc_info: &Hwp3DocInfo) -> bool {
+    doc_info.hide_empty_line != 0
+}
+
 fn hwp3_page_border_fill(
     doc_info: &Hwp3DocInfo,
     border_fill_id: u16,
@@ -190,6 +195,20 @@ fn hwp3_color_index_to_color_ref(color: u8) -> crate::model::ColorRef {
         7 => 0x00FFFFFF, // 흰색
         _ => 0x00000000,
     }
+}
+
+/// [#2984] HWP3 그림 정보 레코드(348바이트) offset 339~341 의 밝기/명암/그림효과를
+/// 읽는다. (`mydocs/tech/한글문서파일구조3.0.md` 10.7절, 표 43 "그림 식별 정보")
+fn hwp3_picture_image_effect(info_buf: &[u8]) -> (i8, i8, crate::model::image::ImageEffect) {
+    if info_buf.len() < 342 {
+        return (0, 0, crate::model::image::ImageEffect::RealPic);
+    }
+    let effect = match info_buf[341] {
+        1 => crate::model::image::ImageEffect::GrayScale,
+        2 => crate::model::image::ImageEffect::BlackWhite,
+        _ => crate::model::image::ImageEffect::RealPic,
+    };
+    (info_buf[339] as i8, info_buf[340] as i8, effect)
 }
 
 const HWP3_TO_IR_PARA_UNIT: i32 = 8;
@@ -317,6 +336,13 @@ pub(crate) fn convert_para_shape(
         _ => crate::model::style::Alignment::Justify,
     };
 
+    // [#2976] 문단 테두리 연결(인접 문단끼리 테두리를 이어 그릴지) 플래그.
+    // 접근자 border_connection()은 있었으나 attr1 bit 28(HWPX 직렬화기·편집
+    // 커맨드가 공유하는 규약)로 배선되지 않아 항상 소실되었다.
+    if hwp3_ps.border_connection() {
+        ps.attr1 |= 1 << 28;
+    }
+
     // [Task #741 Stage 6] HWP3 ParaShape tabs[40] → Document IR TabDef 변환.
     // - HWP3 tab struct: tab_type(u8) → leader(u8) → position(u16 LE) — 4 bytes.
     // - default tab pattern (slot N: position=1000*(N+1) hunit, tab_type=0, leader=0) 은 system 기본 탭이므로 제외.
@@ -403,6 +429,19 @@ fn hwp3_note_column_width_hu(column_width_hu: i32) -> i32 {
         .saturating_sub(HWP3_NOTE_COLUMN_GAP_HU)
         .saturating_div(2)
         .max(1)
+}
+
+/// doc_info.encrypted(암호 설정 여부)를 FileHeader.encrypted 및 raw_data 플래그 비트(0x02)에 반영한다.
+fn apply_hwp3_encrypted_flag(
+    doc_info_encrypted: u16,
+    header: &mut crate::model::document::FileHeader,
+) {
+    if doc_info_encrypted != 0 {
+        header.encrypted = true;
+        if let Some(raw) = header.raw_data.as_mut() {
+            raw[36] |= 0x02;
+        }
+    }
 }
 
 fn hwp3_default_endnote_shape() -> crate::model::footnote::FootnoteShape {
@@ -957,6 +996,13 @@ fn parse_hwp3_object_dispatch(
         }
         pic.common.attr = build_common_obj_attr(&pic.common);
 
+        // [#2984] 밝기/명암/그림효과 (offset 339~341) 미반영 → 흑백/그레이스케일/
+        // 밝기·명암 보정된 HWP3 그림이 원본 컬러 그대로 렌더링되던 문제 수정.
+        let (brightness, contrast, effect) = hwp3_picture_image_effect(&info_buf);
+        pic.image_attr.brightness = brightness;
+        pic.image_attr.contrast = contrast;
+        pic.image_attr.effect = effect;
+
         let n_ext_from_buf = (&info_buf[0..4]).read_u32::<LittleEndian>().unwrap_or(0);
         let n_ext = n_ext_from_buf;
 
@@ -1232,6 +1278,15 @@ fn parse_hwp3_object_dispatch(
             if let Err(_) = body_cursor.read_exact(&mut field_data) {
                 return Ok(Some(true));
             }
+            // [Task #877 후속] field_data 는 파싱만 되고 IR로 배선되지 않아 소실됐다.
+            // 책갈피(ch==6)와 동일하게 원본 바이트를 command 에 실어 Field control로 배선.
+            let mut field = crate::model::control::Field::default();
+            field.field_type = crate::model::control::FieldType::Unknown;
+            field.command = crate::parser::hwp3::encoding::decode_hwp3_string(&field_data)
+                .trim_end_matches('\0')
+                .to_string();
+            controls.push(crate::model::control::Control::Field(field));
+            ctrl_data_records.push(None);
         }
     } else if ch == 6 {
         // [Task #877] 책갈피 (spec §10.2, 표 36): 42 bytes total.
@@ -1803,25 +1858,6 @@ fn parse_simple_control_char(
             utf16_len += 8;
             text_string.push('\t');
         }
-        7 | 8 => {
-            let mut buf = [0u8; 6];
-            if let Err(_) = body_cursor.read_exact(&mut buf) {
-                return Ok((i, utf16_len, true));
-            }
-            for k in 0..3usize {
-                if i + k < hwp3_char_to_utf16_pos.len() {
-                    hwp3_char_to_utf16_pos[i + k] = utf16_len;
-                }
-            }
-            i += 3;
-            char_offsets.push(utf16_len);
-            utf16_len += 1;
-            text_string.push('\u{FFFC}');
-            controls.push(crate::model::control::Control::Unknown(
-                crate::model::control::UnknownControl { ctrl_id: ch as u32 },
-            ));
-            ctrl_data_records.push(None);
-        }
         23 => {
             let mut buf = [0u8; 8];
             if let Err(_) = body_cursor.read_exact(&mut buf) {
@@ -2086,7 +2122,11 @@ pub(crate) fn parse_paragraph_list(
 
             if ch > 0 && ch <= 31 && ch != 13 {
                 match ch {
-                    1 | 7 | 8 | 9 | 22 | 23 | 24 | 25 | 26 | 28 | 30 | 31 => {
+                    // [#2844] ch=7(날짜 형식)/ch=8(날짜 코드)는 각각 84/96바이트짜리
+                    // 가변폭 구조체이며, 이 arm 이 처리하는 다른 코드들처럼 8바이트에
+                    // 맞춰떨어지지 않는다. `_` 캐치올(parse_object_control_char)에 남아
+                    // 있는 Task #877의 76/88바이트 스킵 로직으로 라우팅해야 한다.
+                    1 | 9 | 22 | 23 | 24 | 25 | 26 | 28 | 30 | 31 => {
                         let (next_i, next_utf16_len, break_char_loop) = parse_simple_control_char(
                             body_cursor,
                             ch,
@@ -2919,6 +2959,11 @@ pub fn parse_hwp3(data: &[u8]) -> Result<Document, Hwp3Error> {
     doc.doc_properties.page_start_num = doc_info.start_page_number;
     doc.doc_properties.footnote_start_num = doc_info.footnote_start_number;
 
+    // doc_info.encrypted(암호 설정 여부)를 FileHeader.encrypted로 배선한다.
+    // HWP5/HWPX는 각자의 헤더에서 이 값을 채우지만 HWP3는 raw_data를 항상
+    // 비암호(flags=0)로 하드코딩해 doc.header.encrypted가 실제 값과 무관하게 false였다.
+    apply_hwp3_encrypted_flag(doc_info.encrypted, &mut doc.header);
+
     // 2. 문서 요약 파싱 (1008 바이트)
     let doc_summary = Hwp3DocSummary::read(&mut cursor)?;
 
@@ -3223,6 +3268,9 @@ pub fn parse_hwp3(data: &[u8]) -> Result<Document, Hwp3Error> {
         landscape: doc_info.paper_direction != 0,
         ..Default::default()
     };
+    // 파싱만 되고 SectionDef.hide_empty_line 으로 배선되지 않아 페이지 시작부 빈 줄이
+    // 항상 정상 높이로 렌더되던 문제 (#issue).
+    section_def.hide_empty_line = hwp3_hide_empty_line(&doc_info);
 
     // [Task #877 Stage 4] HWP3 doc_info.border_type / border_margin → SectionDef.page_border_fill
     // 변환. HWP3 spec §3.2 (문서 정보) offset 112-121 의 페이지 테두리 정보. type=0 이면 없음,
@@ -3929,6 +3977,21 @@ mod tests {
     use std::io::Read;
 
     #[test]
+    fn test_convert_para_shape_wires_border_connection_into_attr1_bit28() {
+        // [#2976] border_connection() 접근자는 있었으나 attr1 bit 28로 배선되지
+        // 않아 항상 소실되던 결함의 회귀 테스트.
+        let mut hwp3_ps = crate::parser::hwp3::records::Hwp3ParaShape::default();
+        hwp3_ps.border_connection = 1;
+        let mut doc_tab_defs = Vec::new();
+        let ps = convert_para_shape(&hwp3_ps, &mut doc_tab_defs);
+        assert_eq!(
+            (ps.attr1 >> 28) & 1,
+            1,
+            "border_connection이 attr1 bit 28로 배선되어야 함"
+        );
+    }
+
+    #[test]
     fn test_alloc_record_buf_overflow_returns_err() {
         // [Task #877] garbage length 입력 시 panic 대신 graceful Err 반환.
         // 32-bit WASM 의 RawVec capacity overflow panic 방지 검증.
@@ -3963,6 +4026,73 @@ mod tests {
     }
 
     #[test]
+    fn test_hwp3_field_code_ch5_produces_field_control() {
+        // [Task #877 후속] ch==5 필드 코드는 field_data 를 읽고도 IR Field로
+        // 배선되지 않고 소실됐다. 8바이트 헤더(dword len=4 + ch2) + 4바이트
+        // payload 를 합성해 Control::Field 로 배선되는지 검증.
+        let payload = b"ABCD";
+        let mut body = Vec::new();
+        body.extend_from_slice(&(payload.len() as u32).to_le_bytes()); // header_val1
+        body.extend_from_slice(&5u16.to_le_bytes()); // ch2 (close)
+        body.extend_from_slice(payload);
+
+        let mut body_cursor = Cursor::new(body.as_slice());
+        let mut doc_char_shapes = Vec::new();
+        let mut doc_para_shapes = Vec::new();
+        let mut doc_border_fills = Vec::new();
+        let mut doc_tab_defs = Vec::new();
+        let mut pic_name_to_id = std::collections::HashMap::new();
+        let para_info = Hwp3ParaInfo {
+            follow_prev_para_shape: 0,
+            char_count: 10,
+            line_count: 1,
+            include_char_shape: 0,
+            flags: 0,
+            special_char_flags: 0,
+            style_index: 0,
+            rep_char_shape: Default::default(),
+            para_shape: None,
+        };
+        let mut text_string = String::new();
+        let mut char_offsets = Vec::new();
+        let mut hwp3_char_to_utf16_pos = vec![0u32; 10];
+        let mut controls = Vec::new();
+        let mut ctrl_data_records = Vec::new();
+        let mut scan = Hwp3CharScan {
+            text_string: &mut text_string,
+            char_offsets: &mut char_offsets,
+            hwp3_char_to_utf16_pos: &mut hwp3_char_to_utf16_pos,
+            controls: &mut controls,
+            ctrl_data_records: &mut ctrl_data_records,
+        };
+
+        parse_object_control_char(
+            &mut body_cursor,
+            &mut doc_char_shapes,
+            &mut doc_para_shapes,
+            &mut doc_border_fills,
+            &mut doc_tab_defs,
+            &mut pic_name_to_id,
+            0,
+            0,
+            0,
+            5,
+            &para_info,
+            0,
+            0,
+            &mut scan,
+        )
+        .unwrap();
+
+        assert!(
+            controls
+                .iter()
+                .any(|c| matches!(c, crate::model::control::Control::Field(_))),
+            "ch==5 필드 코드가 Control::Field 로 배선되지 않음: {controls:?}"
+        );
+    }
+
+    #[test]
     fn test_hwp3_page_border_fill_is_always_page_basis() {
         use crate::model::page::{PageBorderBasis, PageBorderUiBasis};
 
@@ -3986,6 +4116,23 @@ mod tests {
     }
 
     #[test]
+    fn issue_hwp3_hide_empty_line_wires_doc_info_flag() {
+        // doc_info offset 122 "빈줄감춤" 이 파싱만 되고 SectionDef.hide_empty_line 으로
+        // 배선되지 않던 문제의 회귀 방지.
+        let on = Hwp3DocInfo {
+            hide_empty_line: 1,
+            ..Default::default()
+        };
+        assert!(hwp3_hide_empty_line(&on));
+
+        let off = Hwp3DocInfo {
+            hide_empty_line: 0,
+            ..Default::default()
+        };
+        assert!(!hwp3_hide_empty_line(&off));
+    }
+
+    #[test]
     fn task1692_hwp3_color_index_maps_to_color_ref() {
         assert_eq!(hwp3_color_index_to_color_ref(0), 0x00000000);
         assert_eq!(hwp3_color_index_to_color_ref(1), 0x00FF0000);
@@ -3996,6 +4143,19 @@ mod tests {
         assert_eq!(hwp3_color_index_to_color_ref(6), 0x0000FFFF);
         assert_eq!(hwp3_color_index_to_color_ref(7), 0x00FFFFFF);
         assert_eq!(hwp3_color_index_to_color_ref(255), 0x00000000);
+    }
+
+    #[test]
+    fn task2984_hwp3_picture_image_effect_reads_brightness_contrast_effect() {
+        // [#2984] offset 339=밝기, 340=명암, 341=그림효과(1=그레이스케일).
+        let mut info_buf = vec![0u8; 348];
+        info_buf[339] = (-40i8) as u8;
+        info_buf[340] = 25u8;
+        info_buf[341] = 1u8;
+        let (brightness, contrast, effect) = hwp3_picture_image_effect(&info_buf);
+        assert_eq!(brightness, -40);
+        assert_eq!(contrast, 25);
+        assert_eq!(effect, crate::model::image::ImageEffect::GrayScale);
     }
 
     #[test]
@@ -4027,6 +4187,19 @@ mod tests {
         let cs = convert_char_shape(&sub);
         assert!(cs.subscript);
         assert!(!cs.superscript);
+    }
+
+    #[test]
+    fn hwp3_maps_encrypted_flag() {
+        // doc_info.encrypted != 0 이면 FileHeader.encrypted 와 raw_data 플래그 비트가
+        // 반영돼야 한다. 종전엔 배선이 없어 항상 false 였다.
+        let mut header = crate::model::document::FileHeader {
+            raw_data: Some(vec![0u8; crate::parser::header::FILE_HEADER_SIZE]),
+            ..Default::default()
+        };
+        apply_hwp3_encrypted_flag(1, &mut header);
+        assert!(header.encrypted);
+        assert_eq!(header.raw_data.unwrap()[36] & 0x02, 0x02);
     }
 
     #[test]
@@ -4183,5 +4356,75 @@ mod tests {
                 "saved HWP5 must have BinData/BIN* streams, got none (images lost)"
             );
         }
+    }
+
+    // [Task #2844] 스펙 §10.3 표 37: 날짜 형식(ch=7) 컨트롤은 식별 헤더 8바이트를
+    // 포함해 전체 84바이트다. 문자 스캔 루프의 디스패치 매치가 ch=7을
+    // parse_simple_control_char(6바이트만 소비)로 잘못 보내면, 그 뒤에 오는 실제
+    // 본문 텍스트("AAA")가 날짜 형식 문자열의 잔여 바이트로 오인되어 사라진다.
+    // 수정 후에는 ch=7이 parse_object_control_char(Task #877의 82바이트 스킵
+    // 로직)로 라우팅되어 "AAA"가 온전히 파싱되어야 한다.
+    #[test]
+    fn task2844_hwp3_date_format_ctrl_does_not_swallow_following_text() {
+        let mut body = Vec::new();
+
+        // 문단 정보 (43바이트: follow_prev_para_shape != 0 이므로 para_shape 생략).
+        body.push(1u8); // follow_prev_para_shape
+        body.extend_from_slice(&7u16.to_le_bytes()); // char_count: ch7(4) + "AAA"(3)
+        body.extend_from_slice(&0u16.to_le_bytes()); // line_count = 0 (LineInfo 생략)
+        body.push(0u8); // include_char_shape = 0
+        body.push(0u8); // flags
+        body.extend_from_slice(&0u32.to_le_bytes()); // special_char_flags
+        body.push(0u8); // style_index
+        body.extend_from_slice(&[0u8; 31]); // rep_char_shape (31바이트)
+        assert_eq!(body.len(), 43, "문단 정보 헤더 길이는 43바이트여야 함");
+
+        // ch=7 컨트롤 레코드 (전체 84바이트): open(2, 외부 char 루프에서 소비) +
+        // header_val1(4) + ch2(2) + 날짜 형식 문자열(76, 전부 0).
+        body.extend_from_slice(&7u16.to_le_bytes()); // 여는 특수 문자 코드
+        body.extend_from_slice(&84u32.to_le_bytes()); // header_val1 (예약 dword)
+        body.extend_from_slice(&7u16.to_le_bytes()); // 닫는 특수 문자 코드
+        body.extend_from_slice(&[0u8; 76]); // 날짜 형식 문자열 (모두 0)
+
+        // 날짜 컨트롤 뒤에 바로 오는 실제 본문: "AAA" (3 hchar).
+        for _ in 0..3 {
+            body.extend_from_slice(&0x0041u16.to_le_bytes()); // 'A'
+        }
+
+        // 문단 리스트 종료를 나타내는 빈 문단 (char_count=0, 총 43바이트).
+        body.push(0u8); // follow_prev_para_shape
+        body.extend_from_slice(&0u16.to_le_bytes()); // char_count = 0
+        body.extend_from_slice(&[0u8; 40]); // Hwp3ParaInfo::read가 요구하는 나머지 40바이트
+
+        let mut body_cursor = Cursor::new(body.as_slice());
+        let mut doc_char_shapes = Vec::new();
+        let mut doc_para_shapes = Vec::new();
+        let mut doc_border_fills = Vec::new();
+        let mut doc_tab_defs = Vec::new();
+        let mut pic_name_to_id = std::collections::HashMap::new();
+
+        let paragraphs = parse_paragraph_list(
+            &mut body_cursor,
+            &mut doc_char_shapes,
+            &mut doc_para_shapes,
+            &mut doc_border_fills,
+            &mut doc_tab_defs,
+            &mut pic_name_to_id,
+            0,
+            1000,
+            1000,
+        )
+        .expect("날짜 형식(ch=7) 컨트롤을 포함한 문단 파싱 실패");
+
+        assert_eq!(
+            paragraphs.len(),
+            1,
+            "빈 종료 문단을 제외하고 문단이 1개여야 함"
+        );
+        assert!(
+            paragraphs[0].text.contains("AAA"),
+            "날짜 형식(ch=7) 컨트롤 뒤의 \"AAA\" 본문이 유실됨 (바이트 언더리드로 흡수): {:?}",
+            paragraphs[0].text
+        );
     }
 }
