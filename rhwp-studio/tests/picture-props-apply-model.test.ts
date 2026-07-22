@@ -479,6 +479,15 @@ const fixtures: PatchFixture[] = [
     expected: { width: 500, height: 200 },
   },
   {
+    name: 'negative width/height input clamps to 0 instead of applying negative HWPUNIT',
+    objectType: 'image',
+    update(form) {
+      form.common.width = '-50';
+      form.common.height = '-30';
+    },
+    expected: { width: 0, height: 0 },
+  },
+  {
     name: 'image geometry, effects, border, and clamped transparency preserve field policy',
     objectType: 'image',
     update(form) {
