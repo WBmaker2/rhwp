@@ -7,7 +7,9 @@
 | reviewer | [@jangster77](https://github.com/jangster77), [@edwardkim](https://github.com/edwardkim) |
 | 관련 이슈 | [#2656](https://github.com/edwardkim/rhwp/issues/2656) |
 | 범위 | Chrome/Edge 설정 저장·복구, options 초기화·오류 처리, 다운로드 자동 열기 중복·fail-closed 방어 |
-| 처리 경로 | collaborator self-PR head 보강 후 최신 CI와 재검토를 기다리는 경로 |
+| 처리 경로 | 원 PR head 보강 후 재검토·merge 완료, 옵션 2 후속 기록 PR로 최종 상태 보존 |
+| merge 결과 | 2026-07-22, merge commit `bb99b8903bb3cec077ff808a6573a87b96739ee9` |
+| 이슈 결과 | [#2656](https://github.com/edwardkim/rhwp/issues/2656) auto-close 확인 |
 
 ## 검토 결론
 
@@ -27,8 +29,16 @@
   last-known-good snapshot으로 기록하지 않는다.
 
 clean install의 `autoOpen=true` 기본 동작과 유효한 local snapshot 복구는 별도 회귀 테스트로 유지했다.
-따라서 requested-changes의 재현 경로는 로컬 구현 기준으로 해소됐으며, 최신 PR head CI와 reviewer
-재검토를 기다리는 후보로 판단한다.
+따라서 requested-changes의 재현 경로는 로컬 구현 기준으로 해소됐다.
+
+## 최종 처리
+
+보강된 최신 head `31af56fb0df360e98462896446cc29235fc4b97b`에서 reviewer 재검토와 최신 GitHub
+Actions 성공을 확인한 뒤 [#2658](https://github.com/edwardkim/rhwp/pull/2658)을 merge했다. merge commit은
+`bb99b8903bb3cec077ff808a6573a87b96739ee9`이며, `Closes #2656`에 따라
+[#2656](https://github.com/edwardkim/rhwp/issues/2656)이 2026-07-22에 자동 종료된 것도 확인했다.
+
+이 문서는 원 PR에 먼저 포함된 보류 단계 기록을 merge 이후 확정 사실로 보완하는 옵션 2 후속 기록이다.
 
 ## 렌더 영향과 시각 검증
 
@@ -46,18 +56,18 @@ renderer, layout, golden, 샘플은 변경하지 않으므로 visual sweep 대�
 - source/dist `background.js`, `settings-store.js`, `extension-lifecycle.js`, `options.js` byte 비교: 통과
 - 변경 JavaScript `node --check`: 통과
 - `git diff --check`: 통과
+- reviewer 재검증: Chrome/Firefox/shared service worker 113 passed, Chrome options UI 4 passed
+- reviewer 재검증: `wasm-pack build --target web --out-dir pkg` 후 Chrome/Firefox production build 성공,
+  확장 배포 산출물 계약 3 passed
+- 최신 GitHub Actions: CI, CodeQL, Render Diff의 실행된 check 모두 성공
 
-## 작성 시점 참고 상태와 merge 전 조건
+## 보류 단계 기록과 최종 확인
 
-- 보강 작성 기준 원격 head: `7505db1d692d5c7a1525a2301a3d520ce5d5da1b`
-- 작성 시점 참고값: `MERGEABLE` / `BEHIND` / `CHANGES_REQUESTED`
-- 기존 원격 head의 GitHub Actions는 성공했지만, 보강 코드가 포함된 최신 head의 결과가 아니다.
-- 최종 merge 조건:
-  - 최신 `upstream/devel` 동기화 뒤 충돌 없음
-  - 보강 코드가 포함된 최신 PR head 기준 GitHub Actions 통과
-  - requested-changes reviewer 재검토
-  - 이 review 문서와 기존 `mydocs/orders/20260721.md`가 PR diff에 포함됨
-  - 작업지시자 merge 승인
+- 최초 기록의 `CHANGES_REQUESTED`와 `BEHIND`는 보강 전 head를 기준으로 한 과거 참고값이다.
+- 최종 확인 시점에는 보강 코드가 포함된 최신 head의 GitHub Actions가 통과했고, requested-changes
+  reviewer가 `APPROVED`로 재검토를 마쳤다.
+- 이슈 auto-close 봇 코멘트만으로 끝내지 않고, merge commit·로컬 검증·최신 CI 결과를 이 archive 기록과
+  옵션 2 오늘할일 갱신에 함께 남긴다.
 
 requested-changes가 단일 동작 영역으로 수렴하고 실행 순서도 commit, devel sync, 재검증, push,
-재검토 요청으로 고정되어 별도 `pr_2658_review_impl.md`는 작성하지 않는다.
+재검토로 고정되어 별도 `pr_2658_review_impl.md`는 작성하지 않는다.
