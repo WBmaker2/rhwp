@@ -815,6 +815,31 @@ fn compute_line_extra_spacing(
     available_width: f64,
     tab_width: f64,
 ) -> (f64, f64, f64) {
+    // 음수 자간은 마지막 글자의 advance도 줄이지만 실제 글리프 잉크 폭은 줄이지 않는다.
+    // 나눔 정렬에서 줄 끝을 advance 기준으로 맞추면 마지막 글리프가 셀 clip을
+    // 넘어가므로, 마지막 가시 글자의 음수 자간만 시각 점유 폭에 되돌린다.
+    let trailing_glyph_ink_overhang = || -> f64 {
+        for run in comp_line.runs.iter().rev() {
+            if let Some(last_visible) = run.text.chars().rev().find(|c| *c != ' ') {
+                if last_visible == '\t' || last_visible == '\u{FFFC}' {
+                    return 0.0;
+                }
+                let mut with_spacing =
+                    resolved_to_text_style(styles, run.char_style_id, run.lang_index);
+                with_spacing.default_tab_width = tab_width;
+                if with_spacing.letter_spacing >= 0.0 {
+                    return 0.0;
+                }
+                let glyph = last_visible.to_string();
+                let spaced_width = estimate_text_width(&glyph, &with_spacing);
+                with_spacing.letter_spacing = 0.0;
+                let ink_advance = estimate_text_width(&glyph, &with_spacing);
+                return (ink_advance - spaced_width).max(0.0);
+            }
+        }
+        0.0
+    };
+
     // Task #352: 라인 내 dash leader (3+ 연속 '-') 글자 수 카운트.
     // visible_count 까지의 chars 에서만 카운트 (후행 공백 제외).
     let count_dash_leaders = |chars: &[char]| -> usize {
@@ -863,7 +888,12 @@ fn compute_line_extra_spacing(
             } else {
                 0.0
             };
-            let effective_used = total_text_width - trailing_width;
+            let split_ink_overhang = if alignment == Alignment::Split {
+                trailing_glyph_ink_overhang()
+            } else {
+                0.0
+            };
+            let effective_used = total_text_width - trailing_width + split_ink_overhang;
             let slack = available_width - effective_used;
             if leader_dashes > 0 && slack > 0.0 {
                 // Task #352: 라인에 dash leader 가 있고 슬랙이 양수면
@@ -6401,7 +6431,8 @@ mod issue_2809_split_alignment_tests {
     use super::{compute_line_extra_spacing, needs_word_distribution};
     use crate::model::style::Alignment;
     use crate::renderer::composer::{ComposedLine, ComposedTextRun};
-    use crate::renderer::style_resolver::ResolvedStyleSet;
+    use crate::renderer::layout::text_measurement::{estimate_text_width, resolved_to_text_style};
+    use crate::renderer::style_resolver::{ResolvedCharStyle, ResolvedStyleSet};
 
     fn split_label_line() -> ComposedLine {
         ComposedLine {
@@ -6466,6 +6497,47 @@ mod issue_2809_split_alignment_tests {
         );
 
         assert!((extra_word - 30.0).abs() < 0.001);
+        assert_eq!(extra_char, 0.0);
+        assert_eq!(extra_dash, 0.0);
+    }
+
+    #[test]
+    fn split_reserves_last_glyph_ink_when_letter_spacing_is_negative() {
+        let line = split_label_line();
+        let styles = ResolvedStyleSet {
+            char_styles: vec![ResolvedCharStyle {
+                font_size: 12.0,
+                letter_spacing: -6.0,
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        let text_style = resolved_to_text_style(&styles, 0, 0);
+        let total_text_width = estimate_text_width("다 같 이", &text_style);
+        let (extra_word, extra_char, extra_dash) = compute_line_extra_spacing(
+            &line,
+            &styles,
+            Alignment::Split,
+            true,
+            true,
+            false,
+            false,
+            false,
+            5,
+            total_text_width,
+            90.0,
+            40.0,
+        );
+
+        let mut distributed_style = text_style.clone();
+        distributed_style.extra_word_spacing = extra_word;
+        let advance = estimate_text_width("다 같 이", &distributed_style);
+        let mut ink_style = text_style;
+        ink_style.letter_spacing = 0.0;
+        let trailing_ink_overhang =
+            estimate_text_width("이", &ink_style) - estimate_text_width("이", &distributed_style);
+
+        assert!((advance + trailing_ink_overhang - 90.0).abs() < 0.001);
         assert_eq!(extra_char, 0.0);
         assert_eq!(extra_dash, 0.0);
     }
