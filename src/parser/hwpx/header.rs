@@ -341,7 +341,7 @@ fn parse_memo_line_type(value: &str) -> u8 {
         // HWPX memoPr lineType uses the OWPML name, but HWP5 MEMO_SHAPE stores
         // the Hancom memo line enum where 0 means "no/unknown" and SOLID is 1.
         "SOLID" => 1,
-        "DOT" => 1,
+        "DOT" => 13,
         "DASH_DOT" => 2,
         "DASH" => 3,
         "DASH_DOT_DOT" => 4,
@@ -2066,6 +2066,14 @@ fn parse_border_width(attr: &quick_xml::events::attributes::Attribute) -> u8 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn parse_memo_line_type_dot_is_distinct_from_solid() {
+        // OWPML memoPr lineType 은 SOLID 와 DOT 이 서로 다른 값이다.
+        // 종전엔 DOT 이 SOLID 와 같은 1 로 매핑되어 HWP5 MEMO_SHAPE 바이너리로
+        // 왕복할 때 점선 메모 테두리가 실선으로 뭉개졌다.
+        assert_ne!(parse_memo_line_type("DOT"), parse_memo_line_type("SOLID"));
+    }
 
     #[test]
     fn test_parse_linkinfo_false_still_materializes_hwp5_docinfo_bundle() {
