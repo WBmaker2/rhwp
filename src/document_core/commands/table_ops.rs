@@ -148,6 +148,14 @@ impl DocumentCore {
         let row_count = table.row_count;
         let col_count = table.col_count;
 
+        // Table::delete_column()은 삭제된 열의 셀들을 cells에서 제거하므로 그 뒤 셀들의
+        // 인덱스가 앞으로 당겨진다(shift). insert_table_row_native()/insert_table_column_native()
+        // (#2853/#2859), delete_table_row_native()(#2843/#2849), merge_table_cells_native()(#2832)와
+        // 동일하게, local_resize_cell_widths/heights는 삭제 이전 cell_idx를 그대로 물고 있는
+        // Vec<(usize, u32)>라서 stale 참조가 되므로 함께 비운다.
+        table.local_resize_cell_widths.clear();
+        table.local_resize_cell_heights.clear();
+
         self.document.sections[section_idx].raw_stream = None;
         self.recompose_section(section_idx);
         self.paginate_if_needed();
@@ -211,6 +219,12 @@ impl DocumentCore {
         table.dirty = true;
         let cell_count = table.cells.len();
 
+        // Table::split_cell()은 대상 셀을 나눈 새 셀들을 push()한 뒤 재정렬하므로
+        // insert_table_row_native()/insert_table_column_native()(#2853/#2859)와 동일한 이유로
+        // local_resize_cell_widths/heights의 cell_idx가 stale해진다. 함께 비운다.
+        table.local_resize_cell_widths.clear();
+        table.local_resize_cell_heights.clear();
+
         self.document.sections[section_idx].raw_stream = None;
         self.recompose_section(section_idx);
         self.paginate_if_needed();
@@ -245,6 +259,11 @@ impl DocumentCore {
             .map_err(|e| HwpError::RenderError(e))?;
         table.dirty = true;
         let cell_count = table.cells.len();
+
+        // split_table_cell_native()와 동일한 사유(위 주석 참조): split_cell_into()도 새 셀들을
+        // push() 후 재정렬하므로 local_resize_cell_widths/heights가 stale해진다.
+        table.local_resize_cell_widths.clear();
+        table.local_resize_cell_heights.clear();
 
         self.document.sections[section_idx].raw_stream = None;
         self.recompose_section(section_idx);

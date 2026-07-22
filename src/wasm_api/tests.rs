@@ -2326,6 +2326,51 @@ fn test_split_table_cell() {
     }
 }
 
+/// [delete_table_column/split_table_cell stale local-resize] #2832/#2843/#2853과
+/// 동일한 버그 클래스의 마지막 두 인스턴스. Table::delete_column()/split_cell()이
+/// cells 배열의 인덱스 배치를 바꾸므로, local_resize_cell_widths/heights가 물고 있던
+/// 이전 cell_idx는 정리되지 않으면 stale 참조로 남는다.
+#[test]
+fn test_delete_table_column_and_split_cell_clear_stale_local_resize() {
+    let mut doc = create_doc_with_table();
+
+    if let Some(Control::Table(table)) = doc.document.sections[0].paragraphs[0].controls.first_mut()
+    {
+        table.local_resize_cell_widths.push((1, 1234));
+        table.local_resize_cell_heights.push((1, 5678));
+    } else {
+        panic!("표 컨트롤을 찾을 수 없음");
+    }
+    doc.delete_table_column_native(0, 0, 0, 0).expect("열 삭제");
+    if let Some(Control::Table(table)) = doc.document.sections[0].paragraphs[0].controls.first() {
+        assert!(
+            table.local_resize_cell_widths.is_empty() && table.local_resize_cell_heights.is_empty(),
+            "열 삭제 후 local_resize_cell_widths/heights의 stale 참조가 비워져야 한다"
+        );
+    } else {
+        panic!("표 컨트롤을 찾을 수 없음");
+    }
+
+    if let Some(Control::Table(table)) = doc.document.sections[0].paragraphs[0].controls.first_mut()
+    {
+        table.local_resize_cell_widths.push((0, 1234));
+        table.local_resize_cell_heights.push((0, 5678));
+    } else {
+        panic!("표 컨트롤을 찾을 수 없음");
+    }
+    doc.merge_table_cells_native(0, 0, 0, 0, 0, 1, 0)
+        .expect("병합");
+    doc.split_table_cell_native(0, 0, 0, 0, 0).expect("분할");
+    if let Some(Control::Table(table)) = doc.document.sections[0].paragraphs[0].controls.first() {
+        assert!(
+            table.local_resize_cell_widths.is_empty() && table.local_resize_cell_heights.is_empty(),
+            "셀 분할 후 local_resize_cell_widths/heights의 stale 참조가 비워져야 한다"
+        );
+    } else {
+        panic!("표 컨트롤을 찾을 수 없음");
+    }
+}
+
 #[test]
 fn test_merge_then_control_layout_has_col_span() {
     let mut doc = create_doc_with_table();
