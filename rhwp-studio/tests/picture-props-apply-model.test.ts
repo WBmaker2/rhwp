@@ -519,6 +519,36 @@ const fixtures: PatchFixture[] = [
     },
     expected: {},
   },
+  {
+    name: 'negative crop and padding inputs clamp to zero',
+    objectType: 'image',
+    props: pictureProps({
+      cropLeft: 100,
+      cropTop: 100,
+      cropRight: 100,
+      cropBottom: 100,
+      paddingLeft: 100,
+      paddingTop: 100,
+      paddingRight: 100,
+      paddingBottom: 100,
+    }),
+    update(form) {
+      form.image = {
+        crop: { left: '-1', top: '-2', right: '-3', bottom: '-4' },
+        padding: { left: '-4', top: '-3', right: '-2', bottom: '-1' },
+      };
+    },
+    expected: {
+      cropLeft: 0,
+      cropTop: 0,
+      cropRight: 0,
+      cropBottom: 0,
+      paddingLeft: 0,
+      paddingTop: 0,
+      paddingRight: 0,
+      paddingBottom: 0,
+    },
+  },
 ];
 
 for (const fixture of fixtures) {

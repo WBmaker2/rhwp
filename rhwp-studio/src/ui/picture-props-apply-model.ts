@@ -437,10 +437,10 @@ function appendImageBox(
   current: readonly [number, number, number, number],
 ): void {
   if (!values) return;
-  addChanged(patch, keys[0], mmToHwp(values.left), current[0]);
-  addChanged(patch, keys[1], mmToHwp(values.top), current[1]);
-  addChanged(patch, keys[2], mmToHwp(values.right), current[2]);
-  addChanged(patch, keys[3], mmToHwp(values.bottom), current[3]);
+  addChanged(patch, keys[0], Math.max(0, mmToHwp(values.left)), current[0]);
+  addChanged(patch, keys[1], Math.max(0, mmToHwp(values.top)), current[1]);
+  addChanged(patch, keys[2], Math.max(0, mmToHwp(values.right)), current[2]);
+  addChanged(patch, keys[3], Math.max(0, mmToHwp(values.bottom)), current[3]);
 }
 
 function appendImageEffects(
