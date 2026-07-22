@@ -4332,6 +4332,10 @@ fn parse_field_begin_attrs(e: &quick_xml::events::BytesStart) -> Field {
     // (예: FORMULA 다수)에서 공유될 수 있어, 이를 우선하면 모든 필드가 동일 ID 로
     // 반환된다(#1512). Memo/비-Memo 모두 고유 `id` 우선으로 통일한다.
     f.field_id = id_attr.or(fieldid_attr).unwrap_or(0);
+    // [#task-m100] `fieldid` 는 위 field_id 계산에 폴백으로만 쓰였고, `id` 가 존재하는
+    // 실물 필드(예: id=1878228493, fieldid=627272811 — 서로 다름)에선 원본 fieldid 값이
+    // 그대로 버려져 직렬화기가 이 속성을 영구히 방출하지 못했다. instance_id 로 별도 보존.
+    f.instance_id = fieldid_attr;
     // [Task #852 Stage 2.5] field_type → ctrl_id 매핑.
     // 정답지 (samples/form-01.hwp) reverse engineering: ClickHere CTRL_HEADER 의 ctrl_id 가
     // "%clk" (FIELD_CLICKHERE). HWPX parser 가 이전엔 ctrl_id 미설정 → serializer 가

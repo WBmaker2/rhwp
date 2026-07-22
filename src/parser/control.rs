@@ -130,6 +130,7 @@ fn parse_field_control(ctrl_id: u32, ctrl_data: &[u8]) -> Control {
         extra_properties,
         field_id,
         ctrl_id,
+        instance_id: None,
         ctrl_data_name: None,
         memo_index,
         memo_paragraphs: Vec::new(),

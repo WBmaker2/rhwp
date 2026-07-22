@@ -35,7 +35,7 @@ use crate::model::shape::{
 };
 
 use super::context::SerializeContext;
-use super::field::{write_bookmark, write_field_begin, write_field_end, write_field_end_full};
+use super::field::{write_bookmark, write_field_begin, write_field_end_full};
 use super::utils::xml_escape;
 use super::SerializeError;
 use super::{picture, table};
@@ -496,7 +496,10 @@ impl RunSplitter {
 /// `<hp:ctrl><hp:fieldEnd beginIDRef=".."/></hp:ctrl>` 방출 공통 경로.
 fn emit_field_end(out: &mut String, para: &Paragraph, control_idx: usize) {
     if let Some(Control::Field(f)) = para.controls.get(control_idx) {
-        if let Ok(xml) = writer_to_string(|w| write_field_end(w, f.field_id)) {
+        // [#task-m100] fieldEnd 도 원본 fieldid 를 보존(있으면) — fieldBegin 과 동일 규칙.
+        if let Ok(xml) =
+            writer_to_string(|w| write_field_end_full(w, f.field_id, f.instance_id.unwrap_or(0)))
+        {
             out.push_str("<hp:ctrl>");
             out.push_str(&xml);
             out.push_str("</hp:ctrl>");

@@ -1009,6 +1009,7 @@ fn collect_fields_from_paragraph(
                                 properties: if cell.editable_in_form() { 1 } else { 0 },
                                 extra_properties: 0,
                                 ctrl_data_name: Some(fname.clone()),
+                                instance_id: None,
                                 memo_index: 0,
                                 memo_paragraphs: Vec::new(),
                                 raw_parameters_xml: None,
@@ -1260,6 +1261,7 @@ fn insert_click_here_field_in_para(
         extra_properties: 0x09,
         field_id,
         ctrl_id: tags::FIELD_CLICKHERE,
+        instance_id: None,
         ctrl_data_name: if name.is_empty() {
             None
         } else {
@@ -1471,6 +1473,7 @@ mod tests {
             extra_properties: 0,
             field_id: ctrl_id,
             ctrl_id,
+            instance_id: None,
             ctrl_data_name: None,
             memo_index: 0,
             memo_paragraphs: Vec::new(),
