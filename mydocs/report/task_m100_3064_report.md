@@ -66,3 +66,9 @@ CodeQL과 Render Diff는 별도 workflow라 이 의존성 체인의 범위가 �
 - 정상 경로에서 8개 shard가 병렬 시작하고 모두 성공하는지 확인
 - 실패 전파는 후속 실패 재현 또는 다음 실제 gate 실패 run에서 job skip/cancel 상태 확인
 - PR CI 전체 성공 뒤 merge하고 #3064를 완료 처리
+
+## PR #3077 도구 참조 보강
+
+작업 중 merge된 `scripts/pr_triage.sh`의 사용처가 정식 절차 문서에 없다는 작업지시자 지적을 반영했다.
+`pr_review_workflow.md` 2.0절에 대량 PR 유입 시의 실행 명령, 조회 상한, 전수 누락 확인, 사실 수집과
+사람의 최종 판정 경계를 추가했다. 개별 review 단계의 reviewer 선행 assign 규칙은 그대로 유지한다.

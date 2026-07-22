@@ -2,7 +2,7 @@
 kind: canonical
 status: active
 canonical: mydocs/manual/pr_review_workflow.md
-last_verified: 2026-07-16
+last_verified: 2026-07-22
 ---
 
 # PR 리뷰 · 통합 워크플로우 매뉴얼
@@ -42,6 +42,24 @@ rhwp 는 v0.2.1 사이클부터 외부 기여자 PR 이 급증했다. 하이퍼-
 ## 2. PR 도착 시 확인 체크리스트
 
 새 PR 이 열리면 다음을 순서대로 확인한다.
+
+### 2.0 대량 PR 유입 사전 분류
+
+한 기여자의 열린 PR이 많아 개별 조회만으로 전체 규모와 통합 그룹을 파악하기 어려우면, 개별 review를
+시작하기 전에 다음 보조 도구로 병합 가능 여부와 변경 축 분포를 먼저 확인한다([#3077](https://github.com/edwardkim/rhwp/pull/3077)).
+
+```bash
+scripts/pr_triage.sh <author>
+scripts/pr_triage.sh <author> --list
+```
+
+- 기본 조회 상한은 500이다. 더 큰 상한이 필요하면 `RHWP_PR_LIMIT`, 다른 저장소를 확인하려면
+  `RHWP_REPO`를 지정한다.
+- 축별 합계와 열린 PR 수가 맞는지 확인한다. `gh pr list`의 기본 limit 30이나 복잡한 `jq`의
+  무매치로 행이 조용히 빠질 수 있으므로, 출력 일부만 보고 전수 처리 완료로 판정하지 않는다.
+- 이 도구는 충돌 목록과 통합 그룹 후보라는 **사실만 수집**한다. merge·close·rebase 요청 판정은
+  각 PR의 이슈, diff, 테스트, 기존 반영 여부를 확인한 뒤 사람이 수행한다.
+- 실제 개별 PR review를 시작할 때는 아래 2.1절에 따라 reviewer assign을 먼저 한다.
 
 ### 2.1 reviewer assign 선행
 
