@@ -4614,7 +4614,9 @@ fn parse_ctrl_autonum(
                             b"type" => {
                                 an.format = match attr_str(&attr).as_str() {
                                     "DIGIT" => 0,
-                                    "CIRCLE_DIGIT" => 1,
+                                    // [#2957] 실제 한컴 스펙 표기는 "CIRCLED_DIGIT" (pageNum
+                                    // formatType 의 "CIRCLE_DIGIT" 와 다름). 구값도 겸용 인식.
+                                    "CIRCLE_DIGIT" | "CIRCLED_DIGIT" => 1,
                                     "ROMAN_CAPITAL" => 2,
                                     "ROMAN_SMALL" => 3,
                                     "LATIN_CAPITAL" => 4,
@@ -5939,6 +5941,32 @@ mod tests {
         assert_eq!(section.paragraphs.len(), 1);
         assert_eq!(section.paragraphs[0].text, "Hello World");
         assert_eq!(section.paragraphs[0].para_shape_id, 0);
+    }
+
+    // ---------- #2957: autoNumFormat 원 문자(CIRCLED_DIGIT) 인식 ----------
+
+    #[test]
+    fn task2957_autonum_format_circled_digit_parses_as_1() {
+        let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+<hs:sec xmlns:hp="http://www.hancom.co.kr/hwpml/2011/paragraph"
+        xmlns:hs="http://www.hancom.co.kr/hwpml/2011/section">
+  <hp:p paraPrIDRef="0" styleIDRef="0">
+    <hp:run charPrIDRef="0"><hp:ctrl><hp:autoNum num="1" numType="FOOTNOTE"><hp:autoNumFormat type="CIRCLED_DIGIT" userChar="" prefixChar="" suffixChar="" supscript="0"/></hp:autoNum></hp:ctrl><hp:t> </hp:t></hp:run>
+  </hp:p>
+</hs:sec>"#;
+        let section = parse_hwpx_section(xml).unwrap();
+        let an = section.paragraphs[0]
+            .controls
+            .iter()
+            .find_map(|c| match c {
+                Control::AutoNumber(an) => Some(an),
+                _ => None,
+            })
+            .expect("autoNum 컨트롤이 파싱돼야 함");
+        assert_eq!(
+            an.format, 1,
+            "type=\"CIRCLED_DIGIT\" 는 format=1(circled digit) 로 인식돼야 함(#2957)"
+        );
     }
 
     // ---------- #1382: autoNum 폭 축 일관화 ----------
