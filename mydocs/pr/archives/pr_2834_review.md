@@ -18,7 +18,8 @@ Canvas 2D가 음수 자간을 glyph 폭 축소로 잘못 적용하던 경로를 
 
 - 일반 `Justify`, 강제 줄바꿈과 자간 0% 행의 기존 동작은 유지된다.
 - visual sweep의 `--dpi`가 SVG에도 적용되어 PDF/rhwp가 같은 배율로 비교된다.
-- 이슈 원본 ZIP/HWP, 정상 기준 PDF, 최종 review PNG와 WASM E2E HTML이 포함됐다.
+- 이슈 원본 HWP, 정상 기준 PDF, 최종 review PNG와 WASM E2E HTML이 포함됐다.
+  원본 ZIP 묶음은 후속 정리 PR에서 추적 대상에서 제외한다.
 - golden 변경은 HWP 2022 기준에 가까워진 `Split` 좌표 2개로 제한된다.
 
 ## 검증
@@ -29,6 +30,8 @@ Canvas 2D가 음수 자간을 glyph 폭 축소로 잘못 적용하던 경로를 
 - WASM build와 rhwp Studio production build: 통과.
 - rhwp Studio E2E assertion `7/7`, Canvas `1126×1587`, 실제 편집기 100% 캡처.
 - visual sweep 144dpi: `flagged=0/1`.
+- 저장용 review PNG의 rhwp 패널은 실제 Studio `canvas2d` E2E 캡처로 교체해
+  `다 같 이` 마지막 glyph가 온전히 보이는 화면을 사용한다.
 - 첫 CI에서 신규 샘플 `issues/2809/jubo_20260104.hwp`의 기존
   `list_header_width_ref` 직렬화 갭 174건이 baseline 대비 증가로 검출됐다. 이번 변경은
   직렬화기를 수정하지 않았고 동일 필드는 기존 HWP 표 샘플에도 기록된 광역 항목이므로,
