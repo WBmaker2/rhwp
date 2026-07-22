@@ -2,13 +2,15 @@
 
 - 기준 브랜치: `upstream/devel` `58991a768`
 - 작업 브랜치: `task/2809-distribute-align`
-- 상태: 로컬 검토 완료, push/PR 생성 승인 대기
+- 상태: 보류 — 실제 rhwp 화면의 위·아래 문단 차이 미반영
 
 ## 판정
 
-승인 가능. `Alignment::Split`의 마지막 줄 분배 의미를 일반 `Justify`와 분리했고,
-음수 자간에서 마지막 glyph의 ink가 advance보다 넓어 rhwp 셀 clip에 잘리던 문제를
-`Split` 범위 안에서 보정했다. PDF는 정상 기준으로 유지했다.
+승인 보류. `Alignment::Split`의 마지막 줄 분배 의미는 일반 `Justify`와 분리됐고
+native SVG, WASM SVG와 페이지 레이어 트리에도 위·아래 span 차이가 존재한다.
+그러나 실제 rhwp 편집기 화면에서는 위쪽 자간 `-50%`/`6972HU`와 아래쪽 자간
+`0%`/`6872HU`의 차이가 아직 제대로 보이지 않는다. 최종 렌더 경로 수정과 화면
+픽셀 검증이 완료되기 전에는 push/PR을 진행하지 않는다.
 
 ## 범위 검토
 
@@ -22,8 +24,8 @@
 - 전체 lib: `2512 passed; 0 failed; 7 ignored`.
 - SVG snapshot: `8 passed; 0 failed`.
 - clippy `-D warnings`, fmt, diff, Python 구문 검사: 통과.
-- WASM build: 통과. rhwp Studio E2E assertion `4/4`, Canvas `1126×1587`.
-- visual sweep 144dpi: `flagged=0/1`; 대상 glyph 잘림 없음.
+- WASM build: 통과. 좌표 E2E assertion `5/5`, Canvas `1126×1587`.
+- visual sweep 144dpi: `flagged=0/1`; 실제 편집기 화면 차이는 미해결.
 - OVR5: 5개 샘플, 개체 회귀 0건.
 
 상세 증적은 [`assets/task2809/README.md`](assets/task2809/README.md)와

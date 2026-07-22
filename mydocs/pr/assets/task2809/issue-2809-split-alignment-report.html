@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Issue #2809 Split 마지막 줄과 음수 자간 clip 회귀 — E2E 테스트 보고서</title>
+<title>Issue #2809 위·아래 Split 문단 속성 차이 회귀 — E2E 테스트 보고서</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body { font-family: 'Segoe UI', -apple-system, sans-serif; background: #f5f5f5; color: #333; }
@@ -42,12 +42,12 @@
 </head>
 <body>
 <div class="header">
-  <h1>Issue #2809 Split 마지막 줄과 음수 자간 clip 회귀</h1>
-  <div class="meta">생성: 2026. 7. 22. 오후 5:40:23 | 소요: 2.5초 | rhwp E2E CDP 테스트</div>
+  <h1>Issue #2809 위·아래 Split 문단 속성 차이 회귀</h1>
+  <div class="meta">생성: 2026. 7. 22. 오후 6:18:34 | 소요: 3.1초 | rhwp E2E CDP 테스트</div>
 </div>
 <div class="summary">
-  <div class="stat total"><div class="number">4</div><div class="label">Total</div></div>
-  <div class="stat pass"><div class="number">4</div><div class="label">Passed</div></div>
+  <div class="stat total"><div class="number">5</div><div class="label">Total</div></div>
+  <div class="stat pass"><div class="number">5</div><div class="label">Passed</div></div>
   <div class="stat fail"><div class="number">0</div><div class="label">Failed</div></div>
   <div class="stat skip"><div class="number">0</div><div class="label">Skipped</div></div>
 </div>
@@ -60,12 +60,13 @@
         <div class="tc-body">
           <div class="assertions"><div class="assertion pass">✅ 2x canvas 생성 (1126×1587)</div>
 <div class="assertion pass">✅ WASM SVG에 다/같/이 라벨 존재</div>
-<div class="assertion pass">✅ 첫 Split 라벨 문자 좌표 추출</div>
-<div class="assertion pass">✅ 음수 자간 마지막 글자가 clip 안쪽으로 보정됨 (416.2533333333334 / 455.24 / 494.2266666666667)</div></div>
+<div class="assertion pass">✅ 위·아래 Split 라벨 좌표 추출</div>
+<div class="assertion pass">✅ 위쪽 음수 자간/6972HU와 아래쪽 자간 0%/6872HU의 분배 폭 차이 유지 (85.44 / 76.69333333333333)</div>
+<div class="assertion pass">✅ 실제 rhwp Canvas replay의 위·아래 분배 폭 차이 유지 (85.44 / 76.693)</div></div>
 
         </div>
       </div>
 </div>
-<div class="footer">rhwp E2E Test Report — Issue #2809 Split 마지막 줄과 음수 자간 clip 회귀</div>
+<div class="footer">rhwp E2E Test Report — Issue #2809 위·아래 Split 문단 속성 차이 회귀</div>
 </body>
 </html>

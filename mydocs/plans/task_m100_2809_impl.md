@@ -1,4 +1,4 @@
-# 구현계획서 — #2809 표 셀 나눔정렬 마지막 줄·잘림 정정
+# 구현계획서 — #2809 표 셀 나눔정렬 마지막 줄·속성 차이 정정
 
 - 이슈: [#2809](https://github.com/edwardkim/rhwp/issues/2809)
 - 수행계획서: [`task_m100_2809.md`](task_m100_2809.md)
@@ -12,9 +12,9 @@
 기존처럼 마지막 줄과 강제 줄바꿈 줄의 분배를 억제한다. `Split`의 강제 줄바꿈
 억제도 기존 동작을 유지한다.
 
-셀 padding, 문단 여백과 저장 `LINE_SEG`는 변경하지 않는다. 다만 음수 자간에서는
-마지막 글자의 advance가 실제 glyph ink보다 작으므로, `Split`의 slack 계산에 그
-차이를 시각 점유 폭으로 되돌려 마지막 글자가 셀 clip을 넘지 않게 한다.
+셀 padding, 문단 여백, 저장 `LINE_SEG`, 자간과 공백 분배 산식은 변경하지 않는다.
+특히 위쪽 문단의 자간 `-50%`/`6972HU`와 아래쪽 문단의 자간 `0%`/`6872HU` 차이를
+상쇄하지 않고 PDF와 같이 서로 다른 분배 폭으로 보존한다.
 
 ## 2. 변경 지점
 
@@ -24,17 +24,17 @@
    반환하는 `needs_word_distribution` 헬퍼를 둔다.
 2. `Alignment::Split`은 강제 줄바꿈이 아닌 마지막 줄에서도 `true`,
    `Alignment::Justify`는 기존 조건을 유지하도록 분리한다.
-3. `Split`과 음수 자간이 함께 쓰인 경우에만 마지막 가시 글자의 ink overhang을
-   유효 사용 폭에 더한다. 일반 `Justify`와 다른 정렬 경로는 그대로 둔다.
+3. 일반 `Justify`, 문자 advance, 저장 LineSeg와 다른 정렬 경로는 그대로 둔다.
 
 ## 3. 테스트 계획
 
 - `paragraph_layout.rs` 단위 테스트:
   - 단일 마지막 줄에서 `Split=true`, `Justify=false`.
   - `다 같 이`의 두 내부 공백에 양의 slack이 균등하게 배분됨.
-  - 음수 자간 `Split`의 최종 advance와 마지막 glyph ink가 셀 폭 안에 들어감.
 - 시각 회귀:
-  - 이슈 첨부 HWP 2쪽의 셀 clip과 `다/같/이` 문자 x 좌표를 수정 전·후 비교.
+  - 이슈 첨부 HWP 2쪽의 위·아래 `다/같/이` 문자 x 좌표와 span을 비교.
+  - WASM SVG와 페이지 레이어 트리에서 위쪽 span이 아래쪽보다 6px 이상 넓음.
+  - 실제 rhwp 화면 픽셀에서도 위·아래 문단의 차이가 PDF와 같은 방향으로 확인됨.
 - 명령:
   - `cargo test --lib issue_2809_split_alignment_tests`
   - `cargo test --lib`
@@ -60,4 +60,4 @@
 | `Justify` 마지막 줄까지 함께 벌어짐 | `Split`과 `Justify` 판정을 헬퍼에서 명시적으로 분리하고 음성 테스트를 둔다. |
 | 강제 줄바꿈 의미가 달라짐 | `Justify`와 `Split` 모두 기존 강제 줄바꿈 억제를 보존하는 음성 테스트를 둔다. |
 | 대용량 증적 누락 | 원본 HWP/PDF와 전체 산출물 압축본의 SHA-256을 증적 README에 고정한다. |
-| 폰트 fallback에 따른 폭 차이 | SVG 문자 좌표와 clip 경계를 직접 검증하고 HWP 2020 PDF를 최종 기준으로 둔다. |
+| 폰트 fallback에 따른 외형 차이 | 폰트 외형 대신 원문 charPr/LineSeg와 문자 좌표 span을 검증하고 HWP 2020 PDF를 기준으로 둔다. |
