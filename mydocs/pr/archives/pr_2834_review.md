@@ -3,8 +3,8 @@
 - PR: [#2834](https://github.com/edwardkim/rhwp/pull/2834)
 - 기준 브랜치: `upstream/devel` `58991a768`
 - 작업 브랜치: `task/2809-distribute-align`
-- 검토 대상 source head: `da97ef94ca2b43d6a3e93516efe53e5e98969957`
-- 상태: Open PR 생성 완료, CI/CodeQL/Render Diff 진행 중
+- 구현·증적 기준 source head: `f2d0e0968cc85e915802c1126c41da2383e5834e`
+- 상태: Open PR, 신규 샘플의 기존 IR 직렬화 갭 baseline 반영 후 CI 재검증 예정
 
 ## 판정
 
@@ -29,11 +29,17 @@ Canvas 2D가 음수 자간을 glyph 폭 축소로 잘못 적용하던 경로를 
 - WASM build와 rhwp Studio production build: 통과.
 - rhwp Studio E2E assertion `7/7`, Canvas `1126×1587`, 실제 편집기 100% 캡처.
 - visual sweep 144dpi: `flagged=0/1`.
+- 첫 CI에서 신규 샘플 `issues/2809/jubo_20260104.hwp`의 기존
+  `list_header_width_ref` 직렬화 갭 174건이 baseline 대비 증가로 검출됐다. 이번 변경은
+  직렬화기를 수정하지 않았고 동일 필드는 기존 HWP 표 샘플에도 기록된 광역 항목이므로,
+  의도된 신규 코퍼스 편입으로 판정해 baseline 1행을 추가한다.
+- `cargo test --profile release-test --test ir_field_sweep_baseline -- --nocapture`:
+  샘플 799건(스킵 1), 발산 경로 703종, 총 110376건, `2 passed; 0 failed`.
 
 상세 증적은 [`assets/task2809/README.md`](assets/task2809/README.md)와
 [`task_m100_2809_report.md`](../report/task_m100_2809_report.md)를 따른다.
 
 ## PR 후속
 
-1. CI/CodeQL/Render Diff 완료 후 결과를 이 문서에 반영한다.
+1. baseline 보완 head의 CI/CodeQL/Render Diff 완료를 확인한다.
 2. merge 권한과 사용자 승인이 확인된 경우에만 후속 merge/issue close 절차를 수행한다.
