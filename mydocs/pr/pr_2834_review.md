@@ -1,8 +1,10 @@
-# Task #2809 사전 PR 검토
+# PR #2834 검토 — Task #2809 나눔정렬과 Canvas 음수 자간
 
+- PR: [#2834](https://github.com/edwardkim/rhwp/pull/2834)
 - 기준 브랜치: `upstream/devel` `58991a768`
 - 작업 브랜치: `task/2809-distribute-align`
-- 상태: 로컬 검토 완료, push/PR 생성 승인 대기
+- 검토 대상 source head: `da97ef94ca2b43d6a3e93516efe53e5e98969957`
+- 상태: Open PR 생성 완료, CI/CodeQL/Render Diff 진행 중
 
 ## 판정
 
@@ -31,9 +33,7 @@ Canvas 2D가 음수 자간을 glyph 폭 축소로 잘못 적용하던 경로를 
 상세 증적은 [`assets/task2809/README.md`](assets/task2809/README.md)와
 [`task_m100_2809_report.md`](../report/task_m100_2809_report.md)를 따른다.
 
-## PR 생성 후 후속
+## PR 후속
 
-1. 문서명을 `pr_{번호}_review.md`로 바꾸고 PR URL·head SHA를 고정한다.
-2. PR 본문에 `Closes #2809`와 증적 링크를 포함한다.
-3. CI/CodeQL 완료 후 결과를 검토문서에 반영한다.
-4. merge 권한과 사용자 승인이 확인된 경우에만 후속 merge/issue close 절차를 수행한다.
+1. CI/CodeQL/Render Diff 완료 후 결과를 이 문서에 반영한다.
+2. merge 권한과 사용자 승인이 확인된 경우에만 후속 merge/issue close 절차를 수행한다.
