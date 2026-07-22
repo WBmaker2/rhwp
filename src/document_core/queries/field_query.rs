@@ -1011,6 +1011,7 @@ fn collect_fields_from_paragraph(
                                 ctrl_data_name: Some(fname.clone()),
                                 memo_index: 0,
                                 memo_paragraphs: Vec::new(),
+                                memo_text_direction: None,
                                 raw_parameters_xml: None,
                             },
                             location: loc,
@@ -1267,6 +1268,7 @@ fn insert_click_here_field_in_para(
         },
         memo_index: 0,
         memo_paragraphs: Vec::new(),
+        memo_text_direction: None,
         raw_parameters_xml: None,
     };
 
@@ -1474,6 +1476,7 @@ mod tests {
             ctrl_data_name: None,
             memo_index: 0,
             memo_paragraphs: Vec::new(),
+            memo_text_direction: None,
             raw_parameters_xml: None,
         })
     }

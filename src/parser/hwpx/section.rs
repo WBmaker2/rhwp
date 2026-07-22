@@ -4680,6 +4680,14 @@ fn parse_ctrl_field_begin(
                 if local == b"parameters" {
                     parse_field_parameters(ce, reader, &mut f)?;
                 } else if local == b"subList" && f.field_type == FieldType::Memo {
+                    for attr in ce.attributes().flatten() {
+                        if attr.key.as_ref() == b"textDirection" {
+                            let dir = attr_str(&attr);
+                            if dir != "HORIZONTAL" {
+                                f.memo_text_direction = Some(dir);
+                            }
+                        }
+                    }
                     f.memo_paragraphs = parse_sublist_paragraphs(reader, b"subList")?;
                 } else {
                     let tag = local.to_vec();
