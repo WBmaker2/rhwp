@@ -1038,8 +1038,12 @@ impl Paragraph {
                     .push(other.ctrl_data_records.get(i).cloned().flatten());
             }
             self.controls.extend(other.controls.iter().cloned());
-            self.control_mask |= other.control_mask;
         }
+        // control_mask는 tab/개행 등 텍스트 기반 비트(#1323 이후 확장분)도 포함하므로,
+        // other.controls가 비어 있어도 other.text의 tab/개행이 손실되지 않도록
+        // split_at과 동일하게 병합 후 상태 전체를 재계산한다.
+        self.control_mask =
+            Self::compute_control_mask_for(&self.text, &self.controls, &self.field_ranges);
 
         // 6. char_count 갱신: 텍스트 + 컨트롤(각 8 code unit) + 문단끝(1)
         //    split_at의 ctrl_code_units 계산과 정합. HWPX 직렬화가 char_count에서
