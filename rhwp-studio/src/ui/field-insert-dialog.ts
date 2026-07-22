@@ -5,13 +5,14 @@
  * 양식 모드 편집 가능 여부를 입력한다.
  */
 import { ModalDialog } from './dialog';
-import type { ClickHereProps } from './field-edit-dialog';
+import { MAX_FIELD_NAME_LEN, type ClickHereProps } from './field-edit-dialog';
 
 export class FieldInsertDialog extends ModalDialog {
   private guideInput!: HTMLInputElement;
   private memoInput!: HTMLTextAreaElement;
   private nameInput!: HTMLInputElement;
   private editableCheckbox!: HTMLInputElement;
+  private nameErrorLabel!: HTMLDivElement;
 
   onApply: ((props: ClickHereProps) => void) | null = null;
 
@@ -64,7 +65,16 @@ export class FieldInsertDialog extends ModalDialog {
     this.nameInput = document.createElement('input');
     this.nameInput.type = 'text';
     this.nameInput.className = 'field-edit-input';
+    this.nameInput.maxLength = MAX_FIELD_NAME_LEN;
     panel.appendChild(this.nameInput);
+
+    this.nameErrorLabel = document.createElement('div');
+    this.nameErrorLabel.className = 'field-edit-error';
+    this.nameErrorLabel.style.color = '#c00';
+    this.nameErrorLabel.style.fontSize = '11px';
+    this.nameErrorLabel.style.display = 'none';
+    this.nameErrorLabel.textContent = `필드 이름은 ${MAX_FIELD_NAME_LEN}자를 넘을 수 없습니다.`;
+    panel.appendChild(this.nameErrorLabel);
 
     const editableRow = document.createElement('label');
     editableRow.className = 'field-edit-checkbox-row';
@@ -79,7 +89,14 @@ export class FieldInsertDialog extends ModalDialog {
     return body;
   }
 
-  protected onConfirm(): void {
+  protected onConfirm(): void | boolean {
+    if (this.nameInput.value.length > MAX_FIELD_NAME_LEN) {
+      this.nameErrorLabel.style.display = '';
+      this.nameInput.focus();
+      return false;
+    }
+    this.nameErrorLabel.style.display = 'none';
+
     this.onApply?.({
       guide: this.guideInput.value,
       memo: this.memoInput.value,
