@@ -529,6 +529,11 @@ requireSnippet(
   /prepareBundledFonts\([\s\S]*?MAX_BUNDLED_FONT_BYTES[\s\S]*?bundledTypefaceAliases\.set[\s\S]*?CanvasKit font family가 준비되지 않았습니다/,
   'CanvasKit should bound bundled font parsing and reject unprepared explicit families',
 );
+requireSnippet(
+  canvaskitSource,
+  /requiresShapingManager[\s\S]*?OLD_HANGUL_FONT_FAMILY[\s\S]*?!prepared\.fontManager[\s\S]*?shaping font source 준비 실패/,
+  'Old-Hangul font preparation should require a shaping-capable font manager',
+);
 assert.doesNotMatch(
   renderBackendSource,
   /rhwp\.renderBackend|persistRenderBackend/,
@@ -904,7 +909,13 @@ function runExecutableTextSpecialReplay() {
   );
   renderer.currentShowParagraphMarks = true;
   renderer.currentShowControlCodes = true;
-  const oldHangulAlias = { typeface: { face: 'old-hangul-alias' }, fontManager: null };
+  const incompleteOldHangulAlias = { typeface: { face: 'old-hangul-incomplete' }, fontManager: null };
+  renderer.bundledTypefaceAliases.set('source han serif k old hangul', incompleteOldHangulAlias);
+  const rejectedOldHangulAlias = renderer.findPreparedTypeface('Source Han Serif K Old Hangul');
+  const oldHangulAlias = {
+    typeface: { face: 'old-hangul-alias' },
+    fontManager: { family: 'old-hangul-manager' },
+  };
   renderer.bundledTypefaceAliases.set('source han serif k old hangul', oldHangulAlias);
   const resolvedOldHangulAlias = renderer.findPreparedTypeface('Source Han Serif K Old Hangul');
 
@@ -917,6 +928,7 @@ function runExecutableTextSpecialReplay() {
     isVertical: false,
     style: { fontSize: 16, color: '#112233' },
     positions: [0, 16],
+    positionsComplete: true,
     charOverlap: { borderType: 1, innerCharSize: 80 },
   }, 'screen');
   renderer.renderOp(canvas, {
@@ -944,6 +956,7 @@ function runExecutableTextSpecialReplay() {
       { kind: 'space', text: '∨', x: 8, y: 0, fontSize: 8 },
       { kind: 'paragraphEnd', text: '↵', x: 40, y: 0, fontSize: 16 },
     ],
+    marksComplete: true,
   }, 'screen');
   renderer.renderOp(canvas, {
     type: 'tabLeader',
@@ -954,6 +967,7 @@ function runExecutableTextSpecialReplay() {
     baseline: 12,
     rotation: 0,
     isVertical: false,
+    leadersComplete: true,
   }, 'screen');
   renderer.renderOp(canvas, {
     type: 'textDecoration',
@@ -970,6 +984,7 @@ function runExecutableTextSpecialReplay() {
       underline: 'none',
       emphasisDot: 1,
       positions: [0, 12],
+      positionsComplete: true,
     },
   }, 'screen');
   const beforeMirror = events.length;
@@ -984,6 +999,24 @@ function runExecutableTextSpecialReplay() {
   const mirrorEvents = events.slice(beforeMirror);
   const beforeMalformed = events.length;
   renderer.renderOp(canvas, {
+    type: 'textDecoration',
+    bbox: { x: 0, y: 0, width: 10, height: 10 },
+    decoration: {
+      kind: 'underline',
+      baseline: 8,
+      rotation: 0,
+      isVertical: false,
+      fontSize: 10,
+      ratio: 1,
+      color: '#000000',
+      shape: 0,
+      underline: 'center',
+      emphasisDot: 0,
+      positions: [0, 10],
+      positionsComplete: true,
+    },
+  }, 'screen');
+  renderer.renderOp(canvas, {
     type: 'charOverlap',
     bbox: { x: 0, y: 0, width: 10, height: 10 },
     text: 'A'.repeat(4097),
@@ -992,6 +1025,7 @@ function runExecutableTextSpecialReplay() {
     isVertical: false,
     style: { fontSize: 10 },
     positions: [],
+    positionsComplete: true,
     charOverlap: { borderType: 1, innerCharSize: 100 },
   }, 'screen');
   renderer.renderOp(canvas, {
@@ -1002,8 +1036,21 @@ function runExecutableTextSpecialReplay() {
     rotation: 0,
     isVertical: false,
     style: { fontSize: 10 },
-    positions: [],
+    positions: [0, 10],
+    positionsComplete: true,
     charOverlap: { borderType: 5, innerCharSize: 100 },
+  }, 'screen');
+  renderer.renderOp(canvas, {
+    type: 'charOverlap',
+    bbox: { x: 0, y: 0, width: 10, height: 10 },
+    text: 'A',
+    baseline: 8,
+    rotation: 0,
+    isVertical: false,
+    style: { fontSize: 10 },
+    positions: [],
+    positionsComplete: true,
+    charOverlap: { borderType: 1, innerCharSize: 100 },
   }, 'screen');
   renderer.renderOp(canvas, {
     type: 'textControlMark',
@@ -1019,6 +1066,55 @@ function runExecutableTextSpecialReplay() {
     baseline: 8,
     rotation: 0,
     isVertical: false,
+  }, 'screen');
+  renderer.renderOp(canvas, {
+    type: 'charOverlap',
+    bbox: { x: 0, y: 0, width: 10, height: 10 },
+    text: 'A',
+    baseline: 8,
+    rotation: 0,
+    isVertical: false,
+    style: { fontSize: 10 },
+    positions: [0, 10],
+    charOverlap: { borderType: 1, innerCharSize: 100 },
+  }, 'screen');
+  renderer.renderOp(canvas, {
+    type: 'textControlMark',
+    bbox: { x: 0, y: 0, width: 10, height: 10 },
+    fieldMarker: 'none',
+    isParaEnd: false,
+    isLineBreakEnd: false,
+    baseline: 8,
+    rotation: 0,
+    isVertical: false,
+    marks: [],
+  }, 'screen');
+  renderer.renderOp(canvas, {
+    type: 'tabLeader',
+    bbox: { x: 0, y: 0, width: 10, height: 10 },
+    leaders: [{ startX: 1, endX: 8, fillType: 1 }],
+    color: '#000000',
+    fontSize: 10,
+    baseline: 8,
+    rotation: 0,
+    isVertical: false,
+  }, 'screen');
+  renderer.renderOp(canvas, {
+    type: 'textDecoration',
+    bbox: { x: 0, y: 0, width: 10, height: 10 },
+    decoration: {
+      kind: 'underline',
+      baseline: 8,
+      rotation: 0,
+      isVertical: false,
+      fontSize: 10,
+      ratio: 1,
+      color: '#000000',
+      shape: 0,
+      underline: 'bottom',
+      emphasisDot: 0,
+      positions: [0, 10],
+    },
   }, 'screen');
   renderer.renderOp(canvas, {
     type: 'textDecoration',
@@ -1114,6 +1210,7 @@ function runExecutableTextSpecialReplay() {
     isVertical: false,
     style: { fontSize: 10 },
     positions: [0, 10],
+    positionsComplete: true,
     charOverlap: { borderType: 1, innerCharSize: 100 },
   }, 'screen');
   renderer.renderOp(canvas, {
@@ -1123,6 +1220,7 @@ function runExecutableTextSpecialReplay() {
     rotation: 15,
     isVertical: false,
     marks: [],
+    marksComplete: true,
   }, 'screen');
   renderer.renderOp(canvas, {
     type: 'tabLeader',
@@ -1133,6 +1231,7 @@ function runExecutableTextSpecialReplay() {
     baseline: 8,
     rotation: 15,
     isVertical: false,
+    leadersComplete: true,
   }, 'screen');
   renderer.renderOp(canvas, {
     type: 'textDecoration',
@@ -1152,11 +1251,23 @@ function runExecutableTextSpecialReplay() {
       positionsComplete: true,
     },
   }, 'screen');
+  renderer.renderOp(canvas, {
+    type: 'tabLeader',
+    bbox: { x: 0, y: 0, width: -1, height: 10 },
+    leaders: [{ startX: 1, endX: 8, fillType: 1 }],
+    color: '#000000',
+    fontSize: 10,
+    baseline: 8,
+    rotation: 0,
+    isVertical: false,
+    leadersComplete: true,
+  }, 'screen');
   return {
     events,
     mirrorEvents,
     malformedEvents: events.slice(beforeMalformed),
     oldHangulAlias,
+    rejectedOldHangulAlias,
     resolvedOldHangulAlias,
     unsupportedOps: renderer.unsupportedOps,
   };
@@ -1733,6 +1844,11 @@ assert.equal(
   'combined overlap numbers should use the Canvas2D digit-count compression formula',
 );
 assert.equal(
+  textSpecialReplay.rejectedOldHangulAlias,
+  null,
+  'a typeface-only old-Hangul alias must not satisfy the shaping contract',
+);
+assert.equal(
   textSpecialReplay.resolvedOldHangulAlias,
   textSpecialReplay.oldHangulAlias,
   'a prepared old-Hangul alias must remain reachable when the dedicated subset is unavailable',
@@ -1747,6 +1863,7 @@ for (const diagnostic of [
   'charOverlap:visualItemLimitExceeded',
   'charOverlap:invalidGeometry',
   'textControlMark:invalidGeometry',
+  'textControlMark:visualItemLimitExceeded',
   'tabLeader:invalidGeometry',
   'tabLeader:visualItemLimitExceeded',
   'textDecoration:invalidGeometry',

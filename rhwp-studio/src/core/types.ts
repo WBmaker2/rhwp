@@ -1324,10 +1324,10 @@ export interface LayerTextDecorationOp {
     ratio: number;
     color: string;
     shape: number;
-    underline: 'none' | 'bottom' | 'center' | 'top';
+    underline: 'none' | 'bottom' | 'top';
     emphasisDot: number;
     positions: number[];
-    positionsComplete?: boolean;
+    positionsComplete: boolean;
   };
 }
 
@@ -1341,7 +1341,7 @@ export interface LayerTextControlMarkOp {
   rotation: number;
   isVertical: boolean;
   marks: LayerTextControlMark[];
-  marksComplete?: boolean;
+  marksComplete: boolean;
   shapeMarkerIndex?: number;
 }
 
@@ -1354,7 +1354,7 @@ export interface LayerTabLeaderOp {
   baseline: number;
   rotation: number;
   isVertical: boolean;
-  leadersComplete?: boolean;
+  leadersComplete: boolean;
 }
 
 export interface LayerCharOverlapOp {
@@ -1367,7 +1367,7 @@ export interface LayerCharOverlapOp {
   orientation?: 'horizontal' | 'vertical-upright' | 'vertical-sideways';
   style: LayerTextStyle;
   positions: number[];
-  positionsComplete?: boolean;
+  positionsComplete: boolean;
   charOverlap: LayerCharOverlap;
 }
 

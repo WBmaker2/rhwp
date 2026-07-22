@@ -328,6 +328,9 @@ export class CanvasKitLayerRenderer {
     let registered = 0;
     for (const source of sources) {
       if (!source.url || source.aliases.length === 0) continue;
+      const requiresShapingManager = source.aliases.some(alias => (
+        normalizedFontFamily(alias) === normalizedFontFamily(OLD_HANGUL_FONT_FAMILY)
+      ));
       let prepared = source.url === this.oldHangulFontUrl && this.oldHangulTypeface
         ? this.oldHangulTypeface
         : source.url === this.defaultFontUrl && (this.defaultTypeface || this.defaultFontManager)
@@ -337,6 +340,9 @@ export class CanvasKitLayerRenderer {
             fontFamily: this.defaultFontFamily,
           }
           : this.bundledTypefaces.get(source.url) ?? null;
+      if (prepared && requiresShapingManager && !prepared.fontManager) {
+        throw new Error(`CanvasKit shaping font source 준비 실패: ${source.url}`);
+      }
       if (!prepared) {
         if (this.bundledTypefaceLoadFailures.has(source.url)) {
           throw new Error(`CanvasKit font source 준비 실패: ${source.url}`);
@@ -365,7 +371,7 @@ export class CanvasKitLayerRenderer {
           typeface = this.canvasKit.Typeface.MakeFreeTypeFaceFromData(bytes)
             ?? this.canvasKit.Typeface.MakeTypefaceFromData(bytes);
           fontManager = this.canvasKit.FontMgr.FromData(bytes.slice(0));
-          if (!typeface && !fontManager) {
+          if ((!typeface && !fontManager) || (requiresShapingManager && !fontManager)) {
             throw new Error('CanvasKit이 font payload를 해석하지 못했습니다');
           }
           const fontFamily = fontManager && fontManager.countFamilies() > 0
@@ -1652,6 +1658,7 @@ export class CanvasKitLayerRenderer {
         isVertical: op.isVertical === true,
         style: op.style ?? {},
         positions: op.positions ?? [],
+        positionsComplete: op.positions !== undefined,
         charOverlap: op.charOverlap,
       });
       return;
@@ -1910,7 +1917,7 @@ export class CanvasKitLayerRenderer {
       this.unsupportedOps.add('charOverlap:invalidGeometry');
       return;
     }
-    if (op.positionsComplete === false
+    if (op.positionsComplete !== true
       || op.positions.length > CanvasKitLayerRenderer.MAX_TEXT_SPECIAL_VISUAL_ITEMS + 1) {
       this.unsupportedOps.add('charOverlap:visualItemLimitExceeded');
       return;
@@ -1922,6 +1929,10 @@ export class CanvasKitLayerRenderer {
         return;
       }
       chars.push(ch);
+    }
+    if (op.positions.length !== chars.length + 1) {
+      this.unsupportedOps.add('charOverlap:invalidGeometry');
+      return;
     }
     if (chars.length === 0) return;
     if (op.isVertical) {
@@ -2130,7 +2141,7 @@ export class CanvasKitLayerRenderer {
       this.unsupportedOps.add('textControlMark:invalidGeometry');
       return;
     }
-    if (op.marksComplete === false
+    if (op.marksComplete !== true
       || op.marks.length > CanvasKitLayerRenderer.MAX_TEXT_SPECIAL_VISUAL_ITEMS) {
       this.unsupportedOps.add('textControlMark:visualItemLimitExceeded');
       return;
@@ -2194,7 +2205,7 @@ export class CanvasKitLayerRenderer {
       this.unsupportedOps.add('tabLeader:invalidGeometry');
       return;
     }
-    if (op.leadersComplete === false
+    if (op.leadersComplete !== true
       || op.leaders.length > CanvasKitLayerRenderer.MAX_TEXT_SPECIAL_VISUAL_ITEMS) {
       this.unsupportedOps.add('tabLeader:visualItemLimitExceeded');
       return;
@@ -2274,7 +2285,7 @@ export class CanvasKitLayerRenderer {
       this.unsupportedOps.add('textRun:verticalText');
       return;
     }
-    if (decoration.positionsComplete === false
+    if (decoration.positionsComplete !== true
       || decoration.positions.length > CanvasKitLayerRenderer.MAX_TEXT_SPECIAL_VISUAL_ITEMS + 1) {
       this.unsupportedOps.add('textDecoration:visualItemLimitExceeded');
       return;
@@ -2290,7 +2301,7 @@ export class CanvasKitLayerRenderer {
       || !Number.isInteger(decoration.emphasisDot)
       || decoration.emphasisDot < 0
       || decoration.emphasisDot > 6
-      || !['none', 'bottom', 'center', 'top'].includes(decoration.underline)) {
+      || !['none', 'bottom', 'top'].includes(decoration.underline)) {
       this.unsupportedOps.add('textDecoration:invalidGeometry');
       return;
     }
@@ -2416,7 +2427,9 @@ export class CanvasKitLayerRenderer {
     opType: 'charOverlap' | 'textControlMark' | 'tabLeader' | 'textDecoration',
     draw: (originX: number, originY: number) => void,
   ): void {
-    if (![bbox.x, bbox.y, bbox.width, bbox.height, rotation].every(Number.isFinite)) {
+    if (![bbox.x, bbox.y, bbox.width, bbox.height, rotation].every(Number.isFinite)
+      || bbox.width < 0
+      || bbox.height < 0) {
       this.unsupportedOps.add(`${opType}:invalidGeometry`);
       return;
     }
@@ -2528,13 +2541,14 @@ export class CanvasKitLayerRenderer {
   private findPreparedTypeface(fontFamily: string | undefined): CanvasKitLocalTypeface | null {
     const key = normalizedFontFamily(fontFamily);
     if (!key) return null;
-    if (key === normalizedFontFamily(OLD_HANGUL_FONT_FAMILY) && this.oldHangulTypeface) {
-      return this.oldHangulTypeface;
-    }
     const record = resolveLocalFont(primaryFontFamily(fontFamily));
     const local = record ? this.localTypefaces.get(localFontFaceKey(record)) ?? null : null;
-    if (local) return local;
     const bundled = this.bundledTypefaceAliases.get(key);
+    if (key === normalizedFontFamily(OLD_HANGUL_FONT_FAMILY)) {
+      return [this.oldHangulTypeface, local, bundled]
+        .find(candidate => candidate?.fontManager) ?? null;
+    }
+    if (local) return local;
     if (bundled) return bundled;
     if (key === normalizedFontFamily(this.defaultFontFamily) || key === 'noto sans kr') {
       return this.defaultTypeface || this.defaultFontManager
