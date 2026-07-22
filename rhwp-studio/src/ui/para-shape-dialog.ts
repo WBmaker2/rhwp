@@ -698,6 +698,17 @@ export class ParaShapeDialog {
     this.borderResult.bdSpacingInputs[3].value = (sp[3] / HWPUNIT_PER_MM).toFixed(2);
     this.borderResult.bdConnectCb.checked = p.borderConnect ?? false;
     this.borderResult.bdIgnoreMarginCb.checked = p.borderIgnoreMargin ?? false;
+    // 굵기/색/선종류 컨트롤을 대표 테두리로 동기화한다. buildBorderTab의
+    // onBorderControlChange()/applyBorderPreset()이 이 컨트롤의 '현재 값'을 그대로
+    // 읽어 borderStates에 기록하므로, 미리보기만 문서 값을 반영하고 컨트롤은
+    // 하드코딩 기본값(선 없음/0/검정)에 머무르면 테두리 재적용 시 기존 서식이
+    // 조용히 유실된다 (#2908/#2913과 동일 패턴).
+    const repSide = (['left', 'top', 'right', 'bottom'] as const)
+      .find(s => this.borderStates[s].type !== 0) ?? 'left';
+    const rep = this.borderStates[repSide];
+    this.borderResult.bdTypeSelect.value = String(rep.type);
+    this.borderResult.bdWidthSelect.value = String(rep.width);
+    this.borderResult.bdColorInput.value = rep.color;
     this.borderResult.updateBdPreview();
 
     this.updatePreview();
