@@ -73,6 +73,11 @@ function ptToRaw(pt: number): number {
   return Math.round(pt * HWPUNIT_PER_PT);
 }
 
+/** 줄 간격 입력값을 lineSpacingInput의 min/max(0~9999)로 클램프 */
+function clampLineSpacing(value: number): number {
+  return Math.max(0, Math.min(9999, value));
+}
+
 /** px → raw HWPUNIT (2x) — 비교용 */
 function pxToRaw2x(px: number): number {
   return Math.round(px * 150);  // px * 72/96 * 100 * 2
@@ -780,9 +785,9 @@ export class ParaShapeDialog {
 
     let newLS: number;
     if (newLSType === 'Percent') {
-      newLS = parseInt(this.lineSpacingInput.value) || 160;
+      newLS = clampLineSpacing(parseInt(this.lineSpacingInput.value) || 160);
     } else {
-      newLS = ptToRaw(parseFloat(this.lineSpacingInput.value) || 0);
+      newLS = ptToRaw(clampLineSpacing(parseFloat(this.lineSpacingInput.value) || 0));
     }
     // Percent는 raw 비교, 그 외는 px → HWPUNIT 변환 후 비교
     const origLS = (p.lineSpacingType || 'Percent') === 'Percent'
