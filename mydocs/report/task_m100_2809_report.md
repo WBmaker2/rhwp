@@ -60,7 +60,7 @@ HWP5 `Alignment::Split`(HWPX `DISTRIBUTE_SPACE`, 한컴 UI의 나눔 정렬)을
 | `mydocs/plans/task_m100_2809*.md` | 조사·구현 계약 기록 |
 | `mydocs/working/task_m100_2809_stage*.md` | 단계별 원인·검증 증적 기록 |
 | `rhwp-studio/e2e/issue-2809-split-alignment.test.mjs` | 실제 백엔드, 좌표 span과 최종 Canvas glyph 픽셀 폭 회귀 검증 |
-| `samples/issues/2809/*`, `pdf/issue-2809-*.pdf` | 테스트 원본 ZIP/HWP와 정상 기준 PDF |
+| `samples/issues/2809/jubo_20260104.hwp`, `pdf/issue-2809-*.pdf` | 테스트 원본 HWP와 정상 기준 PDF |
 | `mydocs/pr/assets/task2809/*` | 최종 review PNG와 WASM E2E HTML |
 
 ## 4. 증적
@@ -111,10 +111,11 @@ HWP 2022 PDF의 좌우 괄호는 `229.44pt / 266.88pt`, 수정 SVG 환산값은
 - `wasm-pack build --target web --out-dir pkg` — 통과.
 - `cd rhwp-studio && npm run e2e:issue-2809` — assertion `7/7` 통과.
 - `cd rhwp-studio && npm run build` — 통과.
+- 최종 review PNG의 rhwp 패널은 실제 Studio `canvas2d` E2E 캡처를 사용하며,
+  `다 같 이`의 마지막 `이`가 온전히 표시됨을 직접 확인했다.
 
 ## 6. 후속
 
-원본 ZIP/HWP, 기준 PDF, 최종 review PNG와 WASM E2E HTML의 SHA-256은
+원본 HWP, 기준 PDF, 최종 review PNG와 WASM E2E HTML의 SHA-256은
 [`mydocs/pr/assets/task2809/README.md`](../pr/assets/task2809/README.md)에
-고정했다. 사용자 승인 후 원본 저장소의 임시 head 브랜치로 push하고 `devel` 기준
-Open PR을 생성한다.
+고정했다. 원본 ZIP 묶음은 후속 요청에 따라 추적 대상에서 제외한다.
