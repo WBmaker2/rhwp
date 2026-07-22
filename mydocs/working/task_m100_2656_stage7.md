@@ -43,7 +43,7 @@ stage: 7
 - Chrome options + service worker: 41 passed, 0 failed
 - shared + Firefox 다운로드 회귀: 76 passed, 0 failed
 - Chrome/Firefox dist 계약: 3 passed, 0 failed
-- Chrome/Firefox 빌드: 각각 168 modules transformed, 성공
+- 최신 `upstream/devel` 동기화 후 Chrome/Firefox 빌드: 각각 169 modules transformed, 성공
 - source/dist 핵심 모듈 byte 비교: 통과
 - Rust/WASM/renderer 변경 없음, 시각 검증 대상 아님
 

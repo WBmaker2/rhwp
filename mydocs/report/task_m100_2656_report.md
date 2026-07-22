@@ -53,7 +53,7 @@ PR review 보강 후 focused 재검증 결과는 다음과 같다.
 - Chrome options + service worker 테스트: 41 passed, 0 failed
 - shared + Firefox 다운로드 회귀 테스트: 76 passed, 0 failed
 - Chrome/Firefox dist 계약 테스트: 3 passed, 0 failed
-- Chrome/Firefox 확장 빌드: 각각 168 modules transformed, 성공
+- 최신 `upstream/devel` 동기화 후 Chrome/Firefox 확장 빌드: 각각 169 modules transformed, 성공
 - source/dist `background.js`, `settings-store.js`, `extension-lifecycle.js`, `options.js` byte 비교: 통과
 
 자동화된 Chrome 제어는 `chrome://extensions` 내부 URL 접근이 보안 정책으로 차단되어 중단했고,

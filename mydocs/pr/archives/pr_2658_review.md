@@ -42,7 +42,7 @@ renderer, layout, golden, 샘플은 변경하지 않으므로 visual sweep 대�
 - Chrome options + service worker: 41 passed, 0 failed
 - shared + Firefox 다운로드 회귀: 76 passed, 0 failed
 - Chrome/Firefox dist 계약: 3 passed, 0 failed
-- Chrome/Firefox 확장 빌드: 각각 168 modules transformed, 성공
+- 최신 `upstream/devel` 동기화 후 Chrome/Firefox 확장 빌드: 각각 169 modules transformed, 성공
 - source/dist `background.js`, `settings-store.js`, `extension-lifecycle.js`, `options.js` byte 비교: 통과
 - 변경 JavaScript `node --check`: 통과
 - `git diff --check`: 통과
