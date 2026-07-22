@@ -24,7 +24,7 @@ glyph 잘림을 검증한 증적을 보관한다. 기준 PDF는 정상 비교본
 | 파일 | 내용 | SHA-256 |
 |---|---|---|
 | `task2809_visual_sweep_144dpi_final.tar.gz` | SVG 6쪽, render tree 6쪽, PDF/rhwp PNG, 분석 JSON, compare/overlay/review | `1242f55e3138bcb2f476c6697c4dd18aae5302cf9630e093afea93e9e38d09e8` |
-| `task2809_ovr_complete.tar.gz` | 최종 소스 OVR5 전체 산출물 | `901701ff4ea3a2432d9524240ae6eb2dd69a5898143c93747a3a51a8753789c6` |
+| `task2809_ovr_complete.tar.gz` | 렌더러 커밋 `063061b9d` OVR5 전체 산출물 | `6244283aea90f11b479a5c6aa5438bdc5796bf360f52c74cba2ae4812bb1f4b2` |
 | `jubo_p2_wasm_canvas_2x.png` | 최종 WASM Canvas | `7f8bbe00e7bdf4b7aada35f5b96302ac3d5158ee51bc834ab4a484324431611c` |
 | `issue-2809-split-alignment-report.html` | 최종 E2E HTML | `c88a7958228f5ce5f734d637d874e95ba2e40d664c2712a9a6e9d1e466da5d6e` |
 
@@ -41,7 +41,7 @@ python3 scripts/task1274_visual_sweep.py \
   --out output/task2809-visual-144-final \
   --rhwp-bin target/debug/rhwp
 python3 tools/object_visual_regression.py \
-  --preset ovr5 -o output/task2809-ovr-final --diff-against devel
+  --preset ovr5 -o output/task2809-ovr-committed --diff-against devel
 ```
 
 최종 좌표는 native `416.2533 / 454.9067 / 493.5600px`, WASM
