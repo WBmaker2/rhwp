@@ -24,7 +24,11 @@
    반환하는 `needs_word_distribution` 헬퍼를 둔다.
 2. `Alignment::Split`은 강제 줄바꿈이 아닌 마지막 줄에서도 `true`,
    `Alignment::Justify`는 기존 조건을 유지하도록 분리한다.
-3. 일반 `Justify`, 문자 advance, 저장 LineSeg와 다른 정렬 경로는 그대로 둔다.
+3. 음수 자간 `Split`은 마지막 glyph의 실제 잉크 폭을 분배 계산에 예약해 셀 우측
+   clip 안에 온전히 배치한다.
+4. 일반 `Justify`, 저장 LineSeg와 다른 정렬 경로는 그대로 둔다.
+5. Canvas 2D의 폰트 실측 폭 보정은 음수 자간일 때 glyph 자체를 advance 폭으로
+   축소하지 않도록 제한한다. 음수 자간은 다음 글자의 시작 위치에만 반영한다.
 
 ## 3. 테스트 계획
 
@@ -33,8 +37,9 @@
   - `다 같 이`의 두 내부 공백에 양의 slack이 균등하게 배분됨.
 - 시각 회귀:
   - 이슈 첨부 HWP 2쪽의 위·아래 `다/같/이` 문자 x 좌표와 span을 비교.
-  - WASM SVG와 페이지 레이어 트리에서 위쪽 span이 아래쪽보다 6px 이상 넓음.
-  - 실제 rhwp 화면 픽셀에서도 위·아래 문단의 차이가 PDF와 같은 방향으로 확인됨.
+  - WASM SVG와 페이지 레이어 트리에서 위·아래 최종 분배 폭이 PDF처럼 정합함.
+  - 위·아래 첫 glyph 잉크 폭이 같아 음수 자간 행만 가로로 눌리지 않음.
+  - 위쪽 마지막 glyph 잉크가 셀 우측에서 잘리지 않음.
 - 명령:
   - `cargo test --lib issue_2809_split_alignment_tests`
   - `cargo test --lib`
@@ -59,5 +64,5 @@
 |---|---|
 | `Justify` 마지막 줄까지 함께 벌어짐 | `Split`과 `Justify` 판정을 헬퍼에서 명시적으로 분리하고 음성 테스트를 둔다. |
 | 강제 줄바꿈 의미가 달라짐 | `Justify`와 `Split` 모두 기존 강제 줄바꿈 억제를 보존하는 음성 테스트를 둔다. |
-| 대용량 증적 누락 | 원본 HWP/PDF와 전체 산출물 압축본의 SHA-256을 증적 README에 고정한다. |
+| 증적 재현성 부족 | 원본 HWP/PDF, 최종 review PNG, E2E HTML과 OVR 결과표의 SHA-256을 증적 README에 고정한다. |
 | 폰트 fallback에 따른 외형 차이 | 폰트 외형 대신 원문 charPr/LineSeg와 문자 좌표 span을 검증하고 HWP 2020 PDF를 기준으로 둔다. |

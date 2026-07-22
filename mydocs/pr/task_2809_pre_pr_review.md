@@ -2,15 +2,15 @@
 
 - 기준 브랜치: `upstream/devel` `58991a768`
 - 작업 브랜치: `task/2809-distribute-align`
-- 상태: 보류 — 실제 rhwp 화면의 위·아래 문단 차이 미반영
+- 상태: 로컬 검토 완료, push/PR 생성 승인 대기
 
 ## 판정
 
-승인 보류. `Alignment::Split`의 마지막 줄 분배 의미는 일반 `Justify`와 분리됐고
-native SVG, WASM SVG와 페이지 레이어 트리에도 위·아래 span 차이가 존재한다.
-그러나 실제 rhwp 편집기 화면에서는 위쪽 자간 `-50%`/`6972HU`와 아래쪽 자간
-`0%`/`6872HU`의 차이가 아직 제대로 보이지 않는다. 최종 렌더 경로 수정과 화면
-픽셀 검증이 완료되기 전에는 push/PR을 진행하지 않는다.
+승인 가능. `Alignment::Split`의 마지막 줄 분배 의미를 일반 `Justify`와 분리했고,
+Canvas 2D가 음수 자간을 glyph 폭 축소로 잘못 적용하던 경로를 제한했다. `Split`
+분배는 마지막 glyph의 실제 잉크 여유를 예약한다. 최종 화면은 첫 glyph 폭이
+`28/28px`로 동일하고 마지막 `이`도 `22px` 온전히 표시된다. HWP 2020 PDF는 정상
+기준으로 유지했다.
 
 ## 범위 검토
 
@@ -24,8 +24,9 @@ native SVG, WASM SVG와 페이지 레이어 트리에도 위·아래 span 차이
 - 전체 lib: `2512 passed; 0 failed; 7 ignored`.
 - SVG snapshot: `8 passed; 0 failed`.
 - clippy `-D warnings`, fmt, diff, Python 구문 검사: 통과.
-- WASM build: 통과. 좌표 E2E assertion `5/5`, Canvas `1126×1587`.
-- visual sweep 144dpi: `flagged=0/1`; 실제 편집기 화면 차이는 미해결.
+- WASM build와 rhwp Studio production build: 통과.
+- rhwp Studio E2E assertion `7/7`, Canvas `1126×1587`, 실제 편집기 100% 캡처.
+- visual sweep 144dpi: `flagged=0/1`.
 - OVR5: 5개 샘플, 개체 회귀 0건.
 
 상세 증적은 [`assets/task2809/README.md`](assets/task2809/README.md)와

@@ -43,11 +43,11 @@
 <body>
 <div class="header">
   <h1>Issue #2809 위·아래 Split 문단 속성 차이 회귀</h1>
-  <div class="meta">생성: 2026. 7. 22. 오후 6:18:34 | 소요: 3.1초 | rhwp E2E CDP 테스트</div>
+  <div class="meta">생성: 2026. 7. 22. 오후 7:05:32 | 소요: 3.5초 | rhwp E2E CDP 테스트</div>
 </div>
 <div class="summary">
-  <div class="stat total"><div class="number">5</div><div class="label">Total</div></div>
-  <div class="stat pass"><div class="number">5</div><div class="label">Passed</div></div>
+  <div class="stat total"><div class="number">7</div><div class="label">Total</div></div>
+  <div class="stat pass"><div class="number">7</div><div class="label">Passed</div></div>
   <div class="stat fail"><div class="number">0</div><div class="label">Failed</div></div>
   <div class="stat skip"><div class="number">0</div><div class="label">Skipped</div></div>
 </div>
@@ -61,8 +61,10 @@
           <div class="assertions"><div class="assertion pass">✅ 2x canvas 생성 (1126×1587)</div>
 <div class="assertion pass">✅ WASM SVG에 다/같/이 라벨 존재</div>
 <div class="assertion pass">✅ 위·아래 Split 라벨 좌표 추출</div>
-<div class="assertion pass">✅ 위쪽 음수 자간/6972HU와 아래쪽 자간 0%/6872HU의 분배 폭 차이 유지 (85.44 / 76.69333333333333)</div>
-<div class="assertion pass">✅ 실제 rhwp Canvas replay의 위·아래 분배 폭 차이 유지 (85.44 / 76.693)</div></div>
+<div class="assertion pass">✅ 마지막 glyph 잉크 여유를 포함한 위·아래 분배 폭 정합 (77.9733333333333 / 76.69333333333333)</div>
+<div class="assertion pass">✅ WASM 페이지 레이어 트리의 위·아래 분배 폭 정합 (77.973 / 76.693)</div>
+<div class="assertion pass">✅ 음수 자간은 글자 위치만 조정하고 glyph 폭은 유지 (28 / 28px)</div>
+<div class="assertion pass">✅ 위쪽 마지막 glyph가 셀 우측에서 잘리지 않음 (22 / 28px)</div></div>
 
         </div>
       </div>
