@@ -836,10 +836,21 @@ pub(crate) fn write_fill_brush<W: Write>(
         }
         FillType::Image => {
             let img = fill.image.clone().unwrap_or_default();
+            // [#2943] parse_shape_fill_brush(section.rs)는 12종 mode 를 모두 개별
+            // ImageFillMode 로 적재하는데, 종전엔 여기서 3종만 구분하고 나머지 7종
+            // (TileHorzTop/Bottom, TileVertLeft/Right, CenterTop/Bottom, LeftTop)이
+            // 전부 "TILE"로 붕괴해 저장 시 실제 배치가 유실됐다.
             let mode = match img.fill_mode {
+                ImageFillMode::TileHorzTop => "TILE_HORZ_TOP",
+                ImageFillMode::TileHorzBottom => "TILE_HORZ_BOTTOM",
+                ImageFillMode::TileVertLeft => "TILE_VERT_LEFT",
+                ImageFillMode::TileVertRight => "TILE_VERT_RIGHT",
                 ImageFillMode::FitToSize => "FIT",
                 ImageFillMode::Total => "TOTAL",
                 ImageFillMode::Center => "CENTER",
+                ImageFillMode::CenterTop => "CENTER_TOP",
+                ImageFillMode::CenterBottom => "CENTER_BOTTOM",
+                ImageFillMode::LeftTop => "TOP_LEFT_ALIGN",
                 _ => "TILE",
             };
             start_tag(w, "hc:fillBrush")?;
@@ -1155,6 +1166,30 @@ mod tests {
         let xml = String::from_utf8(w.into_inner()).unwrap();
         let i = xml.find("style=\"").expect("style attr") + 7;
         xml[i..].split('"').next().unwrap().to_string()
+    }
+
+    /// #2943: imgBrush mode 는 12종 중 3종만 구분하면 나머지 7종
+    /// (TileHorzTop 등)이 저장 시 전부 TILE 로 붕괴한다. 각 모드가 자기 고유의
+    /// mode 문자열로 방출돼야 한다.
+    #[test]
+    fn task2943_img_brush_mode_roundtrip_not_collapsed_to_tile() {
+        use crate::model::style::{Fill, FillType, ImageFill, ImageFillMode};
+        let mut w: Writer<Vec<u8>> = Writer::new(Vec::new());
+        let ctx = SerializeContext::collect_from_document(&Default::default());
+        let fill = Fill {
+            fill_type: FillType::Image,
+            image: Some(ImageFill {
+                fill_mode: ImageFillMode::TileHorzTop,
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        write_fill_brush(&mut w, &fill, &ctx).expect("write_fill_brush");
+        let xml = String::from_utf8(w.into_inner()).unwrap();
+        assert!(
+            xml.contains("mode=\"TILE_HORZ_TOP\""),
+            "TileHorzTop 이 TILE 로 붕괴함: {xml}"
+        );
     }
 
     /// #1531: 선 없음(style code 0) 도형 외곽선이 라운드트립에서 SOLID(사각형 박스)로
