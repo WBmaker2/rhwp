@@ -623,6 +623,7 @@ fn test_serialize_bullet_layout_and_roundtrip() {
         image_bullet: 0,
         image_data: [0; 4],
         check_bullet_char: '\0',
+        raw_para_head: None,
     };
 
     // 레이아웃: 문단 머리 정보 12바이트 후 offset 12 에 bullet_char

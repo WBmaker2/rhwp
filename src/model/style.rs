@@ -354,6 +354,10 @@ pub struct Bullet {
     pub image_data: [u8; 4],
     /// 체크 글머리표 문자
     pub check_bullet_char: char,
+    /// HWPX `<hh:bullet>` 자식 `<hh:paraHead>`(+`<hh:img>`) 원본 구간 (무손실 splice 용).
+    /// align/useInstWidth/autoIndent/textOffsetType/checkable 등 7수준 필드로 표현
+    /// 못하는 HWPX 전용 속성 보존. [#2790]
+    pub raw_para_head: Option<String>,
 }
 
 /// 텍스트 정렬 방식

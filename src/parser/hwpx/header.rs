@@ -159,7 +159,7 @@ pub fn parse_hwpx_header(xml: &str) -> Result<(DocInfo, DocProperties), HwpxErro
                     // paragraph 에 자동 부여. HWPX `<hh:bullet id="N" char="❏" useImage="0">`
                     // 4개 → HWP BULLET record 4개. 누락 시 일반 문단 시작 글머리표 부작용.
                     b"bullet" => {
-                        let bullet = parse_bullet_hwpx(e, &mut reader)?;
+                        let bullet = parse_bullet_hwpx(e, &mut reader, xml)?;
                         doc_info.bullets.push(bullet);
                     }
                     _ => {}
@@ -1725,6 +1725,7 @@ fn parse_tab_def(
 fn parse_bullet_hwpx(
     e: &quick_xml::events::BytesStart,
     reader: &mut Reader<&[u8]>,
+    xml: &str,
 ) -> Result<Bullet, HwpxError> {
     let mut bullet = Bullet::default();
 
@@ -1748,25 +1749,63 @@ fn parse_bullet_hwpx(
         }
     }
 
-    // 자식 <hh:paraHead>, <hh:image> 등 skip
+    // 자식 <hh:paraHead>(align/useInstWidth/widthAdjust/textOffset/charPrIDRef 등),
+    // <hh:image> 를 순회. widthAdjust/textOffset/charPrIDRef 는 Bullet 필드로 흡수하고,
+    // 7수준 모델로 표현 못하는 나머지 속성(align/useInstWidth/autoIndent/checkable 등)은
+    // numbering.raw_para_heads(#2695 계열)와 같은 방식으로 원본 구간을 통째로 보존해
+    // 직렬화 시 splice 한다(무손실 라운드트립).
     if !is_empty_event(e) {
+        let inner_start = reader.buffer_position() as usize;
+        let mut inner_end = inner_start;
         let mut buf = Vec::new();
         loop {
+            let pos_before = reader.buffer_position() as usize;
             match reader.read_event_into(&mut buf) {
+                Ok(Event::Empty(ref ce)) => {
+                    if local_name(ce.name().as_ref()) == b"paraHead" {
+                        apply_bullet_para_head_attrs(&mut bullet, ce);
+                    }
+                }
+                Ok(Event::Start(ref ce)) => {
+                    if local_name(ce.name().as_ref()) == b"paraHead" {
+                        apply_bullet_para_head_attrs(&mut bullet, ce);
+                    }
+                }
                 Ok(Event::End(ref ee)) => {
                     if local_name(ee.name().as_ref()) == b"bullet" {
+                        inner_end = pos_before;
                         break;
                     }
                 }
-                Ok(Event::Eof) => break,
+                Ok(Event::Eof) => {
+                    inner_end = pos_before;
+                    break;
+                }
                 Err(e) => return Err(HwpxError::XmlError(format!("bullet: {}", e))),
                 _ => {}
             }
             buf.clear();
         }
+
+        if inner_end >= inner_start && inner_end <= xml.len() {
+            bullet.raw_para_head = Some(xml[inner_start..inner_end].to_string());
+        }
     }
 
     Ok(bullet)
+}
+
+/// `<hh:bullet>` 자식 `<hh:paraHead>` 의 widthAdjust/textOffset/charPrIDRef 를
+/// Bullet 필드(HWP5 BULLET record 의 문단 머리 정보 12바이트와 동일 의미)로 흡수한다.
+fn apply_bullet_para_head_attrs(bullet: &mut Bullet, e: &quick_xml::events::BytesStart) {
+    for attr in e.attributes().flatten() {
+        match attr.key.as_ref() {
+            b"charPrIDRef" => bullet.char_shape_id = parse_u32(&attr),
+            b"widthAdjust" => bullet.width_adjust = parse_i16(&attr),
+            b"textOffset" => bullet.text_distance = parse_i16(&attr),
+            _ => {}
+        }
+    }
 }
 
 fn parse_numbering(
@@ -2167,6 +2206,26 @@ mod tests {
             doc_info.numberings[0].raw_para_heads.as_deref(),
             Some(inner)
         );
+    }
+
+    #[test]
+    fn bullet_para_head_align_useinstwidth_survive_roundtrip_via_raw_splice() {
+        // [#2790] 종전 parse_bullet_hwpx 는 char/useImage 만 읽고 <hh:paraHead> 를
+        // 통째로 skip 했다. 그 결과 align="CENTER"/useInstWidth="1" 처럼 기본값과
+        // 다른 원본 값이 직렬화 시 항상 "LEFT"/"0" 로 하드코딩돼 소실됐다.
+        // raw_para_head splice 로 원본 구간이 byte-exact 보존되는지 확인한다.
+        let inner = r##"<hh:paraHead level="0" align="CENTER" useInstWidth="1" autoIndent="0" widthAdjust="120" textOffsetType="PERCENT" textOffset="30" numFormat="DIGIT" charPrIDRef="9" checkable="1"/>"##;
+        let xml = format!(
+            r##"<hh:head xmlns:hh="http://www.hancom.co.kr/hwpml/2011/head"><hh:refList><hh:bullets itemCnt="1"><hh:bullet id="1" char="❏" useImage="0">{inner}</hh:bullet></hh:bullets></hh:refList></hh:head>"##
+        );
+
+        let (doc_info, _) = parse_hwpx_header(&xml).unwrap();
+        let bullet = &doc_info.bullets[0];
+
+        assert_eq!(bullet.raw_para_head.as_deref(), Some(inner));
+        assert_eq!(bullet.width_adjust, 120);
+        assert_eq!(bullet.text_distance, 30);
+        assert_eq!(bullet.char_shape_id, 9);
     }
 
     #[test]
