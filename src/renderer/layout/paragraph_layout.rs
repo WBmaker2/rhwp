@@ -815,6 +815,31 @@ fn compute_line_extra_spacing(
     available_width: f64,
     tab_width: f64,
 ) -> (f64, f64, f64) {
+    // 음수 자간은 마지막 글자의 advance도 줄이지만 실제 glyph 잉크 폭은 줄이지 않는다.
+    // 나눔정렬에서 advance만 셀 끝에 맞추면 정상 폭으로 그린 마지막 glyph가 clip을
+    // 넘어가므로, 마지막 가시 글자의 음수 자간만 시각 점유 폭에 되돌린다.
+    let trailing_glyph_ink_overhang = || -> f64 {
+        for run in comp_line.runs.iter().rev() {
+            if let Some(last_visible) = run.text.chars().rev().find(|c| *c != ' ') {
+                if last_visible == '\t' || last_visible == '\u{FFFC}' {
+                    return 0.0;
+                }
+                let mut with_spacing =
+                    resolved_to_text_style(styles, run.char_style_id, run.lang_index);
+                with_spacing.default_tab_width = tab_width;
+                if with_spacing.letter_spacing >= 0.0 {
+                    return 0.0;
+                }
+                let glyph = last_visible.to_string();
+                let spaced_width = estimate_text_width(&glyph, &with_spacing);
+                with_spacing.letter_spacing = 0.0;
+                let ink_advance = estimate_text_width(&glyph, &with_spacing);
+                return (ink_advance - spaced_width).max(0.0);
+            }
+        }
+        0.0
+    };
+
     // Task #352: 라인 내 dash leader (3+ 연속 '-') 글자 수 카운트.
     // visible_count 까지의 chars 에서만 카운트 (후행 공백 제외).
     let count_dash_leaders = |chars: &[char]| -> usize {
@@ -863,7 +888,12 @@ fn compute_line_extra_spacing(
             } else {
                 0.0
             };
-            let effective_used = total_text_width - trailing_width;
+            let split_ink_overhang = if alignment == Alignment::Split {
+                trailing_glyph_ink_overhang()
+            } else {
+                0.0
+            };
+            let effective_used = total_text_width - trailing_width + split_ink_overhang;
             let slack = available_width - effective_used;
             if leader_dashes > 0 && slack > 0.0 {
                 // Task #352: 라인에 dash leader 가 있고 슬랙이 양수면
@@ -1026,6 +1056,24 @@ fn compute_line_extra_spacing(
         (0.0, extra, 0.0)
     } else {
         (0.0, 0.0, 0.0)
+    }
+}
+
+/// 문단 정렬이 현재 줄의 공백 폭을 끝까지 배분해야 하는지 판정한다.
+///
+/// `Justify`는 마지막 줄과 강제 줄바꿈 줄을 제외하지만, HWP5 `Split`
+/// (HWPX `DISTRIBUTE_SPACE`, 한컴 UI의 나눔 정렬)은 문단의 마지막 줄까지
+/// 공백에 배분한다. 강제 줄바꿈 줄의 기존 억제 동작은 유지한다.
+fn needs_word_distribution(
+    alignment: Alignment,
+    is_last_line_of_para: bool,
+    is_header_footer_para: bool,
+    has_forced_break: bool,
+) -> bool {
+    match alignment {
+        Alignment::Split => !has_forced_break,
+        Alignment::Justify => (!is_last_line_of_para || is_header_footer_para) && !has_forced_break,
+        _ => false,
     }
 }
 
@@ -3332,12 +3380,16 @@ impl LayoutEngine {
             // 정렬별 간격 분배 계산
             let has_forced_break = comp_line.has_line_break;
             // 머리말/꼬리말은 내부 문단 인덱스를 `usize::MAX - i`로 넘긴다.
-            // HWP3 Justify와 HWPX DISTRIBUTE_SPACE/HWP5 Split은 모두 공백에만 배분한다.
-            // 머리말/꼬리말 단일 줄도 한컴처럼 영역 폭까지 공백을 벌려야 한다.
+            // Justify와 HWPX DISTRIBUTE_SPACE/HWP5 Split은 모두 공백에 배분하지만,
+            // 마지막 줄 규칙은 다르다. Split(나눔 정렬)은 마지막 줄도 영역 끝까지
+            // 배분한다. 머리말/꼬리말 Justify 단일 줄도 한컴처럼 공백을 벌린다.
             let is_header_footer_para = para_index >= usize::MAX - 1024;
-            let needs_justify = matches!(alignment, Alignment::Justify | Alignment::Split)
-                && (!is_last_line_of_para || is_header_footer_para)
-                && !has_forced_break;
+            let needs_justify = needs_word_distribution(
+                alignment,
+                is_last_line_of_para,
+                is_header_footer_para,
+                has_forced_break,
+            );
             let needs_distribute = alignment == Alignment::Distribute;
 
             let has_tabs = comp_line.runs.iter().any(|r| r.text.contains('\t'));
@@ -6372,6 +6424,123 @@ pub(crate) struct ParaInlineState {
     pub line_top_y: f64,
     /// 현재 line 의 최대 picture height (line wrap 임계 + 다음 line advance 용)
     pub line_height: f64,
+}
+
+#[cfg(test)]
+mod issue_2809_split_alignment_tests {
+    use super::{compute_line_extra_spacing, needs_word_distribution};
+    use crate::model::style::Alignment;
+    use crate::renderer::composer::{ComposedLine, ComposedTextRun};
+    use crate::renderer::layout::text_measurement::{estimate_text_width, resolved_to_text_style};
+    use crate::renderer::style_resolver::{ResolvedCharStyle, ResolvedStyleSet};
+
+    fn split_label_line() -> ComposedLine {
+        ComposedLine {
+            runs: vec![ComposedTextRun {
+                text: "다 같 이".to_string(),
+                ..Default::default()
+            }],
+            line_height: 1120,
+            baseline_distance: 952,
+            segment_width: 6972,
+            column_start: 0,
+            line_spacing: 560,
+            has_line_break: false,
+            char_start: 0,
+        }
+    }
+
+    #[test]
+    fn split_distributes_single_last_line_but_justify_does_not() {
+        assert!(needs_word_distribution(
+            Alignment::Split,
+            true,
+            false,
+            false
+        ));
+        assert!(!needs_word_distribution(
+            Alignment::Justify,
+            true,
+            false,
+            false
+        ));
+        assert!(needs_word_distribution(
+            Alignment::Justify,
+            false,
+            false,
+            false
+        ));
+        assert!(!needs_word_distribution(
+            Alignment::Split,
+            true,
+            false,
+            true
+        ));
+    }
+
+    #[test]
+    fn split_label_assigns_positive_slack_to_interior_spaces() {
+        let line = split_label_line();
+        let (extra_word, extra_char, extra_dash) = compute_line_extra_spacing(
+            &line,
+            &ResolvedStyleSet::default(),
+            Alignment::Split,
+            true,
+            true,
+            false,
+            false,
+            false,
+            5,
+            30.0,
+            90.0,
+            40.0,
+        );
+
+        assert!((extra_word - 30.0).abs() < 0.001);
+        assert_eq!(extra_char, 0.0);
+        assert_eq!(extra_dash, 0.0);
+    }
+
+    #[test]
+    fn split_reserves_last_glyph_ink_when_letter_spacing_is_negative() {
+        let line = split_label_line();
+        let styles = ResolvedStyleSet {
+            char_styles: vec![ResolvedCharStyle {
+                font_size: 12.0,
+                letter_spacing: -6.0,
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        let text_style = resolved_to_text_style(&styles, 0, 0);
+        let total_text_width = estimate_text_width("다 같 이", &text_style);
+        let (extra_word, extra_char, extra_dash) = compute_line_extra_spacing(
+            &line,
+            &styles,
+            Alignment::Split,
+            true,
+            true,
+            false,
+            false,
+            false,
+            5,
+            total_text_width,
+            90.0,
+            40.0,
+        );
+
+        let mut distributed_style = text_style.clone();
+        distributed_style.extra_word_spacing = extra_word;
+        let advance = estimate_text_width("다 같 이", &distributed_style);
+        let mut ink_style = text_style;
+        ink_style.letter_spacing = 0.0;
+        let trailing_ink_overhang =
+            estimate_text_width("이", &ink_style) - estimate_text_width("이", &distributed_style);
+
+        assert!((advance + trailing_ink_overhang - 90.0).abs() < 0.001);
+        assert_eq!(extra_char, 0.0);
+        assert_eq!(extra_dash, 0.0);
+    }
 }
 
 #[cfg(test)]
