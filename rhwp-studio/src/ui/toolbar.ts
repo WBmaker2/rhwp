@@ -312,16 +312,18 @@ export class Toolbar {
         e.preventDefault();
         const pt = parseFloat(this.fontSize.value);
         if (!isNaN(pt) && pt > 0) {
-          this.eventBus.emit('format-char', { fontSize: Math.round(pt * 100) } as CharProperties);
+          const clampedPt = Math.min(4096, Math.max(1, pt));
+          this.fontSize.value = String(clampedPt);
+          this.eventBus.emit('format-char', { fontSize: Math.round(clampedPt * 100) } as CharProperties);
         }
       }
     });
 
-    // 크기 증감 버튼
+    // 크기 증감 버튼 (char-shape-dialog.ts의 fontSize 범위 100~409600과 동일한 1~4096pt로 clamp)
     this.btnSizeUp.addEventListener('mousedown', (e) => {
       e.preventDefault();
       const pt = parseFloat(this.fontSize.value) || 10;
-      const newPt = pt + 1;
+      const newPt = Math.min(4096, pt + 1);
       this.fontSize.value = String(newPt);
       this.eventBus.emit('format-char', { fontSize: Math.round(newPt * 100) } as CharProperties);
     });
