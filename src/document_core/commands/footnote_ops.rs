@@ -21,6 +21,10 @@ impl DocumentCore {
                         footnote.number = number;
                         number += 1;
                     }
+                    Control::Endnote(endnote) => {
+                        endnote.number = number;
+                        number += 1;
+                    }
                     Control::Table(table) => {
                         for cell in &mut table.cells {
                             for cell_para in &mut cell.paragraphs {
@@ -690,5 +694,51 @@ impl DocumentCore {
             "\"fnParaIndex\":{},\"charOffset\":{}",
             prev_idx, merge_offset
         )))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::document_core::DocumentCore;
+    use crate::model::control::Control;
+
+    /// 본문 최상위(표/글상자 밖) 미주는 renumber_footnotes_in_section 의 바깥쪽 match 에
+    /// Control::Endnote 분기가 없어 각주 삭제 후에도 번호가 갱신되지 않던 결함의 회귀 테스트.
+    #[test]
+    fn delete_footnote_renumbers_top_level_endnote_after_it() {
+        let mut core = DocumentCore::new_empty();
+        core.create_blank_document_native().unwrap();
+        core.insert_text_native(0, 0, 0, "ab").unwrap();
+
+        // 순서: 각주(offset 0) -> 미주(offset 1, 각주 삽입으로 +8 시프트됨)
+        core.insert_footnote_native(0, 0, 0).unwrap();
+        let endnote_offset = core.document.sections[0].paragraphs[0]
+            .char_offsets
+            .get(1)
+            .copied()
+            .unwrap() as usize;
+        core.insert_endnote_native(0, 0, endnote_offset).unwrap();
+
+        let footnote_ctrl_idx = core.document.sections[0].paragraphs[0]
+            .controls
+            .iter()
+            .position(|c| matches!(c, Control::Footnote(_)))
+            .expect("본문에 각주 컨트롤이 있어야 함");
+        core.delete_footnote_native(0, 0, footnote_ctrl_idx)
+            .unwrap();
+
+        let remaining_endnote_number = core.document.sections[0].paragraphs[0]
+            .controls
+            .iter()
+            .find_map(|c| match c {
+                Control::Endnote(e) => Some(e.number),
+                _ => None,
+            })
+            .expect("본문에 미주 컨트롤이 남아 있어야 함");
+
+        assert_eq!(
+            remaining_endnote_number, 1,
+            "각주 삭제 후 본문 최상위 미주 번호가 1로 재계산되어야 함"
+        );
     }
 }
