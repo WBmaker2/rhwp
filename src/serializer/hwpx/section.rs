@@ -2416,25 +2416,20 @@ fn replace_page_pr(xml: &str, page_def: &crate::model::page::PageDef) -> String 
 }
 
 /// 템플릿의 3개 `pageBorderFill`(BOTH/EVEN/ODD, 하드코딩 borderFillIDRef="1") 을 IR 값으로
-/// 치환한다. 누락 시 문서의 실제 쪽 테두리가 소실된다. 파서는 첫 항목(BOTH)을
-/// `page_border_fill`, 나머지(EVEN/ODD)를 `extra_page_border_fills` 에 위치 기반 저장한다.
+/// 치환한다. 누락 시 문서의 실제 쪽 테두리가 소실된다. 파서는 `type` 속성 값을 기준으로
+/// `page_border_fill`(BOTH) / `extra_page_border_fills`(EVEN/ODD) 슬롯을 배정한다(#2885).
+///
+/// `extra_page_border_fills` 에 실제 EVEN/ODD 데이터가 없는 경우(절대다수 — 실제 한컴
+/// 문서는 `pageBorderFill` 을 1개(BOTH)만 갖는다) `page_border_fill` 값을 그대로 복제해
+/// EVEN/ODD 자리를 채우면, 원본에 없던 요소가 왕복 후 생겨나고 그 값(=BOTH 복제본)이
+/// 재파싱 시 `extra_page_border_fills` 로 다시 흡수되어 존재하지 않던 필드가 왕복마다
+/// 늘어난다(#2896 CI 발견 — IR 필드 스윕 baseline 발산). 대신 그 자리는 템플릿에서
+/// 통째로 제거해 원본 문서 구조(단일 BOTH)를 보존한다.
 fn replace_page_border_fill(xml: &str, sec_def: &crate::model::document::SectionDef) -> String {
-    let entries: [(&str, &crate::model::page::PageBorderFill); 3] = [
-        ("BOTH", &sec_def.page_border_fill),
-        (
-            "EVEN",
-            sec_def
-                .extra_page_border_fills
-                .first()
-                .unwrap_or(&sec_def.page_border_fill),
-        ),
-        (
-            "ODD",
-            sec_def
-                .extra_page_border_fills
-                .get(1)
-                .unwrap_or(&sec_def.page_border_fill),
-        ),
+    let entries: [(&str, Option<&crate::model::page::PageBorderFill>); 3] = [
+        ("BOTH", Some(&sec_def.page_border_fill)),
+        ("EVEN", sec_def.extra_page_border_fills.first()),
+        ("ODD", sec_def.extra_page_border_fills.get(1)),
     ];
     let mut out = xml.to_string();
     for (ty, pbf) in entries {
@@ -2443,7 +2438,13 @@ fn replace_page_border_fill(xml: &str, sec_def: &crate::model::document::Section
             r#"<hp:pageBorderFill type="{ty}" borderFillIDRef="1" textBorder="PAPER" headerInside="0" footerInside="0" fillArea="PAPER"><hp:offset left="1417" right="1417" top="1417" bottom="1417"/></hp:pageBorderFill>"#
         );
         if out.contains(&template) {
-            out = out.replacen(&template, &render_page_border_fill(ty, pbf), 1);
+            let replacement = match pbf {
+                Some(pbf) => render_page_border_fill(ty, pbf),
+                // IR 에 이 슬롯의 실데이터가 없음 — BOTH 를 복제해 채우는 대신
+                // 요소 자체를 제거한다(원본 없던 EVEN/ODD 요소를 만들어내지 않음).
+                None => String::new(),
+            };
+            out = out.replacen(&template, &replacement, 1);
         }
         // 미일치 시 원본 유지(회귀 방지) — replace_page_pr 패턴과 동형.
     }

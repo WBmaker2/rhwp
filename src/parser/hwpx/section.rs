@@ -815,8 +815,13 @@ fn parse_sec_pr_children(
                     b"startNum" => parse_start_num(e, sec_def),
                     b"visibility" => parse_visibility(e, sec_def),
                     b"pageBorderFill" => {
-                        let pbf = parse_page_border_fill(e, reader)?;
-                        push_page_border_fill(sec_def, pbf, &mut page_border_fill_count);
+                        let (pbf, apply_type) = parse_page_border_fill(e, reader)?;
+                        push_page_border_fill(
+                            sec_def,
+                            pbf,
+                            &apply_type,
+                            &mut page_border_fill_count,
+                        );
                     }
                     // [Task #1050] footNotePr / endNotePr 의 자식 (autoNumFormat, noteLine 등)
                     // 파싱 — 한컴 정답 footnote 영역 렌더링을 위한 FootnoteShape contract.
@@ -842,8 +847,13 @@ fn parse_sec_pr_children(
                     b"startNum" => parse_start_num(e, sec_def),
                     b"visibility" => parse_visibility(e, sec_def),
                     b"pageBorderFill" => {
-                        let pbf = parse_page_border_fill_empty(e);
-                        push_page_border_fill(sec_def, pbf, &mut page_border_fill_count);
+                        let (pbf, apply_type) = parse_page_border_fill_empty(e);
+                        push_page_border_fill(
+                            sec_def,
+                            pbf,
+                            &apply_type,
+                            &mut page_border_fill_count,
+                        );
                     }
                     _ => {}
                 }
@@ -1109,15 +1119,44 @@ fn parse_note_pr_children(
     Ok(())
 }
 
+/// `type`(BOTH/EVEN/ODD) 속성 값을 기준으로 슬롯을 배정한다. XML 등장 순서가
+/// BOTH → EVEN → ODD 를 보장하지 않으므로(#2885), 파싱된 `type` 값을 우선 사용하고
+/// 인식하지 못하는/누락된 값에 한해서만 기존 등장 순서 기반 폴백을 적용한다.
 fn push_page_border_fill(
     sec_def: &mut SectionDef,
     page_border_fill: PageBorderFill,
+    apply_type: &str,
     count: &mut usize,
 ) {
-    if *count == 0 {
-        sec_def.page_border_fill = page_border_fill;
-    } else {
-        sec_def.extra_page_border_fills.push(page_border_fill);
+    match apply_type.to_ascii_uppercase().as_str() {
+        "BOTH" => sec_def.page_border_fill = page_border_fill,
+        "EVEN" => {
+            if sec_def.extra_page_border_fills.is_empty() {
+                sec_def.extra_page_border_fills.push(page_border_fill);
+            } else {
+                sec_def.extra_page_border_fills[0] = page_border_fill;
+            }
+        }
+        "ODD" => {
+            while sec_def.extra_page_border_fills.is_empty() {
+                sec_def
+                    .extra_page_border_fills
+                    .push(PageBorderFill::default());
+            }
+            if sec_def.extra_page_border_fills.len() < 2 {
+                sec_def.extra_page_border_fills.push(page_border_fill);
+            } else {
+                sec_def.extra_page_border_fills[1] = page_border_fill;
+            }
+        }
+        _ => {
+            // type 값이 없거나 인식 불가 — 기존 등장 순서 기반 폴백(회귀 방지).
+            if *count == 0 {
+                sec_def.page_border_fill = page_border_fill;
+            } else {
+                sec_def.extra_page_border_fills.push(page_border_fill);
+            }
+        }
     }
     *count += 1;
 }
@@ -1125,8 +1164,8 @@ fn push_page_border_fill(
 fn parse_page_border_fill(
     e: &quick_xml::events::BytesStart,
     reader: &mut Reader<&[u8]>,
-) -> Result<PageBorderFill, HwpxError> {
-    let mut page_border_fill = parse_page_border_fill_empty(e);
+) -> Result<(PageBorderFill, String), HwpxError> {
+    let (mut page_border_fill, apply_type) = parse_page_border_fill_empty(e);
     let mut buf = Vec::new();
     loop {
         match reader.read_event_into(&mut buf) {
@@ -1148,10 +1187,10 @@ fn parse_page_border_fill(
         }
         buf.clear();
     }
-    Ok(page_border_fill)
+    Ok((page_border_fill, apply_type))
 }
 
-fn parse_page_border_fill_empty(e: &quick_xml::events::BytesStart) -> PageBorderFill {
+fn parse_page_border_fill_empty(e: &quick_xml::events::BytesStart) -> (PageBorderFill, String) {
     let mut page_border_fill = PageBorderFill::default();
     let mut text_border = String::new();
     let mut fill_area = String::new();
@@ -1187,7 +1226,7 @@ fn parse_page_border_fill_empty(e: &quick_xml::events::BytesStart) -> PageBorder
         page_border_fill.basis = PageBorderBasis::PaperBased;
         PageBorderUiBasis::Paper
     };
-    page_border_fill
+    (page_border_fill, apply_type)
 }
 
 fn parse_page_border_fill_offset(
@@ -6636,6 +6675,31 @@ mod tests {
             section.section_def.page_border_fill.ui_basis,
             PageBorderUiBasis::Page
         );
+    }
+
+    #[test]
+    fn test_parse_page_border_fill_slot_by_type_not_by_order() {
+        // #2885: type(BOTH/EVEN/ODD) 이 등장 순서와 다르게 기록된 경우에도
+        // borderFillIDRef 가 type 값에 맞는 슬롯으로 들어가야 한다.
+        let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+<hs:sec xmlns:hp="http://www.hancom.co.kr/hwpml/2011/paragraph"
+        xmlns:hs="http://www.hancom.co.kr/hwpml/2011/section">
+  <hp:p paraPrIDRef="0" styleIDRef="0">
+    <hp:run charPrIDRef="0">
+      <hp:secPr textDirection="HORIZONTAL">
+        <hp:pageBorderFill type="EVEN" borderFillIDRef="7" textBorder="CONTENT" fillArea="PAPER">
+          <hp:offset left="0" right="0" top="0" bottom="0"/>
+        </hp:pageBorderFill>
+        <hp:pageBorderFill type="BOTH" borderFillIDRef="9" textBorder="CONTENT" fillArea="PAPER">
+          <hp:offset left="0" right="0" top="0" bottom="0"/>
+        </hp:pageBorderFill>
+      </hp:secPr>
+    </hp:run>
+  </hp:p>
+</hs:sec>"#;
+
+        let section = parse_hwpx_section(xml).unwrap();
+        assert_eq!(section.section_def.page_border_fill.border_fill_id, 9);
     }
 
     #[test]
