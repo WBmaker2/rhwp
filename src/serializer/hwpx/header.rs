@@ -964,23 +964,33 @@ fn write_bullet<W: Write>(
         "hh:bullet",
         &[("id", &id_s), ("char", &char_s), ("useImage", use_image)],
     )?;
-    // paraHead 뼈대 (파서는 무시하나 OWPML 유효성/한컴 호환 위해 방출).
-    empty_tag(
-        w,
-        "hh:paraHead",
-        &[
-            ("level", "0"),
-            ("align", "LEFT"),
-            ("useInstWidth", "0"),
-            ("autoIndent", "1"),
-            ("widthAdjust", &b.width_adjust.to_string()),
-            ("textOffsetType", "PERCENT"),
-            ("textOffset", "50"),
-            ("numFormat", "DIGIT"),
-            ("charPrIDRef", &u32::MAX.to_string()),
-            ("checkable", "0"),
-        ],
-    )?;
+    // 원본 HWPX paraHead 구간이 있으면(=이 파일에서 파싱된 bullet) 그대로 splice 해
+    // align/useInstWidth/autoIndent/textOffsetType/checkable 등 Bullet 필드로 표현
+    // 못하는 속성까지 무손실 복원(numbering.raw_para_heads 와 동일 패턴, #2790).
+    // 없으면(HWP5 경로 등) widthAdjust/textOffset/charPrIDRef 만 필드값으로 채운
+    // 뼈대로 폴백.
+    if let Some(raw) = &b.raw_para_head {
+        w.get_mut()
+            .write_all(raw.as_bytes())
+            .map_err(|e| SerializeError::XmlError(format!("bullet paraHead splice: {e}")))?;
+    } else {
+        empty_tag(
+            w,
+            "hh:paraHead",
+            &[
+                ("level", "0"),
+                ("align", "LEFT"),
+                ("useInstWidth", "0"),
+                ("autoIndent", "1"),
+                ("widthAdjust", &b.width_adjust.to_string()),
+                ("textOffsetType", "PERCENT"),
+                ("textOffset", &b.text_distance.to_string()),
+                ("numFormat", "DIGIT"),
+                ("charPrIDRef", &b.char_shape_id.to_string()),
+                ("checkable", "0"),
+            ],
+        )?;
+    }
     end_tag(w, "hh:bullet")?;
     Ok(())
 }
