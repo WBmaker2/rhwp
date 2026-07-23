@@ -746,15 +746,18 @@ fn arrow_style_str(v: u32, fill: bool) -> &'static str {
 
 /// `parse_line_shape_attr::arrow_size` 의 역매핑 (0~8).
 fn arrow_size_str(v: u32) -> &'static str {
+    // OWPML Core 스키마 hc:ArrowSize 정본 리터럴은 *_LARGE (Core XML schema.xml:407).
+    // "*_BIG" 는 스펙에 없는 비실재 토큰 — 파서는 하위호환을 위해 관용 수용하지만
+    // (src/parser/hwpx/section.rs 의 parse_line_shape_attr), 직렬화는 정본만 방출한다.
     match v {
         1 => "SMALL_MEDIUM",
-        2 => "SMALL_BIG",
+        2 => "SMALL_LARGE",
         3 => "MEDIUM_SMALL",
         4 => "MEDIUM_MEDIUM",
-        5 => "MEDIUM_BIG",
-        6 => "BIG_SMALL",
-        7 => "BIG_MEDIUM",
-        8 => "BIG_BIG",
+        5 => "MEDIUM_LARGE",
+        6 => "LARGE_SMALL",
+        7 => "LARGE_MEDIUM",
+        8 => "LARGE_LARGE",
         _ => "SMALL_SMALL",
     }
 }
@@ -1066,7 +1069,9 @@ fn write_pos<W: Write>(w: &mut Writer<W>, c: &CommonObjAttr) -> Result<(), Seria
         "hp:pos",
         &[
             ("treatAsChar", treat),
-            ("affectLSpacing", "0"),
+            // [#2784] affectLSpacing 은 IR(affect_line_spacing)을 보존한다. 종전 "0"
+            // 하드코딩은 "줄 간격에 영향" 켜진 도형이 저장 시 1→0 으로 드롭됐다.
+            ("affectLSpacing", bool01(c.affect_line_spacing)),
             ("flowWithText", bool01(c.flow_with_text)),
             ("allowOverlap", bool01(c.allow_overlap)),
             ("holdAnchorAndSO", hold),
@@ -1115,6 +1120,18 @@ pub(crate) fn numbering_type_str(n: ObjectNumberingType) -> &'static str {
         ObjectNumberingType::Table => "TABLE",
         ObjectNumberingType::Equation => "EQUATION",
         ObjectNumberingType::None => "NONE",
+    }
+}
+
+/// `dropcapstyle` 방출 문자열. OWPML Core 스키마 `DropCapStyleType`
+/// (None/DoubleLine/TripleLine/Margin) 그대로 왕복한다.
+pub(crate) fn drop_cap_style_str(s: crate::model::shape::DropCapStyle) -> &'static str {
+    use crate::model::shape::DropCapStyle;
+    match s {
+        DropCapStyle::None => "None",
+        DropCapStyle::DoubleLine => "DoubleLine",
+        DropCapStyle::TripleLine => "TripleLine",
+        DropCapStyle::Margin => "Margin",
     }
 }
 
@@ -1275,6 +1292,17 @@ mod tests {
             xml.contains("tailStyle=\"FILLED_DIAMOND\""),
             "화살표 끝 모양이 소실됨: {xml}"
         );
+    }
+
+    /// #3022: hc:ArrowSize 의 스펙 리터럴은 `*_LARGE` 이다(Core XML schema.xml:407).
+    /// headSz/tailSz 방출이 스펙에 없는 `*_BIG` 표기로 나가면 안 된다.
+    #[test]
+    fn task3022_arrow_size_uses_spec_large_literal() {
+        assert_eq!(arrow_size_str(2), "SMALL_LARGE");
+        assert_eq!(arrow_size_str(5), "MEDIUM_LARGE");
+        assert_eq!(arrow_size_str(6), "LARGE_SMALL");
+        assert_eq!(arrow_size_str(7), "LARGE_MEDIUM");
+        assert_eq!(arrow_size_str(8), "LARGE_LARGE");
     }
 
     /// #1588: 선 도형 설명(shapeComment)이 저장 시 방출돼야 한다.

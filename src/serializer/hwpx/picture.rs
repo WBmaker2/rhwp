@@ -64,6 +64,9 @@ pub fn write_picture<W: Write>(
     // [#2861] 좌우 반전 — 종전 하드코딩 "0" 은 reverse="1" 로 저장된 그림의 반전 정보를
     // 왕복 시 소실시켰다.
     let reverse = bool01(pic.reverse);
+    // [#2875] 개체 잠금 — 종전 하드코딩 "0" 은 lock="1" 로 저장된 그림의 잠금 정보를
+    // 왕복 시 소실시켰다 (#2861 reverse, #2855 hp:tbl lock 과 동일 패턴).
+    let lock = bool01(pic.lock);
 
     start_tag_attrs(
         w,
@@ -74,8 +77,11 @@ pub fn write_picture<W: Write>(
             ("numberingType", "PICTURE"),
             ("textWrap", tw),
             ("textFlow", tf),
-            ("lock", "0"),
-            ("dropcapstyle", "None"),
+            ("lock", lock),
+            (
+                "dropcapstyle",
+                super::shape::drop_cap_style_str(pic.common.drop_cap_style),
+            ),
             ("href", href),
             ("groupLevel", "0"),
             ("instid", &instid),
@@ -417,7 +423,9 @@ fn write_pos<W: Write>(w: &mut Writer<W>, c: &CommonObjAttr) -> Result<(), Seria
         "hp:pos",
         &[
             ("treatAsChar", treat),
-            ("affectLSpacing", "0"),
+            // [#2784] affectLSpacing 은 IR(affect_line_spacing)을 보존한다. 종전 "0"
+            // 하드코딩은 "줄 간격에 영향" 켜진 그림이 저장 시 1→0 으로 드롭됐다.
+            ("affectLSpacing", bool01(c.affect_line_spacing)),
             ("flowWithText", flow_with_text),
             ("allowOverlap", allow_overlap),
             ("holdAnchorAndSO", hold),
@@ -566,6 +574,20 @@ mod tests {
         String::from_utf8(w.into_inner()).unwrap()
     }
 
+    // [#2875] hp:pic lock="1" 이 IR 에 있어도 종전에는 하드코딩 "0" 으로 방출됐다.
+    #[test]
+    fn issue2875_pic_lock_is_preserved_on_serialize() {
+        let doc = make_doc_with_bin(1, "png");
+        let mut ctx = SerializeContext::collect_from_document(&doc);
+        let mut pic = make_picture(1);
+        pic.lock = true;
+        let xml = serialize(&pic, &mut ctx);
+        assert!(
+            xml.contains(r#"lock="1""#),
+            "hp:pic lock=1 이 저장 시 보존돼야 한다: {xml}"
+        );
+    }
+
     #[test]
     fn task1389_cur_sz_uses_shape_attr() {
         let doc = make_doc_with_bin(1, "png");
@@ -577,6 +599,19 @@ mod tests {
         assert!(
             xml.contains(r#"<hp:curSz width="1366" height="1268"/>"#),
             "curSz 는 shape_attr.current 사용(sz 아님): {xml}"
+        );
+    }
+
+    #[test]
+    fn dropcapstyle_round_trips_instead_of_always_none() {
+        let doc = make_doc_with_bin(1, "png");
+        let mut ctx = SerializeContext::collect_from_document(&doc);
+        let mut pic = make_picture(1);
+        pic.common.drop_cap_style = crate::model::shape::DropCapStyle::TripleLine;
+        let xml = serialize(&pic, &mut ctx);
+        assert!(
+            xml.contains(r#"dropcapstyle="TripleLine""#),
+            "dropcapstyle 는 원본 값을 보존해야 한다(하드코딩 \"None\" 아님): {xml}"
         );
     }
 
