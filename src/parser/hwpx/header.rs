@@ -1983,6 +1983,14 @@ fn apply_numbering_para_head(
 }
 
 fn parse_numbering_format_code(value: &str) -> u8 {
+    // 코드 값은 한글문서파일형식 5.0 rev1.3 "표 41: 문단 번호 형식"과 OWPML
+    // Core XML schema.xml 의 NumberType1 enumeration 순서가 1:1 대응한다
+    // (mydocs/tech/한글문서파일형식_5.0_revision1.3.md:978-993). 이전 구현은
+    // HANGUL_JAMO(표 41 값 10)를 HANGUL_SYLLABLE(8)과 동일 코드로 뭉개고,
+    // CIRCLED_LATIN_CAPITAL/CIRCLED_LATIN_SMALL/CIRCLED_HANGUL_SYLLABLE/
+    // CIRCLED_HANGUL_JAMO/HANGUL_PHONETIC/CIRCLED_IDEOGRAPH 6개 스펙 리터럴을
+    // 아예 인식하지 못해 `_ => value.parse().unwrap_or(0)` 폴백으로 DIGIT(0)로
+    // 조용히 유실시켰다(#2857 과 동일한 버그 유형).
     match value {
         "DIGIT" | "ARABIC" => 0,
         "CIRCLED_DIGIT" => 1,
@@ -1990,9 +1998,15 @@ fn parse_numbering_format_code(value: &str) -> u8 {
         "ROMAN_SMALL" | "ROMAN_LOWER" => 3,
         "LATIN_CAPITAL" | "LATIN_UPPER" | "ALPHA_CAPITAL" => 4,
         "LATIN_SMALL" | "LATIN_LOWER" | "ALPHA_SMALL" => 5,
-        "HANGUL_SYLLABLE" | "HANGUL_JAMO" => 8,
-        "HANGUL_NUMBER" => 12,
-        "HANJA_NUMBER" | "IDEOGRAPH" => 13,
+        "CIRCLED_LATIN_CAPITAL" => 6,
+        "CIRCLED_LATIN_SMALL" => 7,
+        "HANGUL_SYLLABLE" => 8,
+        "CIRCLED_HANGUL_SYLLABLE" => 9,
+        "HANGUL_JAMO" => 10,
+        "CIRCLED_HANGUL_JAMO" => 11,
+        "HANGUL_PHONETIC" | "HANGUL_NUMBER" => 12,
+        "IDEOGRAPH" | "HANJA_NUMBER" => 13,
+        "CIRCLED_IDEOGRAPH" => 14,
         _ => value.parse().unwrap_or(0),
     }
 }
@@ -2225,6 +2239,17 @@ mod tests {
         assert_eq!(numbering.level_formats[0], "^1");
         assert_eq!(numbering.heads[0].number_format, 1);
         assert_eq!((numbering.heads[0].attr >> 5) & 0x0f, 1);
+    }
+
+    #[test]
+    fn numbering_para_head_circled_latin_capital_is_not_lost_as_digit() {
+        // OWPML Core XML schema.xml NumberType1 / 표41(값 6)의 정식 리터럴인데,
+        // 이전 parse_numbering_format_code 는 이 리터럴을 인식하지 못해
+        // DIGIT(0)로 조용히 유실시켰다. 값 6으로 보존되어야 한다.
+        let xml = r##"<hh:head xmlns:hh="http://www.hancom.co.kr/hwpml/2011/head"><hh:refList><hh:numberings itemCnt="1"><hh:numbering id="1" start="0"><hh:paraHead start="1" level="1" numFormat="CIRCLED_LATIN_CAPITAL">^1.</hh:paraHead></hh:numbering></hh:numberings></hh:refList></hh:head>"##;
+
+        let (doc_info, _) = parse_hwpx_header(xml).unwrap();
+        assert_eq!(doc_info.numberings[0].heads[0].number_format, 6);
     }
 
     #[test]
