@@ -372,21 +372,27 @@ fn write_sub_list_paragraphs<W: Write>(
 /// `<hp:caption>` 직렬화 (#1387) — 자식 순서상 outMargin 과 inMargin 사이 (모듈 doc).
 ///
 /// 속성 순서는 한컴 실물(ta-pic-001-r) 기준: side, fullSz, width, gap, lastWidth.
-/// 캡션 subList 속성은 파서가 적재하지 않으며 samples/hwpx 전수 17건 동일
-/// (vertAlign=TOP lineWrap=BREAK textDirection=HORIZONTAL — 1단계 측정) — 실물 고정값 방출.
+/// 캡션 subList 의 lineWrap/textDirection 은 파서가 적재하지 않으며 samples/hwpx 전수
+/// 17건 동일(lineWrap=BREAK textDirection=HORIZONTAL — 1단계 측정) — 실물 고정값 방출.
+/// vertAlign 은 IR(`caption.vert_align`, table_ops.rs 편집 경로 존재)을 실제로 반영한다(#3035).
 /// 그림/도형/묶음 캡션(#1403)도 동일 경로를 공유한다 (pub(super)).
 pub(super) fn write_caption<W: Write>(
     w: &mut Writer<W>,
     caption: &crate::model::shape::Caption,
     ctx: &mut SerializeContext,
 ) -> Result<(), SerializeError> {
-    use crate::model::shape::CaptionDirection;
+    use crate::model::shape::{CaptionDirection, CaptionVertAlign};
 
     let side = match caption.direction {
         CaptionDirection::Left => "LEFT",
         CaptionDirection::Right => "RIGHT",
         CaptionDirection::Top => "TOP",
         CaptionDirection::Bottom => "BOTTOM",
+    };
+    let vert_align = match caption.vert_align {
+        CaptionVertAlign::Top => "TOP",
+        CaptionVertAlign::Center => "CENTER",
+        CaptionVertAlign::Bottom => "BOTTOM",
     };
     let full_sz = bool01(caption.include_margin);
     let width = caption.width.to_string();
@@ -410,7 +416,7 @@ pub(super) fn write_caption<W: Write>(
             ("id", ""),
             ("textDirection", "HORIZONTAL"),
             ("lineWrap", "BREAK"),
-            ("vertAlign", "TOP"),
+            ("vertAlign", vert_align),
             ("linkListIDRef", "0"),
             ("linkListNextIDRef", "0"),
             ("textWidth", "0"),
@@ -735,6 +741,22 @@ mod tests {
         let cp = xml.find("<hp:caption").unwrap();
         let im = xml.find("<hp:inMargin").unwrap();
         assert!(om < cp && cp < im, "caption 은 outMargin 과 inMargin 사이");
+    }
+
+    #[test]
+    fn task3035_caption_vert_align_reflects_ir() {
+        // vertAlign 이 caption.vert_align IR 값을 실제로 반영해야 함(고정 TOP 방출 금지).
+        use crate::model::shape::CaptionVertAlign;
+        let mut t = empty_table(1, 1);
+        let mut c = caption_with_text("c");
+        c.vert_align = CaptionVertAlign::Bottom;
+        t.caption = Some(c);
+        let xml = serialize(&t);
+        assert!(
+            xml.contains(r#"vertAlign="BOTTOM""#),
+            "vertAlign 이 IR 값(BOTTOM)으로 방출되어야 함: {}",
+            xml
+        );
     }
 
     #[test]

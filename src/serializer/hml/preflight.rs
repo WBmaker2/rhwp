@@ -646,7 +646,6 @@ fn validate_table(table: &Table, path: &str, blockers: &mut Vec<HmlSaveBlocker>)
         || !table.raw_table_record_extra.is_empty()
         || table.row_sizes != expected_rows
         || table.cell_grid != rebuilt.cell_grid
-        || table.common.text_wrap != Default::default()
         || table
             .cells
             .windows(2)
