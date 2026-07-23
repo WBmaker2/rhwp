@@ -1761,6 +1761,10 @@ fn parse_table(
                                     table.common.treat_as_char =
                                         attr_str(&attr) == "1" || attr_str(&attr) == "true";
                                 }
+                                // [#2784] affectLSpacing(줄 간격에 영향) — 표 pos 되읽기.
+                                b"affectLSpacing" => {
+                                    table.common.affect_line_spacing = parse_bool(&attr)
+                                }
                                 b"flowWithText" => table.common.flow_with_text = parse_bool(&attr),
                                 b"allowOverlap" => table.common.allow_overlap = parse_bool(&attr),
                                 b"holdAnchorAndSO" => {
@@ -2309,6 +2313,7 @@ fn parse_picture(
     let mut picture_instance_id = 0;
     let mut effects = PictureEffects::default();
     let mut reverse = false;
+    let mut lock = false;
 
     // <hp:pic> 요소 자체의 속성 파싱
     for attr in e.attributes().flatten() {
@@ -2345,6 +2350,21 @@ fn parse_picture(
             // [#2861] 좌우 반전(한컴 Automation InsertPicture 의 reverse 옵션과 동일 개념).
             // 종전 미매칭으로 조용히 버려져 직렬화 시 항상 reverse="0" 하드코딩되던 유실.
             b"reverse" => reverse = attr_str(&attr) == "1",
+            // [#2875] 개체 잠금(보호). 종전 미매칭으로 조용히 버려져 직렬화 시 항상
+            // lock="0" 하드코딩되던 유실 — #2861(reverse), #2855(hp:tbl lock)과 동일 패턴.
+            b"lock" => lock = attr_str(&attr) == "1",
+            // dropcapstyle (개체를 감싼 문단의 드롭캡 표시 방식) 보존.
+            // 미파싱 상태에서는 picture.rs 방출측이 항상 "None"으로 되돌려,
+            // DoubleLine/TripleLine/Margin 드롭캡 문단에 있던 그림이 저장 시
+            // 드롭캡 스타일을 잃는다.
+            b"dropcapstyle" => {
+                common.drop_cap_style = match attr_str(&attr).as_str() {
+                    "DoubleLine" => crate::model::shape::DropCapStyle::DoubleLine,
+                    "TripleLine" => crate::model::shape::DropCapStyle::TripleLine,
+                    "Margin" => crate::model::shape::DropCapStyle::Margin,
+                    _ => crate::model::shape::DropCapStyle::None,
+                };
+            }
             _ => {}
         }
     }
@@ -2468,6 +2488,8 @@ fn parse_picture(
                                     common.treat_as_char =
                                         attr_str(&attr) == "1" || attr_str(&attr) == "true";
                                 }
+                                // [#2784] affectLSpacing(줄 간격에 영향) — 그림/도형 pos 되읽기.
+                                b"affectLSpacing" => common.affect_line_spacing = parse_bool(&attr),
                                 b"flowWithText" => common.flow_with_text = parse_bool(&attr),
                                 b"allowOverlap" => common.allow_overlap = parse_bool(&attr),
                                 // holdAnchorAndSO(쪽나눔 방지). 방출측은 모든 개체에 내지만
@@ -2659,6 +2681,7 @@ fn parse_picture(
     pic.caption = caption;
     pic.img_dim = img_dim;
     pic.reverse = reverse;
+    pic.lock = lock;
 
     Ok(Control::Picture(Box::new(pic)))
 }
@@ -3039,6 +3062,8 @@ fn parse_object_layout_child(
                     b"treatAsChar" => {
                         common.treat_as_char = attr_str(&attr) == "1" || attr_str(&attr) == "true";
                     }
+                    // [#2784] affectLSpacing(줄 간격에 영향) — 공통 개체 pos 되읽기.
+                    b"affectLSpacing" => common.affect_line_spacing = parse_bool(&attr),
                     b"flowWithText" => common.flow_with_text = parse_bool(&attr),
                     b"allowOverlap" => common.allow_overlap = parse_bool(&attr),
                     // holdAnchorAndSO(쪽나눔 방지). 방출측은 모든 개체에 내지만
@@ -6145,6 +6170,8 @@ fn parse_common_shape_children(
                                 b"vertOffset" => common.vertical_offset = parse_u32(&attr),
                                 b"horzOffset" => common.horizontal_offset = parse_u32(&attr),
                                 b"treatAsChar" => common.treat_as_char = parse_bool(&attr),
+                                // [#2784] affectLSpacing(줄 간격에 영향) — 공통 개체 pos 되읽기.
+                                b"affectLSpacing" => common.affect_line_spacing = parse_bool(&attr),
                                 b"flowWithText" => common.flow_with_text = parse_bool(&attr),
                                 b"allowOverlap" => common.allow_overlap = parse_bool(&attr),
                                 // holdAnchorAndSO(쪽나눔 방지). 방출측은 모든 개체에 내지만
