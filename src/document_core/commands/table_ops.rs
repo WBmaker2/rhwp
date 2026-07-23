@@ -181,6 +181,15 @@ impl DocumentCore {
         table.dirty = true;
         let cell_count = table.cells.len();
 
+        // Table::merge_cells()는 비주 셀을 retain()으로 제거하고 남은 셀을
+        // sort_by_key(row, col)로 재정렬한다. local_resize_cell_widths/heights는
+        // 이 재정렬 이전의 cell 인덱스를 그대로 물고 있는 Vec<(usize, u32)>라서,
+        // 병합 이후에는 엉뚱한(또는 범위를 벗어난) 셀을 가리키는 stale 참조가 된다.
+        // transpose_unmerged_table_in_place()가 레이아웃 전면 재구성 시 이 두 필드를
+        // 비우는 것과 동일하게, 병합도 셀 인덱스 배치를 바꾸므로 함께 비워야 한다.
+        table.local_resize_cell_widths.clear();
+        table.local_resize_cell_heights.clear();
+
         self.document.sections[section_idx].raw_stream = None;
         self.recompose_section(section_idx);
         self.paginate_if_needed();
