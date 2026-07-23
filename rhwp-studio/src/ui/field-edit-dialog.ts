@@ -12,11 +12,23 @@ export interface ClickHereProps {
   editable: boolean;
 }
 
+/**
+ * 필드 이름의 안전한 상한 길이(문자 수).
+ *
+ * Rust 직렬화기(`src/serializer/control.rs`)는 CTRL_DATA 레코드에 필드 이름 길이를
+ * `nlen as u16`으로 기록한다. 65536자 이상이면 이 캐스팅이 랩어라운드되어 길이
+ * 프리픽스와 실제 기록된 바이트 수가 어긋난 손상된 레코드가 만들어진다(#2851).
+ * `.rs`를 수정하지 않는 범위에서, 손상 가능한 값이 wasm 호출까지 도달하지 않도록
+ * 프런트엔드에서 훨씬 낮은 상한으로 미리 막는다.
+ */
+export const MAX_FIELD_NAME_LEN = 250;
+
 export class FieldEditDialog extends ModalDialog {
   private guideInput!: HTMLInputElement;
   private memoInput!: HTMLTextAreaElement;
   private nameInput!: HTMLInputElement;
   private editableCheckbox!: HTMLInputElement;
+  private nameErrorLabel!: HTMLDivElement;
 
   /** 적용 콜백 */
   onApply: ((props: ClickHereProps) => void) | null = null;
@@ -93,7 +105,16 @@ export class FieldEditDialog extends ModalDialog {
     this.nameInput = document.createElement('input');
     this.nameInput.type = 'text';
     this.nameInput.className = 'field-edit-input';
+    this.nameInput.maxLength = MAX_FIELD_NAME_LEN;
     panel.appendChild(this.nameInput);
+
+    this.nameErrorLabel = document.createElement('div');
+    this.nameErrorLabel.className = 'field-edit-error';
+    this.nameErrorLabel.style.color = '#c00';
+    this.nameErrorLabel.style.fontSize = '11px';
+    this.nameErrorLabel.style.display = 'none';
+    this.nameErrorLabel.textContent = `필드 이름은 ${MAX_FIELD_NAME_LEN}자를 넘을 수 없습니다.`;
+    panel.appendChild(this.nameErrorLabel);
 
     // ── 양식 모드에서 편집 가능(F) ──
     const editableRow = document.createElement('label');
@@ -109,7 +130,14 @@ export class FieldEditDialog extends ModalDialog {
     return body;
   }
 
-  protected onConfirm(): void {
+  protected onConfirm(): void | boolean {
+    if (this.nameInput.value.length > MAX_FIELD_NAME_LEN) {
+      this.nameErrorLabel.style.display = '';
+      this.nameInput.focus();
+      return false;
+    }
+    this.nameErrorLabel.style.display = 'none';
+
     if (this.onApply) {
       this.onApply({
         guide: this.guideInput.value,
