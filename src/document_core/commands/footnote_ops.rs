@@ -100,8 +100,10 @@ impl DocumentCore {
 
         let positions = crate::document_core::helpers::find_control_text_positions(para);
         for (control_idx, ctrl) in para.controls.iter().enumerate() {
-            let Control::Footnote(footnote) = ctrl else {
-                continue;
+            let number = match ctrl {
+                Control::Footnote(footnote) => footnote.number,
+                Control::Endnote(endnote) => endnote.number,
+                _ => continue,
             };
             let Some(marker_pos) = positions.get(control_idx).copied() else {
                 continue;
@@ -118,7 +120,7 @@ impl DocumentCore {
                     para_idx,
                     control_idx,
                     marker_pos,
-                    footnote.number,
+                    number,
                 ));
             }
         }
@@ -145,11 +147,15 @@ impl DocumentCore {
             let ctrl = para.controls.get(control_idx).ok_or_else(|| {
                 HwpError::RenderError(format!("컨트롤 인덱스 {} 범위 초과", control_idx))
             })?;
-            let Control::Footnote(footnote) = ctrl else {
-                return Err(HwpError::RenderError(format!(
-                    "컨트롤 {}은 각주가 아닙니다",
-                    control_idx
-                )));
+            let number = match ctrl {
+                Control::Footnote(footnote) => footnote.number,
+                Control::Endnote(endnote) => endnote.number,
+                _ => {
+                    return Err(HwpError::RenderError(format!(
+                        "컨트롤 {}은 각주/미주가 아닙니다",
+                        control_idx
+                    )));
+                }
             };
             let positions = crate::document_core::helpers::find_control_text_positions(para);
             let marker_pos = positions.get(control_idx).copied().ok_or_else(|| {
@@ -158,7 +164,7 @@ impl DocumentCore {
                     control_idx
                 ))
             })?;
-            (marker_pos, footnote.number)
+            (marker_pos, number)
         };
 
         {
