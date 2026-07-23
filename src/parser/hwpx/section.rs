@@ -5562,7 +5562,16 @@ fn parse_form_object(
             b"foreColor" => form.fore_color = parse_color(&attr),
             b"backColor" => form.back_color = parse_color(&attr),
             b"enabled" => form.enabled = parse_bool(&attr),
-            b"value" => form.value = if attr_str(&attr) == "CHECKED" { 1 } else { 0 },
+            // [Task #TBD] value 는 UNCHECKED/CHECKED/INDETERMINATE 3상태 열거형
+            // (OWPML AbstractButtonObjectType). INDETERMINATE 를 UNCHECKED 로
+            // 뭉개면 라운드트립 시 tri-state 체크박스의 중간 상태가 유실된다.
+            b"value" => {
+                form.value = match attr_str(&attr).as_str() {
+                    "CHECKED" => 1,
+                    "INDETERMINATE" => 2,
+                    _ => 0,
+                }
+            }
             b"selectedValue" => form.text = attr_str(&attr), // comboBox 선택값
             // ComboBox 전용 속성 (HWP5 ComboBoxSet 직렬화에 필요)
             b"listBoxRows" => {
