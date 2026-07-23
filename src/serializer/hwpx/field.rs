@@ -183,7 +183,7 @@ fn field_type_str(t: FieldType) -> &'static str {
         Hyperlink => "HYPERLINK",
         Memo => "MEMO",
         PrivateInfoSecurity => "PRIVATE_INFO",
-        TableOfContents => "TOC",
+        TableOfContents => "TABLE_OF_CONTENTS",
     }
 }
 
@@ -252,7 +252,22 @@ mod tests {
         assert_eq!(field_type_str(FieldType::Hyperlink), "HYPERLINK");
         assert_eq!(field_type_str(FieldType::Bookmark), "BOOKMARK");
         assert_eq!(field_type_str(FieldType::Date), "DATE");
-        assert_eq!(field_type_str(FieldType::TableOfContents), "TOC");
+        assert_eq!(
+            field_type_str(FieldType::TableOfContents),
+            "TABLE_OF_CONTENTS"
+        );
+    }
+
+    #[test]
+    fn field_type_str_toc_round_trips_through_hwpx_parser() {
+        // [#2845] 종전 "TOC" 방출은 parse_field_type()이 인식하지 못해(매칭 분기 없음)
+        // 재파싱 시 FieldType::Unknown 으로 떨어졌다(TOC 필드 정체성 소실). 파서가
+        // 실제로 받아들이는 "TABLE_OF_CONTENTS"/"TABLEOFCONTENTS" 중 하나와 일치해야
+        // HWPX 저장→재로드 라운드트립에서 TOC 필드가 살아남는다.
+        assert_eq!(
+            field_type_str(FieldType::TableOfContents),
+            "TABLE_OF_CONTENTS"
+        );
     }
 
     #[test]
