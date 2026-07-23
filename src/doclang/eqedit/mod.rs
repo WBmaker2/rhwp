@@ -23,7 +23,7 @@
 //! to fall back to a placeholder and record `LossKind::FormulaFallback`.
 //!
 //! ```
-//! use hangulang::eqedit::convert;
+//! use rhwp::doclang::eqedit::convert;
 //! assert_eq!(convert("1 over 2").unwrap(), "\\frac{1}{2}");
 //! assert!(convert("{ x").is_err()); // unbalanced brace
 //! ```
@@ -63,7 +63,7 @@ pub struct EqOutcome {
 /// # Examples
 ///
 /// ```
-/// use hangulang::eqedit::convert;
+/// use rhwp::doclang::eqedit::convert;
 /// assert_eq!(convert("sum from {i=1} to {n} i^2").unwrap(),
 ///            "\\sum_{i=1}^n i^2");
 /// ```
@@ -81,7 +81,7 @@ pub fn convert(script: &str) -> Result<String, EqError> {
 /// # Examples
 ///
 /// ```
-/// use hangulang::eqedit::convert_with_degraded;
+/// use rhwp::doclang::eqedit::convert_with_degraded;
 /// let out = convert_with_degraded("TIMES").unwrap();
 /// // Uppercase commands now resolve, so nothing degrades:
 /// assert_eq!(out.latex, "\\times");

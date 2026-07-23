@@ -4584,7 +4584,7 @@ fn export_doclang(args: &[String]) -> i32 {
     // 기본 출력 경로: 입력 stem + `.dclg.xml` (입력 파일 옆).
     let input_path = std::path::Path::new(file_path);
     let output_path = output_override.unwrap_or_else(|| input_path.with_extension("dclg.xml"));
-    if output_path == input_path {
+    if paths_refer_to_same_file(input_path, &output_path) {
         eprintln!("오류: 입력과 출력 경로가 같습니다. 원본을 덮어쓰지 않습니다.");
         return EXIT_USAGE;
     }

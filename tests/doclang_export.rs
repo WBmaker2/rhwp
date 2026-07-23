@@ -9,6 +9,7 @@
 //! 최소 불변식만 확인한다.
 
 use std::path::{Path, PathBuf};
+use std::process::{Command, Output};
 
 use rhwp::doclang::{convert, ConvertOptions};
 
@@ -17,6 +18,27 @@ fn sample(rel: &str) -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("samples")
         .join(rel)
+}
+
+fn unique_temp_path(label: &str) -> PathBuf {
+    let nonce = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("system time")
+        .as_nanos();
+    std::env::temp_dir().join(format!(
+        "rhwp_doclang_{label}_{}_{nonce}",
+        std::process::id()
+    ))
+}
+
+fn run_export_doclang(input: &Path, output: &Path) -> Output {
+    Command::new(env!("CARGO_BIN_EXE_rhwp"))
+        .arg("export-doclang")
+        .arg(input)
+        .arg("-o")
+        .arg(output)
+        .output()
+        .expect("run rhwp export-doclang")
 }
 
 /// 샘플을 읽어 기본 옵션(Lean·인라인 자원)으로 DocLang XML 로 변환한다.
@@ -111,5 +133,41 @@ fn hwpx_paragraph_sample_converts() {
     assert!(
         xml.contains("오호라"),
         "hwpx conversion missing known text run"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn export_doclang_never_overwrites_a_symlink_to_its_input() {
+    let input = unique_temp_path("cli_symlink_input").with_extension("hwp");
+    let output = unique_temp_path("cli_symlink_output").with_extension("xml");
+    let original = include_bytes!("../samples/para-001.hwp");
+    std::fs::write(&input, original).expect("write HWP input");
+    std::os::unix::fs::symlink(&input, &output).expect("create symlink output alias");
+
+    let command = run_export_doclang(&input, &output);
+
+    assert_eq!(command.status.code(), Some(2));
+    assert_eq!(
+        std::fs::read(&input).expect("read unchanged input"),
+        original
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn export_doclang_never_overwrites_a_hard_link_to_its_input() {
+    let input = unique_temp_path("cli_hard_link_input").with_extension("hwp");
+    let output = unique_temp_path("cli_hard_link_output").with_extension("xml");
+    let original = include_bytes!("../samples/para-001.hwp");
+    std::fs::write(&input, original).expect("write HWP input");
+    std::fs::hard_link(&input, &output).expect("create hard-link output alias");
+
+    let command = run_export_doclang(&input, &output);
+
+    assert_eq!(command.status.code(), Some(2));
+    assert_eq!(
+        std::fs::read(&input).expect("read unchanged input"),
+        original
     );
 }
