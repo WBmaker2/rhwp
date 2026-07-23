@@ -849,6 +849,11 @@ export class CharShapeDialog {
     this.setAttrBtn('italic', p.italic);
     this.setAttrBtn('underline', p.underline);
     this.setAttrBtn('strikethrough', p.strikethrough);
+    // collectMods()가 이 버튼들의 활성 상태를 outlineType/shadowType(>0)과 비교하므로,
+    // 여기서 문서 값으로 동기화하지 않으면 항상 꺼짐 상태에서 시작해 다른 값만
+    // 바꿔도 기존 외곽선/그림자 서식이 조용히 꺼진다 (#2908/#2915와 동일 패턴).
+    this.setAttrBtn('outline', (p.outlineType || 0) > 0);
+    this.setAttrBtn('shadow', (p.shadowType || 0) > 0);
     this.setAttrBtn('superscript', p.superscript);
     this.setAttrBtn('subscript', p.subscript);
 
