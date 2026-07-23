@@ -2269,6 +2269,7 @@ fn parse_picture(
     let mut href: Option<String> = None;
     let mut picture_instance_id = 0;
     let mut effects = PictureEffects::default();
+    let mut reverse = false;
 
     // <hp:pic> 요소 자체의 속성 파싱
     for attr in e.attributes().flatten() {
@@ -2302,6 +2303,9 @@ fn parse_picture(
                 }
             }
             b"groupLevel" => shape_attr.group_level = attr_str(&attr).parse().unwrap_or(0),
+            // [#2861] 좌우 반전(한컴 Automation InsertPicture 의 reverse 옵션과 동일 개념).
+            // 종전 미매칭으로 조용히 버려져 직렬화 시 항상 reverse="0" 하드코딩되던 유실.
+            b"reverse" => reverse = attr_str(&attr) == "1",
             _ => {}
         }
     }
@@ -2615,6 +2619,7 @@ fn parse_picture(
     pic.effects = effects;
     pic.caption = caption;
     pic.img_dim = img_dim;
+    pic.reverse = reverse;
 
     Ok(Control::Picture(Box::new(pic)))
 }
