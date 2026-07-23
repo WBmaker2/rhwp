@@ -211,8 +211,8 @@ function appendCommonSize(
 ): void {
   addChanged(patch, 'sizeProtect', form.sizeProtect, props.sizeProtect ?? false);
   if (form.sizeProtect) return;
-  addChanged(patch, 'width', mmToHwp(form.width), props.width);
-  addChanged(patch, 'height', mmToHwp(form.height), props.height);
+  addChanged(patch, 'width', Math.max(0, mmToHwp(form.width)), props.width);
+  addChanged(patch, 'height', Math.max(0, mmToHwp(form.height)), props.height);
 }
 
 function appendCommonPosition(
