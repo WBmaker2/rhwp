@@ -4980,6 +4980,12 @@ fn test_table_utility_functions() {
     assert_eq!(w2, 0.0);
     assert_eq!(s2, 0);
 
+    // rgb() 내부에 공백이 있어도 색상 토큰이 쪼개지지 않아야 한다.
+    let (w3, c3, s3) = super::parse_css_border_shorthand("1px solid rgb(255, 0, 0)");
+    assert!((w3 - 0.75).abs() < 0.01, "border width 1px -> 0.75pt");
+    assert_eq!(c3, 0x0000FF, "border color red (BGR)");
+    assert_eq!(s3, 1, "border style solid");
+
     // css_border_width_to_hwp
     assert_eq!(super::css_border_width_to_hwp(0.28), 0); // 0.28pt ≈ 0.1mm → index 0
     assert!(super::css_border_width_to_hwp(1.0) >= 5); // 1.0pt ≈ 0.35mm → index 5+
