@@ -246,6 +246,10 @@ pub struct Field {
     pub field_id: u32,
     /// 원본 ctrl_id (직렬화용)
     pub ctrl_id: u32,
+    /// HWPX `<hp:fieldBegin fieldid="..">` 원본 값 (동종 필드 간 공유되는 instance id).
+    /// `id`(=field_id, 문서 내 고유)와 별개 값이며 실물 파일에서 서로 다를 수 있다(#1512).
+    /// `None` 이면 fieldid 속성 자체가 없었거나 파서가 값을 못 읽은 경우 — 방출 생략.
+    pub instance_id: Option<u32>,
     /// CTRL_DATA에서 읽은 필드 이름 (누름틀 고치기에서 설정)
     pub ctrl_data_name: Option<String>,
     /// 메모 인덱스 (hwplib: memoIndex)
