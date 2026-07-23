@@ -109,7 +109,10 @@ pub fn write_form<W: Write>(w: &mut Writer<W>, form: &FormObject) -> Result<(), 
         }
         FormType::Edit => {
             attrs.push(("multiLine", prop(form, "MultiLine", "0")));
-            attrs.push(("passwordChar", prop(form, "PasswordChar", "")));
+            // [#3001] OWPML 스키마 EditType.passwordChar 의 기본값은 "*"(빈 문자열
+            // 아님, ParaList schema.xml:2632). 원본에 속성이 없던(=파서가 properties
+            // 에 못 채운) 신규/누락 케이스에서 ""로 떨어지면 마스킹 문자가 사라진다.
+            attrs.push(("passwordChar", prop(form, "PasswordChar", "*")));
             attrs.push(("maxLength", prop(form, "MaxLength", "2147483647")));
             attrs.push(("scrollBars", prop(form, "ScrollBars", "NONE")));
             attrs.push((
@@ -296,6 +299,21 @@ mod tests {
         let xml = to_string(|w| write_form(w, &form));
         assert!(xml.starts_with("<hp:edit"), "{xml}");
         assert!(xml.contains("<hp:text>입력값</hp:text>"), "{xml}");
+    }
+
+    #[test]
+    fn task3001_edit_password_char_defaults_to_asterisk() {
+        // [#3001] properties 에 "PasswordChar" 가 없으면(원본 XML 에 속성 자체가
+        // 없던 경우) OWPML 스키마 기본값 "*" 로 떨어져야 한다(schema.xml:2632).
+        // 종전엔 "" 로 떨어져 마스킹 문자가 소실됐다.
+        let form = FormObject {
+            form_type: FormType::Edit,
+            name: "Edit".to_string(),
+            enabled: true,
+            ..Default::default()
+        };
+        let xml = to_string(|w| write_form(w, &form));
+        assert!(xml.contains(r#"passwordChar="*""#), "{xml}");
     }
 
     #[test]
