@@ -1605,7 +1605,13 @@ fn render_autonum(an: &AutoNumber) -> String {
         ),
         num = an.number,
         nt = auto_number_type_to_str(an.number_type),
-        ty = page_num_format_to_str(an.format),
+        // [#2957] <hp:autoNumFormat type> 은 <hp:pageNum formatType> 과 달리 원 문자
+        // 형식을 "CIRCLED_DIGIT"로 표기한다(각주/미주 경로에서 실측 검증됨, #2742).
+        ty = if an.format == 1 {
+            "CIRCLED_DIGIT"
+        } else {
+            page_num_format_to_str(an.format)
+        },
         u = ctrl_char_attr(an.user_symbol),
         p = ctrl_char_attr(an.prefix_char),
         s = ctrl_char_attr(an.suffix_char),
