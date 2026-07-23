@@ -35,7 +35,7 @@ use crate::model::shape::{
 };
 
 use super::context::SerializeContext;
-use super::field::{write_bookmark, write_field_begin, write_field_end, write_field_end_full};
+use super::field::{write_bookmark, write_field_begin, write_field_end_full};
 use super::utils::xml_escape;
 use super::SerializeError;
 use super::{picture, table};
@@ -43,7 +43,13 @@ use super::{picture, table};
 const EMPTY_SECTION_XML: &str = include_str!("templates/empty_section0.xml");
 
 /// MEMO subList 여는 태그 (#1391) — 실물(aift) 고정 속성.
-const SUB_LIST_OPEN: &str = r#"<hp:subList id="" textDirection="HORIZONTAL" lineWrap="BREAK" vertAlign="TOP" linkListIDRef="0" linkListNextIDRef="0" textWidth="0" textHeight="0" hasTextRef="0" hasNumRef="0">"#;
+/// `textDirection` 만 원본값 보존(가변); 나머지는 실측 고정 속성.
+fn render_sub_list_open(text_direction: Option<&str>) -> String {
+    format!(
+        r#"<hp:subList id="" textDirection="{}" lineWrap="BREAK" vertAlign="TOP" linkListIDRef="0" linkListNextIDRef="0" textWidth="0" textHeight="0" hasTextRef="0" hasNumRef="0">"#,
+        text_direction.unwrap_or("HORIZONTAL"),
+    )
+}
 const LINESEG_SLOT_OPEN: &str = "<hp:linesegarray>";
 const LINESEG_SLOT_CLOSE: &str = "</hp:linesegarray>";
 const PARA_CLOSE: &str = "</hp:p></hs:sec>";
@@ -704,7 +710,10 @@ impl RunSplitter {
 /// `<hp:ctrl><hp:fieldEnd beginIDRef=".."/></hp:ctrl>` 방출 공통 경로.
 fn emit_field_end(out: &mut String, para: &Paragraph, control_idx: usize) {
     if let Some(Control::Field(f)) = para.controls.get(control_idx) {
-        if let Ok(xml) = writer_to_string(|w| write_field_end(w, f.field_id)) {
+        // [#task-m100] fieldEnd 도 원본 fieldid 를 보존(있으면) — fieldBegin 과 동일 규칙.
+        if let Ok(xml) =
+            writer_to_string(|w| write_field_end_full(w, f.field_id, f.instance_id.unwrap_or(0)))
+        {
             out.push_str("<hp:ctrl>");
             out.push_str(&xml);
             out.push_str("</hp:ctrl>");
@@ -1385,7 +1394,7 @@ fn render_control_slot(out: &mut String, control: &Control, ctx: &mut SerializeC
                     out.push_str(params);
                 }
                 if has_memo {
-                    out.push_str(SUB_LIST_OPEN);
+                    out.push_str(&render_sub_list_open(f.memo_text_direction.as_deref()));
                     let mut vert_cursor: u32 = 0;
                     for para in &f.memo_paragraphs {
                         ctx.para_shape_ids.reference(para.para_shape_id);
@@ -1596,7 +1605,13 @@ fn render_autonum(an: &AutoNumber) -> String {
         ),
         num = an.number,
         nt = auto_number_type_to_str(an.number_type),
-        ty = page_num_format_to_str(an.format),
+        // [#2957] <hp:autoNumFormat type> 은 <hp:pageNum formatType> 과 달리 원 문자
+        // 형식을 "CIRCLED_DIGIT"로 표기한다(각주/미주 경로에서 실측 검증됨, #2742).
+        ty = if an.format == 1 {
+            "CIRCLED_DIGIT"
+        } else {
+            page_num_format_to_str(an.format)
+        },
         u = ctrl_char_attr(an.user_symbol),
         p = ctrl_char_attr(an.prefix_char),
         s = ctrl_char_attr(an.suffix_char),
@@ -2407,25 +2422,20 @@ fn replace_page_pr(xml: &str, page_def: &crate::model::page::PageDef) -> String 
 }
 
 /// 템플릿의 3개 `pageBorderFill`(BOTH/EVEN/ODD, 하드코딩 borderFillIDRef="1") 을 IR 값으로
-/// 치환한다. 누락 시 문서의 실제 쪽 테두리가 소실된다. 파서는 첫 항목(BOTH)을
-/// `page_border_fill`, 나머지(EVEN/ODD)를 `extra_page_border_fills` 에 위치 기반 저장한다.
+/// 치환한다. 누락 시 문서의 실제 쪽 테두리가 소실된다. 파서는 `type` 속성 값을 기준으로
+/// `page_border_fill`(BOTH) / `extra_page_border_fills`(EVEN/ODD) 슬롯을 배정한다(#2885).
+///
+/// `extra_page_border_fills` 에 실제 EVEN/ODD 데이터가 없는 경우(절대다수 — 실제 한컴
+/// 문서는 `pageBorderFill` 을 1개(BOTH)만 갖는다) `page_border_fill` 값을 그대로 복제해
+/// EVEN/ODD 자리를 채우면, 원본에 없던 요소가 왕복 후 생겨나고 그 값(=BOTH 복제본)이
+/// 재파싱 시 `extra_page_border_fills` 로 다시 흡수되어 존재하지 않던 필드가 왕복마다
+/// 늘어난다(#2896 CI 발견 — IR 필드 스윕 baseline 발산). 대신 그 자리는 템플릿에서
+/// 통째로 제거해 원본 문서 구조(단일 BOTH)를 보존한다.
 fn replace_page_border_fill(xml: &str, sec_def: &crate::model::document::SectionDef) -> String {
-    let entries: [(&str, &crate::model::page::PageBorderFill); 3] = [
-        ("BOTH", &sec_def.page_border_fill),
-        (
-            "EVEN",
-            sec_def
-                .extra_page_border_fills
-                .first()
-                .unwrap_or(&sec_def.page_border_fill),
-        ),
-        (
-            "ODD",
-            sec_def
-                .extra_page_border_fills
-                .get(1)
-                .unwrap_or(&sec_def.page_border_fill),
-        ),
+    let entries: [(&str, Option<&crate::model::page::PageBorderFill>); 3] = [
+        ("BOTH", Some(&sec_def.page_border_fill)),
+        ("EVEN", sec_def.extra_page_border_fills.first()),
+        ("ODD", sec_def.extra_page_border_fills.get(1)),
     ];
     let mut out = xml.to_string();
     for (ty, pbf) in entries {
@@ -2434,7 +2444,13 @@ fn replace_page_border_fill(xml: &str, sec_def: &crate::model::document::Section
             r#"<hp:pageBorderFill type="{ty}" borderFillIDRef="1" textBorder="PAPER" headerInside="0" footerInside="0" fillArea="PAPER"><hp:offset left="1417" right="1417" top="1417" bottom="1417"/></hp:pageBorderFill>"#
         );
         if out.contains(&template) {
-            out = out.replacen(&template, &render_page_border_fill(ty, pbf), 1);
+            let replacement = match pbf {
+                Some(pbf) => render_page_border_fill(ty, pbf),
+                // IR 에 이 슬롯의 실데이터가 없음 — BOTH 를 복제해 채우는 대신
+                // 요소 자체를 제거한다(원본 없던 EVEN/ODD 요소를 만들어내지 않음).
+                None => String::new(),
+            };
+            out = out.replacen(&template, &replacement, 1);
         }
         // 미일치 시 원본 유지(회귀 방지) — replace_page_pr 패턴과 동형.
     }
@@ -3554,6 +3570,39 @@ mod tests {
         let pp = xml.find("<hp:parameters").unwrap();
         let sl = xml.find("<hp:subList").unwrap();
         assert!(pp < sl, "parameters 가 subList 보다 먼저");
+    }
+
+    #[test]
+    fn memo_vertical_text_direction_roundtrips() {
+        // [#task-m100] 세로쓰기 MEMO subList 는 파싱 시 textDirection="VERTICAL" 을
+        // 보존해야 하며, 재직렬화 시 하드코딩된 "HORIZONTAL" 로 뒤집히면 안 된다.
+        let mut f = Field::default();
+        f.field_type = FieldType::Memo;
+        f.field_id = 9;
+        f.memo_text_direction = Some("VERTICAL".to_string());
+        let mut memo_para = Paragraph::default();
+        memo_para.text = "메모".to_string();
+        f.memo_paragraphs.push(memo_para);
+
+        let mut para = Paragraph::default();
+        para.text = "x".to_string();
+        para.char_count = 18;
+        para.char_offsets = vec![8];
+        para.controls.push(Control::Field(f));
+        para.field_ranges.push(FieldRange {
+            start_char_idx: 0,
+            end_char_idx: 1,
+            control_idx: 0,
+        });
+
+        let (doc, section) = make_doc_with_paragraph(para);
+        let mut ctx = SerializeContext::collect_from_document(&doc);
+        let xml = String::from_utf8(write_section(&section, &doc, 0, &mut ctx).unwrap()).unwrap();
+
+        assert!(
+            xml.contains(r#"<hp:subList id="" textDirection="VERTICAL""#),
+            "세로쓰기 메모 subList 의 textDirection 보존: {xml}"
+        );
     }
 
     #[test]

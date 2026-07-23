@@ -339,6 +339,10 @@ fn write_border_fill<W: Write>(
     ctx: &SerializeContext,
 ) -> Result<(), SerializeError> {
     let attr = effective_border_fill_attr(bf);
+    // [#2965] 표 24 bit0=3D 효과, bit1=그림자 효과 — 파서가 attr 에 보존하는
+    // 실값을 read_border_fill 이 되돌리지 않고 상수로 방출하던 결함 수정.
+    let three_d = bool01(attr & 1 != 0);
+    let shadow = bool01(attr & (1 << 1) != 0);
 
     // 속성 순서 (BorderFillType.cpp:64-68): id, threeD, shadow, centerLine, breakCellSeparateLine
     start_tag_attrs(
@@ -346,8 +350,8 @@ fn write_border_fill<W: Write>(
         "hh:borderFill",
         &[
             ("id", &(id + 1).to_string()), // HWPX 관찰: id는 1-based
-            ("threeD", "0"),
-            ("shadow", "0"),
+            ("threeD", three_d),
+            ("shadow", shadow),
             ("centerLine", center_line_type(bf)),
             ("breakCellSeparateLine", "0"),
         ],
@@ -964,23 +968,33 @@ fn write_bullet<W: Write>(
         "hh:bullet",
         &[("id", &id_s), ("char", &char_s), ("useImage", use_image)],
     )?;
-    // paraHead 뼈대 (파서는 무시하나 OWPML 유효성/한컴 호환 위해 방출).
-    empty_tag(
-        w,
-        "hh:paraHead",
-        &[
-            ("level", "0"),
-            ("align", "LEFT"),
-            ("useInstWidth", "0"),
-            ("autoIndent", "1"),
-            ("widthAdjust", &b.width_adjust.to_string()),
-            ("textOffsetType", "PERCENT"),
-            ("textOffset", "50"),
-            ("numFormat", "DIGIT"),
-            ("charPrIDRef", &u32::MAX.to_string()),
-            ("checkable", "0"),
-        ],
-    )?;
+    // 원본 HWPX paraHead 구간이 있으면(=이 파일에서 파싱된 bullet) 그대로 splice 해
+    // align/useInstWidth/autoIndent/textOffsetType/checkable 등 Bullet 필드로 표현
+    // 못하는 속성까지 무손실 복원(numbering.raw_para_heads 와 동일 패턴, #2790).
+    // 없으면(HWP5 경로 등) widthAdjust/textOffset/charPrIDRef 만 필드값으로 채운
+    // 뼈대로 폴백.
+    if let Some(raw) = &b.raw_para_head {
+        w.get_mut()
+            .write_all(raw.as_bytes())
+            .map_err(|e| SerializeError::XmlError(format!("bullet paraHead splice: {e}")))?;
+    } else {
+        empty_tag(
+            w,
+            "hh:paraHead",
+            &[
+                ("level", "0"),
+                ("align", "LEFT"),
+                ("useInstWidth", "0"),
+                ("autoIndent", "1"),
+                ("widthAdjust", &b.width_adjust.to_string()),
+                ("textOffsetType", "PERCENT"),
+                ("textOffset", &b.text_distance.to_string()),
+                ("numFormat", "DIGIT"),
+                ("charPrIDRef", &b.char_shape_id.to_string()),
+                ("checkable", "0"),
+            ],
+        )?;
+    }
     end_tag(w, "hh:bullet")?;
     Ok(())
 }
@@ -1671,6 +1685,29 @@ mod tests {
         assert!(
             xml.contains(r#"<hh:backSlash type="CENTER_BELOW" Crooked="0" isCounter="0"/>"#),
             "backSlash 방향 비트가 CENTER_BELOW로 보존되어야 함: {xml}"
+        );
+    }
+
+    #[test]
+    fn write_border_fill_preserves_three_d_and_shadow_bits() {
+        // [#2965] bf.attr bit0=3D, bit1=그림자. 종전엔 threeD/shadow 가 항상
+        // "0" 으로 하드코딩되어 파서가 보존한 값이 왕복에서 소실됐다.
+        let mut bf = BorderFill::default();
+        bf.attr = 0b11; // bit0(3D)=1, bit1(shadow)=1
+
+        let mut writer = Writer::new(Vec::new());
+        write_border_fill(
+            &mut writer,
+            0,
+            &bf,
+            &SerializeContext::collect_from_document(&Default::default()),
+        )
+        .expect("write borderFill");
+        let xml = String::from_utf8(writer.into_inner()).unwrap();
+
+        assert!(
+            xml.contains(r#"threeD="1""#) && xml.contains(r#"shadow="1""#),
+            "attr bit0/bit1 이 threeD/shadow 로 방출돼야 함: {xml}"
         );
     }
 

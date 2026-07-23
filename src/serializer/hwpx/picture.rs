@@ -61,6 +61,9 @@ pub fn write_picture<W: Write>(
     let tf = text_flow_str(pic.common.text_flow);
     let instid = pic.instance_id.to_string();
     let href = pic.href.as_deref().unwrap_or("");
+    // [#2861] 좌우 반전 — 종전 하드코딩 "0" 은 reverse="1" 로 저장된 그림의 반전 정보를
+    // 왕복 시 소실시켰다.
+    let reverse = bool01(pic.reverse);
 
     start_tag_attrs(
         w,
@@ -76,7 +79,7 @@ pub fn write_picture<W: Write>(
             ("href", href),
             ("groupLevel", "0"),
             ("instid", &instid),
-            ("reverse", "0"),
+            ("reverse", reverse),
         ],
     )?;
 
@@ -622,6 +625,21 @@ mod tests {
         assert!(
             xml.contains(r#"alpha="255""#),
             "그림 투명도 100%는 한컴 HWPX alpha byte 255로 저장되어야 한다: {xml}"
+        );
+    }
+
+    // [#2861] reverse="1" 이 IR 에 있어도 종전에는 하드코딩 "0" 으로 방출됐다.
+    #[test]
+    fn issue2861_pic_reverse_is_preserved_on_serialize() {
+        let doc = make_doc_with_bin(1, "png");
+        let mut ctx = SerializeContext::collect_from_document(&doc);
+        let mut pic = make_picture(1);
+
+        pic.reverse = true;
+        let xml = serialize(&pic, &mut ctx);
+        assert!(
+            xml.contains(r#"reverse="1""#),
+            "hp:pic reverse=1 이 저장 시 보존돼야 한다: {xml}"
         );
     }
 

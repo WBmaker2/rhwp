@@ -815,8 +815,13 @@ fn parse_sec_pr_children(
                     b"startNum" => parse_start_num(e, sec_def),
                     b"visibility" => parse_visibility(e, sec_def),
                     b"pageBorderFill" => {
-                        let pbf = parse_page_border_fill(e, reader)?;
-                        push_page_border_fill(sec_def, pbf, &mut page_border_fill_count);
+                        let (pbf, apply_type) = parse_page_border_fill(e, reader)?;
+                        push_page_border_fill(
+                            sec_def,
+                            pbf,
+                            &apply_type,
+                            &mut page_border_fill_count,
+                        );
                     }
                     // [Task #1050] footNotePr / endNotePr 의 자식 (autoNumFormat, noteLine 등)
                     // 파싱 — 한컴 정답 footnote 영역 렌더링을 위한 FootnoteShape contract.
@@ -842,8 +847,13 @@ fn parse_sec_pr_children(
                     b"startNum" => parse_start_num(e, sec_def),
                     b"visibility" => parse_visibility(e, sec_def),
                     b"pageBorderFill" => {
-                        let pbf = parse_page_border_fill_empty(e);
-                        push_page_border_fill(sec_def, pbf, &mut page_border_fill_count);
+                        let (pbf, apply_type) = parse_page_border_fill_empty(e);
+                        push_page_border_fill(
+                            sec_def,
+                            pbf,
+                            &apply_type,
+                            &mut page_border_fill_count,
+                        );
                     }
                     _ => {}
                 }
@@ -1109,15 +1119,44 @@ fn parse_note_pr_children(
     Ok(())
 }
 
+/// `type`(BOTH/EVEN/ODD) 속성 값을 기준으로 슬롯을 배정한다. XML 등장 순서가
+/// BOTH → EVEN → ODD 를 보장하지 않으므로(#2885), 파싱된 `type` 값을 우선 사용하고
+/// 인식하지 못하는/누락된 값에 한해서만 기존 등장 순서 기반 폴백을 적용한다.
 fn push_page_border_fill(
     sec_def: &mut SectionDef,
     page_border_fill: PageBorderFill,
+    apply_type: &str,
     count: &mut usize,
 ) {
-    if *count == 0 {
-        sec_def.page_border_fill = page_border_fill;
-    } else {
-        sec_def.extra_page_border_fills.push(page_border_fill);
+    match apply_type.to_ascii_uppercase().as_str() {
+        "BOTH" => sec_def.page_border_fill = page_border_fill,
+        "EVEN" => {
+            if sec_def.extra_page_border_fills.is_empty() {
+                sec_def.extra_page_border_fills.push(page_border_fill);
+            } else {
+                sec_def.extra_page_border_fills[0] = page_border_fill;
+            }
+        }
+        "ODD" => {
+            while sec_def.extra_page_border_fills.is_empty() {
+                sec_def
+                    .extra_page_border_fills
+                    .push(PageBorderFill::default());
+            }
+            if sec_def.extra_page_border_fills.len() < 2 {
+                sec_def.extra_page_border_fills.push(page_border_fill);
+            } else {
+                sec_def.extra_page_border_fills[1] = page_border_fill;
+            }
+        }
+        _ => {
+            // type 값이 없거나 인식 불가 — 기존 등장 순서 기반 폴백(회귀 방지).
+            if *count == 0 {
+                sec_def.page_border_fill = page_border_fill;
+            } else {
+                sec_def.extra_page_border_fills.push(page_border_fill);
+            }
+        }
     }
     *count += 1;
 }
@@ -1125,8 +1164,8 @@ fn push_page_border_fill(
 fn parse_page_border_fill(
     e: &quick_xml::events::BytesStart,
     reader: &mut Reader<&[u8]>,
-) -> Result<PageBorderFill, HwpxError> {
-    let mut page_border_fill = parse_page_border_fill_empty(e);
+) -> Result<(PageBorderFill, String), HwpxError> {
+    let (mut page_border_fill, apply_type) = parse_page_border_fill_empty(e);
     let mut buf = Vec::new();
     loop {
         match reader.read_event_into(&mut buf) {
@@ -1148,10 +1187,10 @@ fn parse_page_border_fill(
         }
         buf.clear();
     }
-    Ok(page_border_fill)
+    Ok((page_border_fill, apply_type))
 }
 
-fn parse_page_border_fill_empty(e: &quick_xml::events::BytesStart) -> PageBorderFill {
+fn parse_page_border_fill_empty(e: &quick_xml::events::BytesStart) -> (PageBorderFill, String) {
     let mut page_border_fill = PageBorderFill::default();
     let mut text_border = String::new();
     let mut fill_area = String::new();
@@ -1187,7 +1226,7 @@ fn parse_page_border_fill_empty(e: &quick_xml::events::BytesStart) -> PageBorder
         page_border_fill.basis = PageBorderBasis::PaperBased;
         PageBorderUiBasis::Paper
     };
-    page_border_fill
+    (page_border_fill, apply_type)
 }
 
 fn parse_page_border_fill_offset(
@@ -2269,6 +2308,7 @@ fn parse_picture(
     let mut href: Option<String> = None;
     let mut picture_instance_id = 0;
     let mut effects = PictureEffects::default();
+    let mut reverse = false;
 
     // <hp:pic> 요소 자체의 속성 파싱
     for attr in e.attributes().flatten() {
@@ -2302,6 +2342,9 @@ fn parse_picture(
                 }
             }
             b"groupLevel" => shape_attr.group_level = attr_str(&attr).parse().unwrap_or(0),
+            // [#2861] 좌우 반전(한컴 Automation InsertPicture 의 reverse 옵션과 동일 개념).
+            // 종전 미매칭으로 조용히 버려져 직렬화 시 항상 reverse="0" 하드코딩되던 유실.
+            b"reverse" => reverse = attr_str(&attr) == "1",
             _ => {}
         }
     }
@@ -2615,6 +2658,7 @@ fn parse_picture(
     pic.effects = effects;
     pic.caption = caption;
     pic.img_dim = img_dim;
+    pic.reverse = reverse;
 
     Ok(Control::Picture(Box::new(pic)))
 }
@@ -4455,6 +4499,10 @@ fn parse_field_begin_attrs(e: &quick_xml::events::BytesStart) -> Field {
     // (예: FORMULA 다수)에서 공유될 수 있어, 이를 우선하면 모든 필드가 동일 ID 로
     // 반환된다(#1512). Memo/비-Memo 모두 고유 `id` 우선으로 통일한다.
     f.field_id = id_attr.or(fieldid_attr).unwrap_or(0);
+    // [#task-m100] `fieldid` 는 위 field_id 계산에 폴백으로만 쓰였고, `id` 가 존재하는
+    // 실물 필드(예: id=1878228493, fieldid=627272811 — 서로 다름)에선 원본 fieldid 값이
+    // 그대로 버려져 직렬화기가 이 속성을 영구히 방출하지 못했다. instance_id 로 별도 보존.
+    f.instance_id = fieldid_attr;
     // [Task #852 Stage 2.5] field_type → ctrl_id 매핑.
     // 정답지 (samples/form-01.hwp) reverse engineering: ClickHere CTRL_HEADER 의 ctrl_id 가
     // "%clk" (FIELD_CLICKHERE). HWPX parser 가 이전엔 ctrl_id 미설정 → serializer 가
@@ -4759,7 +4807,9 @@ fn parse_ctrl_autonum(
                             b"type" => {
                                 an.format = match attr_str(&attr).as_str() {
                                     "DIGIT" => 0,
-                                    "CIRCLE_DIGIT" => 1,
+                                    // [#2957] 실제 한컴 스펙 표기는 "CIRCLED_DIGIT" (pageNum
+                                    // formatType 의 "CIRCLE_DIGIT" 와 다름). 구값도 겸용 인식.
+                                    "CIRCLE_DIGIT" | "CIRCLED_DIGIT" => 1,
                                     "ROMAN_CAPITAL" => 2,
                                     "ROMAN_SMALL" => 3,
                                     "LATIN_CAPITAL" => 4,
@@ -4825,6 +4875,14 @@ fn parse_ctrl_field_begin(
                 if local == b"parameters" {
                     parse_field_parameters(ce, reader, &mut f)?;
                 } else if local == b"subList" && f.field_type == FieldType::Memo {
+                    for attr in ce.attributes().flatten() {
+                        if attr.key.as_ref() == b"textDirection" {
+                            let dir = attr_str(&attr);
+                            if dir != "HORIZONTAL" {
+                                f.memo_text_direction = Some(dir);
+                            }
+                        }
+                    }
                     f.memo_paragraphs = parse_sublist_paragraphs(reader, b"subList")?;
                 } else {
                     let tag = local.to_vec();
@@ -5504,7 +5562,16 @@ fn parse_form_object(
             b"foreColor" => form.fore_color = parse_color(&attr),
             b"backColor" => form.back_color = parse_color(&attr),
             b"enabled" => form.enabled = parse_bool(&attr),
-            b"value" => form.value = if attr_str(&attr) == "CHECKED" { 1 } else { 0 },
+            // [Task #TBD] value 는 UNCHECKED/CHECKED/INDETERMINATE 3상태 열거형
+            // (OWPML AbstractButtonObjectType). INDETERMINATE 를 UNCHECKED 로
+            // 뭉개면 라운드트립 시 tri-state 체크박스의 중간 상태가 유실된다.
+            b"value" => {
+                form.value = match attr_str(&attr).as_str() {
+                    "CHECKED" => 1,
+                    "INDETERMINATE" => 2,
+                    _ => 0,
+                }
+            }
             b"selectedValue" => form.text = attr_str(&attr), // comboBox 선택값
             // ComboBox 전용 속성 (HWP5 ComboBoxSet 직렬화에 필요)
             b"listBoxRows" => {
@@ -6141,6 +6208,32 @@ mod tests {
         assert_eq!(section.paragraphs[0].para_shape_id, 0);
     }
 
+    // ---------- #2957: autoNumFormat 원 문자(CIRCLED_DIGIT) 인식 ----------
+
+    #[test]
+    fn task2957_autonum_format_circled_digit_parses_as_1() {
+        let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+<hs:sec xmlns:hp="http://www.hancom.co.kr/hwpml/2011/paragraph"
+        xmlns:hs="http://www.hancom.co.kr/hwpml/2011/section">
+  <hp:p paraPrIDRef="0" styleIDRef="0">
+    <hp:run charPrIDRef="0"><hp:ctrl><hp:autoNum num="1" numType="FOOTNOTE"><hp:autoNumFormat type="CIRCLED_DIGIT" userChar="" prefixChar="" suffixChar="" supscript="0"/></hp:autoNum></hp:ctrl><hp:t> </hp:t></hp:run>
+  </hp:p>
+</hs:sec>"#;
+        let section = parse_hwpx_section(xml).unwrap();
+        let an = section.paragraphs[0]
+            .controls
+            .iter()
+            .find_map(|c| match c {
+                Control::AutoNumber(an) => Some(an),
+                _ => None,
+            })
+            .expect("autoNum 컨트롤이 파싱돼야 함");
+        assert_eq!(
+            an.format, 1,
+            "type=\"CIRCLED_DIGIT\" 는 format=1(circled digit) 로 인식돼야 함(#2957)"
+        );
+    }
+
     // ---------- #1382: autoNum 폭 축 일관화 ----------
 
     #[test]
@@ -6619,6 +6712,31 @@ mod tests {
             section.section_def.page_border_fill.ui_basis,
             PageBorderUiBasis::Page
         );
+    }
+
+    #[test]
+    fn test_parse_page_border_fill_slot_by_type_not_by_order() {
+        // #2885: type(BOTH/EVEN/ODD) 이 등장 순서와 다르게 기록된 경우에도
+        // borderFillIDRef 가 type 값에 맞는 슬롯으로 들어가야 한다.
+        let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+<hs:sec xmlns:hp="http://www.hancom.co.kr/hwpml/2011/paragraph"
+        xmlns:hs="http://www.hancom.co.kr/hwpml/2011/section">
+  <hp:p paraPrIDRef="0" styleIDRef="0">
+    <hp:run charPrIDRef="0">
+      <hp:secPr textDirection="HORIZONTAL">
+        <hp:pageBorderFill type="EVEN" borderFillIDRef="7" textBorder="CONTENT" fillArea="PAPER">
+          <hp:offset left="0" right="0" top="0" bottom="0"/>
+        </hp:pageBorderFill>
+        <hp:pageBorderFill type="BOTH" borderFillIDRef="9" textBorder="CONTENT" fillArea="PAPER">
+          <hp:offset left="0" right="0" top="0" bottom="0"/>
+        </hp:pageBorderFill>
+      </hp:secPr>
+    </hp:run>
+  </hp:p>
+</hs:sec>"#;
+
+        let section = parse_hwpx_section(xml).unwrap();
+        assert_eq!(section.section_def.page_border_fill.border_fill_id, 9);
     }
 
     #[test]

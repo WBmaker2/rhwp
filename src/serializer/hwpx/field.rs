@@ -38,13 +38,25 @@ pub fn field_begin_open_tag(field: &Field) -> String {
     let id_str = field.field_id.to_string();
     let ft = field_type_str(field.field_type);
     let name = xml_escape_attr(field.ctrl_data_name.as_deref().unwrap_or(""));
-    format!(
-        r#"<hp:fieldBegin id="{}" type="{}" name="{}" editable="{}""#,
-        id_str,
-        ft,
-        name,
-        bool01(field.is_editable_in_form()),
-    )
+    // [#task-m100] 원본 `fieldid` 속성 보존 — id 와 별개 값일 수 있어(#1512) 생략하면
+    // 왕복 시 영구 손실된다. 없으면(None) 속성 자체를 생략(#1391 자기닫힘 태그 호환).
+    match field.instance_id {
+        Some(fieldid) => format!(
+            r#"<hp:fieldBegin id="{}" type="{}" name="{}" editable="{}" fieldid="{}""#,
+            id_str,
+            ft,
+            name,
+            bool01(field.is_editable_in_form()),
+            fieldid,
+        ),
+        None => format!(
+            r#"<hp:fieldBegin id="{}" type="{}" name="{}" editable="{}""#,
+            id_str,
+            ft,
+            name,
+            bool01(field.is_editable_in_form()),
+        ),
+    }
 }
 
 fn xml_escape_attr(s: &str) -> String {
@@ -60,16 +72,31 @@ fn xml_escape_attr(s: &str) -> String {
 pub fn write_field_begin<W: Write>(w: &mut Writer<W>, field: &Field) -> Result<(), SerializeError> {
     let id_str = field.field_id.to_string();
     let ft = field_type_str(field.field_type);
-    empty_tag(
-        w,
-        "hp:fieldBegin",
-        &[
-            ("id", &id_str),
-            ("type", ft),
-            ("name", field.ctrl_data_name.as_deref().unwrap_or("")),
-            ("editable", bool01(field.is_editable_in_form())),
-        ],
-    )
+    let fieldid_str = field.instance_id.map(|v| v.to_string());
+    let editable_str = bool01(field.is_editable_in_form());
+    match &fieldid_str {
+        Some(fieldid_str) => empty_tag(
+            w,
+            "hp:fieldBegin",
+            &[
+                ("id", &id_str),
+                ("type", ft),
+                ("name", field.ctrl_data_name.as_deref().unwrap_or("")),
+                ("editable", editable_str),
+                ("fieldid", fieldid_str),
+            ],
+        ),
+        None => empty_tag(
+            w,
+            "hp:fieldBegin",
+            &[
+                ("id", &id_str),
+                ("type", ft),
+                ("name", field.ctrl_data_name.as_deref().unwrap_or("")),
+                ("editable", editable_str),
+            ],
+        ),
+    }
 }
 
 /// `<hp:fieldEnd>` — 필드 끝 마커.
@@ -183,7 +210,7 @@ fn field_type_str(t: FieldType) -> &'static str {
         Hyperlink => "HYPERLINK",
         Memo => "MEMO",
         PrivateInfoSecurity => "PRIVATE_INFO",
-        TableOfContents => "TOC",
+        TableOfContents => "TABLE_OF_CONTENTS",
     }
 }
 
@@ -220,6 +247,20 @@ mod tests {
     }
 
     #[test]
+    fn field_begin_preserves_distinct_fieldid_attr() {
+        // [#task-m100] 실물 필드는 id(=field_id, 고유)와 fieldid(instance id)가
+        // 서로 다를 수 있다(id=1878228493, fieldid=627272811). 종전엔 fieldid_attr 가
+        // field_id 계산의 폴백으로만 쓰이고 별도 보존되지 않아, 직렬화기가 이 속성을
+        // 영구히 방출하지 못했다(#1512 이후 회귀).
+        let mut f = Field::default();
+        f.field_type = FieldType::ClickHere;
+        f.field_id = 1_878_228_493;
+        f.instance_id = Some(627_272_811);
+        let xml = to_string(|w| write_field_begin(w, &f));
+        assert!(xml.contains(r#"fieldid="627272811""#), "{xml}");
+    }
+
+    #[test]
     fn field_end_references_begin_id() {
         let xml = to_string(|w| write_field_end(w, 42));
         assert!(xml.contains(r#"<hp:fieldEnd beginIDRef="42"/>"#));
@@ -252,7 +293,22 @@ mod tests {
         assert_eq!(field_type_str(FieldType::Hyperlink), "HYPERLINK");
         assert_eq!(field_type_str(FieldType::Bookmark), "BOOKMARK");
         assert_eq!(field_type_str(FieldType::Date), "DATE");
-        assert_eq!(field_type_str(FieldType::TableOfContents), "TOC");
+        assert_eq!(
+            field_type_str(FieldType::TableOfContents),
+            "TABLE_OF_CONTENTS"
+        );
+    }
+
+    #[test]
+    fn field_type_str_toc_round_trips_through_hwpx_parser() {
+        // [#2845] 종전 "TOC" 방출은 parse_field_type()이 인식하지 못해(매칭 분기 없음)
+        // 재파싱 시 FieldType::Unknown 으로 떨어졌다(TOC 필드 정체성 소실). 파서가
+        // 실제로 받아들이는 "TABLE_OF_CONTENTS"/"TABLEOFCONTENTS" 중 하나와 일치해야
+        // HWPX 저장→재로드 라운드트립에서 TOC 필드가 살아남는다.
+        assert_eq!(
+            field_type_str(FieldType::TableOfContents),
+            "TABLE_OF_CONTENTS"
+        );
     }
 
     #[test]

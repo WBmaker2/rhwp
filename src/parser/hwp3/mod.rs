@@ -421,6 +421,17 @@ fn hwp3_para_flow_spacing(para_shape: Option<&crate::model::style::ParaShape>) -
     )
 }
 
+/// HWP3 스펙 offset 111 각주 분리선 길이 종류(0=5cm, 1=본문 폭의 1/3, 2=단 너비,
+/// 3 이상=없음)를 HWPUNIT 길이로 변환한다.
+fn hwp3_footnote_separator_length(footnote_line_width: u8, column_width_hu: i32) -> i32 {
+    match footnote_line_width {
+        0 => 14160, // 5cm ≈ 283.2 HWPUNIT/mm * 50mm
+        1 => column_width_hu / 3,
+        2 => column_width_hu,
+        _ => 0,
+    }
+}
+
 fn hwp3_note_column_width_hu(column_width_hu: i32) -> i32 {
     // HWP3 미주는 HWPX 기준 출력처럼 본문 영역 안에서 2단으로 흘린다.
     // 한글 97 계열의 기본 미주 단 간격은 5mm에 해당하는 1416 HWPUNIT로 본다.
@@ -444,14 +455,17 @@ fn apply_hwp3_encrypted_flag(
     }
 }
 
-fn hwp3_default_endnote_shape() -> crate::model::footnote::FootnoteShape {
+fn hwp3_default_endnote_shape(bracket: bool) -> crate::model::footnote::FootnoteShape {
     use crate::model::footnote::{
         FootnoteNumbering, FootnotePlacement, FootnoteShape, NumberFormat,
     };
 
     let mut shape = FootnoteShape {
         number_format: NumberFormat::Digit,
-        suffix_char: ')',
+        // doc_info offset 110 "각주 옵션": ')' = 번호에 ')' 붙임, 0 = 안 붙임.
+        // 파싱만 되고(footnote_bracket) 항상 ')' 로 하드코딩되어 옵션을 끈 문서도
+        // ')' 가 표시되던 문제.
+        suffix_char: if bracket { ')' } else { '\0' },
         start_number: 1,
         separator_margin_top: 864,
         note_spacing: 576,
@@ -3272,6 +3286,18 @@ pub fn parse_hwp3(data: &[u8]) -> Result<Document, Hwp3Error> {
     // 항상 정상 높이로 렌더되던 문제 (#issue).
     section_def.hide_empty_line = hwp3_hide_empty_line(&doc_info);
 
+    // HWP3 스펙(한글문서파일구조3.0.md:245) offset 111 각주 분리선 길이 종류.
+    // 기존 코드는 doc_info.footnote_line_width 를 파싱만 하고 버려 항상
+    // separator_length=0(선 없음)으로 렌더링했다.
+    section_def.footnote_shape.separator_length =
+        hwp3_footnote_separator_length(doc_info.footnote_line_width, column_width_hu);
+    section_def.footnote_shape.separator_line_type = if doc_info.footnote_line_width == 3 {
+        0
+    } else {
+        1
+    };
+    section_def.footnote_shape.separator_line_width = 1;
+
     // [Task #877 Stage 4] HWP3 doc_info.border_type / border_margin → SectionDef.page_border_fill
     // 변환. HWP3 spec §3.2 (문서 정보) offset 112-121 의 페이지 테두리 정보. type=0 이면 없음,
     // 그 외 = 실선 등. 한컴 viewer 의 PDF 출력에 페이지 외곽선 박스 표시 (sample16 표지/목차/
@@ -3328,7 +3354,7 @@ pub fn parse_hwp3(data: &[u8]) -> Result<Document, Hwp3Error> {
     super::populate_link_image_paths(&mut doc);
 
     crate::parser::assign_auto_numbers(&mut doc);
-    fixup_hwp3_notes(&mut doc);
+    fixup_hwp3_notes(&mut doc, doc_info.footnote_bracket != 0);
     fixup_hwp3_outline_fields(&mut doc);
     fixup_hwp3_picture_numbers(&mut doc);
     fixup_hwp3_outline_bullets(&mut doc);
@@ -3344,7 +3370,7 @@ struct Hwp3NoteFixupState {
     has_endnote: bool,
 }
 
-fn fixup_hwp3_notes(doc: &mut crate::model::document::Document) {
+fn fixup_hwp3_notes(doc: &mut crate::model::document::Document, footnote_bracket: bool) {
     let para_shapes = doc.doc_info.para_shapes.clone();
     let mut state = Hwp3NoteFixupState {
         footnote_number: doc.doc_properties.footnote_start_num.max(1),
@@ -3360,7 +3386,7 @@ fn fixup_hwp3_notes(doc: &mut crate::model::document::Document) {
 
     if state.has_endnote {
         for section in &mut doc.sections {
-            section.section_def.endnote_shape = hwp3_default_endnote_shape();
+            section.section_def.endnote_shape = hwp3_default_endnote_shape(footnote_bracket);
             ensure_hwp3_initial_body_column_def(&mut section.paragraphs);
             let page_def = &section.section_def.page_def;
             let body_width_hu = page_def
@@ -3989,6 +4015,28 @@ mod tests {
             1,
             "border_connection이 attr1 bit 28로 배선되어야 함"
         );
+    }
+
+    #[test]
+    fn issue_hwp3_endnote_suffix_char_wires_footnote_bracket_flag() {
+        // doc_info offset 110 "각주 옵션" footnote_bracket 이 파싱만 되고 항상 ')' 로
+        // 하드코딩되어, 옵션을 끈(footnote_bracket=0) 문서도 미주 번호에 ')' 가 붙던 문제.
+        let on = hwp3_default_endnote_shape(true);
+        assert_eq!(on.suffix_char, ')');
+
+        let off = hwp3_default_endnote_shape(false);
+        assert_eq!(off.suffix_char, '\0');
+    }
+
+    #[test]
+    fn hwp3_maps_footnote_separator_length() {
+        // doc_info.footnote_line_width(스펙 offset 111, 각주 분리선 길이 종류)를
+        // 파싱만 하고 버리던 기존 버그: section_def.footnote_shape.separator_length 가
+        // 값과 무관하게 항상 0(선 없음)으로 남았다.
+        assert_eq!(hwp3_footnote_separator_length(0, 9999), 14160); // 5cm 고정
+        assert_eq!(hwp3_footnote_separator_length(1, 9000), 3000); // 본문 폭의 1/3
+        assert_eq!(hwp3_footnote_separator_length(2, 9000), 9000); // 단 너비
+        assert_eq!(hwp3_footnote_separator_length(3, 9000), 0); // 없음
     }
 
     #[test]
