@@ -43,7 +43,13 @@ use super::{picture, table};
 const EMPTY_SECTION_XML: &str = include_str!("templates/empty_section0.xml");
 
 /// MEMO subList 여는 태그 (#1391) — 실물(aift) 고정 속성.
-const SUB_LIST_OPEN: &str = r#"<hp:subList id="" textDirection="HORIZONTAL" lineWrap="BREAK" vertAlign="TOP" linkListIDRef="0" linkListNextIDRef="0" textWidth="0" textHeight="0" hasTextRef="0" hasNumRef="0">"#;
+/// `textDirection` 만 원본값 보존(가변); 나머지는 실측 고정 속성.
+fn render_sub_list_open(text_direction: Option<&str>) -> String {
+    format!(
+        r#"<hp:subList id="" textDirection="{}" lineWrap="BREAK" vertAlign="TOP" linkListIDRef="0" linkListNextIDRef="0" textWidth="0" textHeight="0" hasTextRef="0" hasNumRef="0">"#,
+        text_direction.unwrap_or("HORIZONTAL"),
+    )
+}
 const LINESEG_SLOT_OPEN: &str = "<hp:linesegarray>";
 const LINESEG_SLOT_CLOSE: &str = "</hp:linesegarray>";
 const PARA_CLOSE: &str = "</hp:p></hs:sec>";
@@ -1385,7 +1391,7 @@ fn render_control_slot(out: &mut String, control: &Control, ctx: &mut SerializeC
                     out.push_str(params);
                 }
                 if has_memo {
-                    out.push_str(SUB_LIST_OPEN);
+                    out.push_str(&render_sub_list_open(f.memo_text_direction.as_deref()));
                     let mut vert_cursor: u32 = 0;
                     for para in &f.memo_paragraphs {
                         ctx.para_shape_ids.reference(para.para_shape_id);
@@ -3554,6 +3560,39 @@ mod tests {
         let pp = xml.find("<hp:parameters").unwrap();
         let sl = xml.find("<hp:subList").unwrap();
         assert!(pp < sl, "parameters 가 subList 보다 먼저");
+    }
+
+    #[test]
+    fn memo_vertical_text_direction_roundtrips() {
+        // [#task-m100] 세로쓰기 MEMO subList 는 파싱 시 textDirection="VERTICAL" 을
+        // 보존해야 하며, 재직렬화 시 하드코딩된 "HORIZONTAL" 로 뒤집히면 안 된다.
+        let mut f = Field::default();
+        f.field_type = FieldType::Memo;
+        f.field_id = 9;
+        f.memo_text_direction = Some("VERTICAL".to_string());
+        let mut memo_para = Paragraph::default();
+        memo_para.text = "메모".to_string();
+        f.memo_paragraphs.push(memo_para);
+
+        let mut para = Paragraph::default();
+        para.text = "x".to_string();
+        para.char_count = 18;
+        para.char_offsets = vec![8];
+        para.controls.push(Control::Field(f));
+        para.field_ranges.push(FieldRange {
+            start_char_idx: 0,
+            end_char_idx: 1,
+            control_idx: 0,
+        });
+
+        let (doc, section) = make_doc_with_paragraph(para);
+        let mut ctx = SerializeContext::collect_from_document(&doc);
+        let xml = String::from_utf8(write_section(&section, &doc, 0, &mut ctx).unwrap()).unwrap();
+
+        assert!(
+            xml.contains(r#"<hp:subList id="" textDirection="VERTICAL""#),
+            "세로쓰기 메모 subList 의 textDirection 보존: {xml}"
+        );
     }
 
     #[test]

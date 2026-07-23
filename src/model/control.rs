@@ -252,6 +252,10 @@ pub struct Field {
     pub memo_index: u32,
     /// 메모 본문 문단 리스트 (`fieldBegin type="MEMO"` 내부 subList)
     pub memo_paragraphs: Vec<Paragraph>,
+    /// 메모 본문 subList 의 `textDirection` 속성 (예: "VERTICAL"). 세로쓰기 메모가
+    /// 왕복 시 가로쓰기로 뒤집히지 않도록 원본 값을 보존한다.
+    /// `None` 이면 기본값 "HORIZONTAL" 방출.
+    pub memo_text_direction: Option<String>,
     /// HWPX `<hp:parameters>` 요소 원문 verbatim (#1391).
     ///
     /// 전 fieldBegin 타입(MEMO/HYPERLINK/FORMULA/BOOKMARK 등)이 parameters 를
