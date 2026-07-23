@@ -664,7 +664,7 @@ fn write_matrix<W: Write>(
 // =====================================================================
 
 /// `<hp:lineShape>` — `parse_line_shape_attr` 의 역매핑.
-/// headStyle/tailStyle/alpha 는 파서 미적재 → "NORMAL"/"0" 고정 방출.
+/// alpha 는 파서 미적재 → "0" 고정 방출. headStyle/tailStyle 은 bit 10~21 에서 복원한다(#2956).
 pub(crate) fn write_line_shape<W: Write>(
     w: &mut Writer<W>,
     bl: &ShapeBorderLine,
@@ -694,8 +694,12 @@ pub(crate) fn write_line_shape<W: Write>(
         2 => "SQUARE",
         _ => "ROUND",
     };
-    let headfill = bool01(bl.attr & 0x8000_0000 != 0);
-    let tailfill = bool01(bl.attr & 0x4000_0000 != 0);
+    let head_fill_b = bl.attr & 0x8000_0000 != 0;
+    let tail_fill_b = bl.attr & 0x4000_0000 != 0;
+    let headfill = bool01(head_fill_b);
+    let tailfill = bool01(tail_fill_b);
+    let head_style = arrow_style_str((bl.attr >> 10) & 0x3F, head_fill_b);
+    let tail_style = arrow_style_str((bl.attr >> 16) & 0x3F, tail_fill_b);
     let head_sz = arrow_size_str((bl.attr >> 22) & 0x0F);
     let tail_sz = arrow_size_str((bl.attr >> 26) & 0x0F);
     let outline = match bl.outline_style {
@@ -711,8 +715,8 @@ pub(crate) fn write_line_shape<W: Write>(
             ("width", &width),
             ("style", style),
             ("endCap", end_cap),
-            ("headStyle", "NORMAL"),
-            ("tailStyle", "NORMAL"),
+            ("headStyle", head_style),
+            ("tailStyle", tail_style),
             ("headfill", headfill),
             ("tailfill", tailfill),
             ("headSz", head_sz),
@@ -721,6 +725,23 @@ pub(crate) fn write_line_shape<W: Write>(
             ("alpha", "0"),
         ],
     )
+}
+
+/// HWP5 화살표 모양 값(hwplib LineArrowShape, `arrow_type_from_hwp` 참조) →
+/// OWPML Core `ArrowType` 역매핑. fill 은 채움 여부(bit 30/31)다.
+fn arrow_style_str(v: u32, fill: bool) -> &'static str {
+    match v {
+        1 => "ARROW",
+        2 => "SPEAR",
+        3 => "CONCAVE_ARROW",
+        4 if fill => "FILLED_DIAMOND",
+        4 => "EMPTY_DIAMOND",
+        5 if fill => "FILLED_CIRCLE",
+        5 => "EMPTY_CIRCLE",
+        6 if fill => "FILLED_BOX",
+        6 => "EMPTY_BOX",
+        _ => "NORMAL",
+    }
 }
 
 /// `parse_line_shape_attr::arrow_size` 의 역매핑 (0~8).
@@ -836,10 +857,21 @@ pub(crate) fn write_fill_brush<W: Write>(
         }
         FillType::Image => {
             let img = fill.image.clone().unwrap_or_default();
+            // [#2943] parse_shape_fill_brush(section.rs)는 12종 mode 를 모두 개별
+            // ImageFillMode 로 적재하는데, 종전엔 여기서 3종만 구분하고 나머지 7종
+            // (TileHorzTop/Bottom, TileVertLeft/Right, CenterTop/Bottom, LeftTop)이
+            // 전부 "TILE"로 붕괴해 저장 시 실제 배치가 유실됐다.
             let mode = match img.fill_mode {
+                ImageFillMode::TileHorzTop => "TILE_HORZ_TOP",
+                ImageFillMode::TileHorzBottom => "TILE_HORZ_BOTTOM",
+                ImageFillMode::TileVertLeft => "TILE_VERT_LEFT",
+                ImageFillMode::TileVertRight => "TILE_VERT_RIGHT",
                 ImageFillMode::FitToSize => "FIT",
                 ImageFillMode::Total => "TOTAL",
                 ImageFillMode::Center => "CENTER",
+                ImageFillMode::CenterTop => "CENTER_TOP",
+                ImageFillMode::CenterBottom => "CENTER_BOTTOM",
+                ImageFillMode::LeftTop => "TOP_LEFT_ALIGN",
                 _ => "TILE",
             };
             start_tag(w, "hc:fillBrush")?;
@@ -1190,6 +1222,30 @@ mod tests {
         xml[i..].split('"').next().unwrap().to_string()
     }
 
+    /// #2943: imgBrush mode 는 12종 중 3종만 구분하면 나머지 7종
+    /// (TileHorzTop 등)이 저장 시 전부 TILE 로 붕괴한다. 각 모드가 자기 고유의
+    /// mode 문자열로 방출돼야 한다.
+    #[test]
+    fn task2943_img_brush_mode_roundtrip_not_collapsed_to_tile() {
+        use crate::model::style::{Fill, FillType, ImageFill, ImageFillMode};
+        let mut w: Writer<Vec<u8>> = Writer::new(Vec::new());
+        let ctx = SerializeContext::collect_from_document(&Default::default());
+        let fill = Fill {
+            fill_type: FillType::Image,
+            image: Some(ImageFill {
+                fill_mode: ImageFillMode::TileHorzTop,
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        write_fill_brush(&mut w, &fill, &ctx).expect("write_fill_brush");
+        let xml = String::from_utf8(w.into_inner()).unwrap();
+        assert!(
+            xml.contains("mode=\"TILE_HORZ_TOP\""),
+            "TileHorzTop 이 TILE 로 붕괴함: {xml}"
+        );
+    }
+
     /// #1531: 선 없음(style code 0) 도형 외곽선이 라운드트립에서 SOLID(사각형 박스)로
     /// 살아나면 안 된다. endCap(bit 6~9)이 함께 설정돼도 NONE 이 보존돼야 한다.
     #[test]
@@ -1199,6 +1255,26 @@ mod tests {
         assert_eq!(line_shape_style(2), "DASH"); // 2 = DASH (회귀 방지)
         let none_with_flat_end_cap = 1 << 6;
         assert_eq!(line_shape_style(none_with_flat_end_cap), "NONE");
+    }
+
+    /// #2956: attr 에 파싱된 화살표 끝 모양(bit 16~21, 채움 bit 30)이 저장 시
+    /// "NORMAL" 로 하드코딩되지 않고 보존돼야 한다.
+    #[test]
+    fn task2956_line_shape_arrow_style_preserved() {
+        use crate::model::style::ShapeBorderLine;
+        // tail = FILLED_DIAMOND(4) + tail_fill(bit30)
+        let attr = (4u32 << 16) | (1 << 30);
+        let bl = ShapeBorderLine {
+            attr,
+            ..Default::default()
+        };
+        let mut w: Writer<Vec<u8>> = Writer::new(Vec::new());
+        write_line_shape(&mut w, &bl).expect("write_line_shape");
+        let xml = String::from_utf8(w.into_inner()).unwrap();
+        assert!(
+            xml.contains("tailStyle=\"FILLED_DIAMOND\""),
+            "화살표 끝 모양이 소실됨: {xml}"
+        );
     }
 
     /// #1588: 선 도형 설명(shapeComment)이 저장 시 방출돼야 한다.

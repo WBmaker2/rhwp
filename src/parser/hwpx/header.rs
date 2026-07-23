@@ -159,7 +159,7 @@ pub fn parse_hwpx_header(xml: &str) -> Result<(DocInfo, DocProperties), HwpxErro
                     // paragraph 에 자동 부여. HWPX `<hh:bullet id="N" char="❏" useImage="0">`
                     // 4개 → HWP BULLET record 4개. 누락 시 일반 문단 시작 글머리표 부작용.
                     b"bullet" => {
-                        let bullet = parse_bullet_hwpx(e, &mut reader)?;
+                        let bullet = parse_bullet_hwpx(e, &mut reader, xml)?;
                         doc_info.bullets.push(bullet);
                     }
                     _ => {}
@@ -341,7 +341,7 @@ fn parse_memo_line_type(value: &str) -> u8 {
         // HWPX memoPr lineType uses the OWPML name, but HWP5 MEMO_SHAPE stores
         // the Hancom memo line enum where 0 means "no/unknown" and SOLID is 1.
         "SOLID" => 1,
-        "DOT" => 1,
+        "DOT" => 13,
         "DASH_DOT" => 2,
         "DASH" => 3,
         "DASH_DOT_DOT" => 4,
@@ -1755,6 +1755,7 @@ fn parse_tab_def(
 fn parse_bullet_hwpx(
     e: &quick_xml::events::BytesStart,
     reader: &mut Reader<&[u8]>,
+    xml: &str,
 ) -> Result<Bullet, HwpxError> {
     let mut bullet = Bullet::default();
 
@@ -1778,25 +1779,63 @@ fn parse_bullet_hwpx(
         }
     }
 
-    // 자식 <hh:paraHead>, <hh:image> 등 skip
+    // 자식 <hh:paraHead>(align/useInstWidth/widthAdjust/textOffset/charPrIDRef 등),
+    // <hh:image> 를 순회. widthAdjust/textOffset/charPrIDRef 는 Bullet 필드로 흡수하고,
+    // 7수준 모델로 표현 못하는 나머지 속성(align/useInstWidth/autoIndent/checkable 등)은
+    // numbering.raw_para_heads(#2695 계열)와 같은 방식으로 원본 구간을 통째로 보존해
+    // 직렬화 시 splice 한다(무손실 라운드트립).
     if !is_empty_event(e) {
+        let inner_start = reader.buffer_position() as usize;
+        let mut inner_end = inner_start;
         let mut buf = Vec::new();
         loop {
+            let pos_before = reader.buffer_position() as usize;
             match reader.read_event_into(&mut buf) {
+                Ok(Event::Empty(ref ce)) => {
+                    if local_name(ce.name().as_ref()) == b"paraHead" {
+                        apply_bullet_para_head_attrs(&mut bullet, ce);
+                    }
+                }
+                Ok(Event::Start(ref ce)) => {
+                    if local_name(ce.name().as_ref()) == b"paraHead" {
+                        apply_bullet_para_head_attrs(&mut bullet, ce);
+                    }
+                }
                 Ok(Event::End(ref ee)) => {
                     if local_name(ee.name().as_ref()) == b"bullet" {
+                        inner_end = pos_before;
                         break;
                     }
                 }
-                Ok(Event::Eof) => break,
+                Ok(Event::Eof) => {
+                    inner_end = pos_before;
+                    break;
+                }
                 Err(e) => return Err(HwpxError::XmlError(format!("bullet: {}", e))),
                 _ => {}
             }
             buf.clear();
         }
+
+        if inner_end >= inner_start && inner_end <= xml.len() {
+            bullet.raw_para_head = Some(xml[inner_start..inner_end].to_string());
+        }
     }
 
     Ok(bullet)
+}
+
+/// `<hh:bullet>` 자식 `<hh:paraHead>` 의 widthAdjust/textOffset/charPrIDRef 를
+/// Bullet 필드(HWP5 BULLET record 의 문단 머리 정보 12바이트와 동일 의미)로 흡수한다.
+fn apply_bullet_para_head_attrs(bullet: &mut Bullet, e: &quick_xml::events::BytesStart) {
+    for attr in e.attributes().flatten() {
+        match attr.key.as_ref() {
+            b"charPrIDRef" => bullet.char_shape_id = parse_u32(&attr),
+            b"widthAdjust" => bullet.width_adjust = parse_i16(&attr),
+            b"textOffset" => bullet.text_distance = parse_i16(&attr),
+            _ => {}
+        }
+    }
 }
 
 fn parse_numbering(
@@ -1944,6 +1983,14 @@ fn apply_numbering_para_head(
 }
 
 fn parse_numbering_format_code(value: &str) -> u8 {
+    // 코드 값은 한글문서파일형식 5.0 rev1.3 "표 41: 문단 번호 형식"과 OWPML
+    // Core XML schema.xml 의 NumberType1 enumeration 순서가 1:1 대응한다
+    // (mydocs/tech/한글문서파일형식_5.0_revision1.3.md:978-993). 이전 구현은
+    // HANGUL_JAMO(표 41 값 10)를 HANGUL_SYLLABLE(8)과 동일 코드로 뭉개고,
+    // CIRCLED_LATIN_CAPITAL/CIRCLED_LATIN_SMALL/CIRCLED_HANGUL_SYLLABLE/
+    // CIRCLED_HANGUL_JAMO/HANGUL_PHONETIC/CIRCLED_IDEOGRAPH 6개 스펙 리터럴을
+    // 아예 인식하지 못해 `_ => value.parse().unwrap_or(0)` 폴백으로 DIGIT(0)로
+    // 조용히 유실시켰다(#2857 과 동일한 버그 유형).
     match value {
         "DIGIT" | "ARABIC" => 0,
         "CIRCLED_DIGIT" => 1,
@@ -1951,9 +1998,15 @@ fn parse_numbering_format_code(value: &str) -> u8 {
         "ROMAN_SMALL" | "ROMAN_LOWER" => 3,
         "LATIN_CAPITAL" | "LATIN_UPPER" | "ALPHA_CAPITAL" => 4,
         "LATIN_SMALL" | "LATIN_LOWER" | "ALPHA_SMALL" => 5,
-        "HANGUL_SYLLABLE" | "HANGUL_JAMO" => 8,
-        "HANGUL_NUMBER" => 12,
-        "HANJA_NUMBER" | "IDEOGRAPH" => 13,
+        "CIRCLED_LATIN_CAPITAL" => 6,
+        "CIRCLED_LATIN_SMALL" => 7,
+        "HANGUL_SYLLABLE" => 8,
+        "CIRCLED_HANGUL_SYLLABLE" => 9,
+        "HANGUL_JAMO" => 10,
+        "CIRCLED_HANGUL_JAMO" => 11,
+        "HANGUL_PHONETIC" | "HANGUL_NUMBER" => 12,
+        "IDEOGRAPH" | "HANJA_NUMBER" => 13,
+        "CIRCLED_IDEOGRAPH" => 14,
         _ => value.parse().unwrap_or(0),
     }
 }
@@ -2105,6 +2158,14 @@ mod tests {
     use super::*;
 
     #[test]
+    fn parse_memo_line_type_dot_is_distinct_from_solid() {
+        // OWPML memoPr lineType 은 SOLID 와 DOT 이 서로 다른 값이다.
+        // 종전엔 DOT 이 SOLID 와 같은 1 로 매핑되어 HWP5 MEMO_SHAPE 바이너리로
+        // 왕복할 때 점선 메모 테두리가 실선으로 뭉개졌다.
+        assert_ne!(parse_memo_line_type("DOT"), parse_memo_line_type("SOLID"));
+    }
+
+    #[test]
     fn test_parse_linkinfo_false_still_materializes_hwp5_docinfo_bundle() {
         let xml = r##"<?xml version="1.0" encoding="UTF-8"?>
 <hh:head xmlns:hh="http://www.hancom.co.kr/hwpml/2011/head">
@@ -2189,6 +2250,17 @@ mod tests {
     }
 
     #[test]
+    fn numbering_para_head_circled_latin_capital_is_not_lost_as_digit() {
+        // OWPML Core XML schema.xml NumberType1 / 표41(값 6)의 정식 리터럴인데,
+        // 이전 parse_numbering_format_code 는 이 리터럴을 인식하지 못해
+        // DIGIT(0)로 조용히 유실시켰다. 값 6으로 보존되어야 한다.
+        let xml = r##"<hh:head xmlns:hh="http://www.hancom.co.kr/hwpml/2011/head"><hh:refList><hh:numberings itemCnt="1"><hh:numbering id="1" start="0"><hh:paraHead start="1" level="1" numFormat="CIRCLED_LATIN_CAPITAL">^1.</hh:paraHead></hh:numbering></hh:numberings></hh:refList></hh:head>"##;
+
+        let (doc_info, _) = parse_hwpx_header(xml).unwrap();
+        assert_eq!(doc_info.numberings[0].heads[0].number_format, 6);
+    }
+
+    #[test]
     fn numbering_raw_para_heads_captures_inner_verbatim_for_lossless_roundtrip() {
         // Finding 21: 모델은 7수준만 표현하지만 HWPX 는 10수준 +
         // align/useInstWidth/autoIndent/checkable/형식문자열을 가진다.
@@ -2204,6 +2276,26 @@ mod tests {
             doc_info.numberings[0].raw_para_heads.as_deref(),
             Some(inner)
         );
+    }
+
+    #[test]
+    fn bullet_para_head_align_useinstwidth_survive_roundtrip_via_raw_splice() {
+        // [#2790] 종전 parse_bullet_hwpx 는 char/useImage 만 읽고 <hh:paraHead> 를
+        // 통째로 skip 했다. 그 결과 align="CENTER"/useInstWidth="1" 처럼 기본값과
+        // 다른 원본 값이 직렬화 시 항상 "LEFT"/"0" 로 하드코딩돼 소실됐다.
+        // raw_para_head splice 로 원본 구간이 byte-exact 보존되는지 확인한다.
+        let inner = r##"<hh:paraHead level="0" align="CENTER" useInstWidth="1" autoIndent="0" widthAdjust="120" textOffsetType="PERCENT" textOffset="30" numFormat="DIGIT" charPrIDRef="9" checkable="1"/>"##;
+        let xml = format!(
+            r##"<hh:head xmlns:hh="http://www.hancom.co.kr/hwpml/2011/head"><hh:refList><hh:bullets itemCnt="1"><hh:bullet id="1" char="❏" useImage="0">{inner}</hh:bullet></hh:bullets></hh:refList></hh:head>"##
+        );
+
+        let (doc_info, _) = parse_hwpx_header(&xml).unwrap();
+        let bullet = &doc_info.bullets[0];
+
+        assert_eq!(bullet.raw_para_head.as_deref(), Some(inner));
+        assert_eq!(bullet.width_adjust, 120);
+        assert_eq!(bullet.text_distance, 30);
+        assert_eq!(bullet.char_shape_id, 9);
     }
 
     #[test]
