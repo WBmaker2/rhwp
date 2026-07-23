@@ -187,10 +187,12 @@ export class Toolbar {
 
       const commit = () => {
         const num = parseInt(input.value, 10);
+        // format:line-spacing-increase 커맨드(format.ts)와 동일하게 500%로 상한 clamp
         if (num > 0) {
-          this.ensureLsOption(num);
-          this.lsSelect.value = String(num);
-          this.dispatcher.dispatch('format:line-spacing', { value: num });
+          const clamped = Math.min(500, num);
+          this.ensureLsOption(clamped);
+          this.lsSelect.value = String(clamped);
+          this.dispatcher.dispatch('format:line-spacing', { value: clamped });
         }
         input.remove();
         this.lsSelect.style.display = '';
@@ -207,7 +209,7 @@ export class Toolbar {
     this.btnLsUp.addEventListener('mousedown', (e) => {
       e.preventDefault();
       const cur = Number(this.lsSelect.value) || 160;
-      const next = cur + 5;
+      const next = Math.min(500, cur + 5);
       this.ensureLsOption(next);
       this.lsSelect.value = String(next);
       this.dispatcher.dispatch('format:line-spacing', { value: next });
