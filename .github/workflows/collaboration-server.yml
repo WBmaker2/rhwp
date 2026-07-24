@@ -1,0 +1,30 @@
+name: Collaboration server
+
+on:
+  pull_request:
+    branches: [devel]
+    paths:
+      - 'services/collaboration-server/**'
+      - '.github/workflows/collaboration-server.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/collaboration-server
+    steps:
+      - uses: actions/checkout@v5
+      - name: Use Node.js 22
+        uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+      - name: Test
+        run: npm test
+      - name: Typecheck
+        run: npm run build
