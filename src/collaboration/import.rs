@@ -14,6 +14,8 @@ use super::{
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum CollaborationError {
     EmptySourceFingerprint,
+    ReadonlyTarget(StableId),
+    UnknownTarget(StableId),
 }
 
 impl fmt::Display for CollaborationError {
@@ -21,6 +23,12 @@ impl fmt::Display for CollaborationError {
         match self {
             Self::EmptySourceFingerprint => {
                 formatter.write_str("source fingerprint must not be empty")
+            }
+            Self::ReadonlyTarget(target_id) => {
+                write!(formatter, "collaboration target is read-only: {}", target_id.0)
+            }
+            Self::UnknownTarget(target_id) => {
+                write!(formatter, "unknown collaboration target: {}", target_id.0)
             }
         }
     }
