@@ -486,6 +486,33 @@ docs-only 작업 브랜치와 worktree 는 같은 정리 대상이다. 이때는
 git fetch upstream pull/N/head:local/prN
 ```
 
+### 4.1.1 devel 기준 가시성 검토 브랜치
+
+작업지시자가 터미널·VS Code에서 현재 검토 진행을 확인할 수 있어야 하거나, 외부 PR을 실제
+merge 대신 누적 체리픽으로 검토할 때는 **검토를 시작하기 전에** 기본 작업트리에
+`upstream/devel` 기준 가시성 브랜치를 만든다. PR head를 기본 작업트리에 바로 checkout하지 않는다.
+
+```bash
+git status --short                 # 사용자/다른 작업의 변경이 있으면 중단하고 먼저 보고
+git fetch upstream devel
+git switch devel
+git merge --ff-only upstream/devel
+git switch -c review/<contributor>-<yyyymmdd> upstream/devel
+git status --short --branch
+```
+
+여러 원 PR을 한 통합 후보로 검토하는 경우에는 `review/` 대신
+`integrate/<contributor>-<yyyymmdd>` 이름을 쓸 수 있다. 이어서 4.1절의
+`local/prN` fetch와 4.2절 merge simulation 또는 4.2.1절 누적 체리픽을 이 브랜치에서 수행한다.
+
+- 시작 상태 보고에는 **검토 브랜치명**, 기준 `upstream/devel` SHA, 적용 중인 원 PR 번호·SHA를
+  함께 적는다. 적용·충돌 해결·검증 단계가 바뀔 때도 같은 브랜치명을 다시 적어 사용자가 위치를
+  확인할 수 있게 한다.
+- 검토 산출물과 메인터너 보정은 이 브랜치에만 쌓고, `devel`에는 직접 커밋하지 않는다.
+  원격 push와 통합 PR 생성은 작업지시자 승인 뒤에만 한다.
+- CI 대기 또는 작업지시자 승인 대기 중에는 브랜치를 유지한다. merge·close·보류 종결 뒤에만
+  7.7절의 정리 게이트에 따라 로컬·원격 브랜치와 worktree를 정리한다.
+
 ### 4.2 Merge 시뮬레이션
 
 ```bash
