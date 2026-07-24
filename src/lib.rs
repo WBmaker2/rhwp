@@ -4,6 +4,7 @@
 
 use wasm_bindgen::prelude::*;
 
+pub mod collaboration;
 pub mod diagnostics;
 pub mod doclang;
 pub mod document_core;
