@@ -19,7 +19,9 @@ pub enum CollaborationError {
 impl fmt::Display for CollaborationError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::EmptySourceFingerprint => formatter.write_str("source fingerprint must not be empty"),
+            Self::EmptySourceFingerprint => {
+                formatter.write_str("source fingerprint must not be empty")
+            }
         }
     }
 }
