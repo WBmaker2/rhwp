@@ -61,6 +61,10 @@ test('HF 구조 조작 3종이 snapshot 으로 라우팅된다', () => {
     assert.doesNotMatch(pageSrc, new RegExp(`services\\.wasm\\.${op}\\s*\\(`),
       `${op} 직접 호출 금지 — executeOperation 경유`);
   }
+  // [보정 #3208] applyHfTemplate 은 삽입류처럼 ok:false 에 throw 해 before==after 무변
+  // 스냅샷 엔트리(no-op undo)를 막는다. bridge 가 {ok} 를 반환하므로 검사 가능하다.
+  const applyTpl = slice(pageSrc, "operationType: 'applyHfTemplate'", 'return bodyPos');
+  assert.match(applyTpl, /if \(!r\.ok\) throw/, 'applyHfTemplate 실패 시 throw — 무변 스냅샷 엔트리 방지');
 });
 
 test('감추기 2종은 세션 상태라 의도적으로 기록하지 않는다', () => {

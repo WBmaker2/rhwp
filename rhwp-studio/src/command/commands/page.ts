@@ -154,7 +154,9 @@ function applyHfTemplate(
       kind: 'snapshot',
       operationType: 'applyHfTemplate',
       operation: (wasm) => {
-        wasm.applyHfTemplate(sectionIdx, isHeader, applyTo, templateId);
+        const r = wasm.applyHfTemplate(sectionIdx, isHeader, applyTo, templateId);
+        // 의미상 실패(ok:false)면 throw 해 before==after 무변 스냅샷 엔트리를 막는다(삽입류와 동형).
+        if (!r.ok) throw new Error('[page:applyHfTemplate] 마당 적용 실패');
         return bodyPos;
       },
     });
@@ -178,8 +180,10 @@ function applyHfTemplate(
     services.eventBus.emit('headerFooterModeChanged', isHeader ? 'header' : 'footer');
   } catch (e) {
     console.warn('[page] 마당 적용 실패:', e);
+    // 실패 경로 리프레시 — 성공 경로는 executeOperation 이 이미 afterEdit 로 갱신했으므로
+    // 여기서 다시 부르지 않는다(성공 경로 이중 afterEdit 제거).
+    (ih as any).afterEdit?.();
   }
-  (ih as any).afterEdit?.();
   (ih as any).updateCaret?.();
   // 메뉴 닫기 후 포커스가 유실될 수 있으므로 지연 포커스
   const textarea = (ih as any).textarea;
@@ -287,7 +291,7 @@ export const pageCommands: CommandDef[] = [
           return bodyPos;
         },
       });
-      (ih as any).afterEdit?.();
+      // executeOperation 이 이미 afterEdit 로 리프레시하므로 별도 afterEdit 를 부르지 않는다.
       (ih as any).textarea?.focus();
     },
   },
