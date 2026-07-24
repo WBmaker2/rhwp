@@ -97,7 +97,16 @@ export function createCollaborationServer(
     maxUnauthenticatedQueueMessages: 1000,
     maxPendingDocuments: 100,
 
-    async onAuthenticate({ documentName, token, socketId, connection }) {
+    async onAuthenticate(payload) {
+      // Hocuspocus v4 exposes `connection.readOnly` at runtime and documents it
+      // as the supported read-only switch, but 4.4.0 omits it from the shipped
+      // onAuthenticate payload declaration. Keep the compatibility cast at this
+      // library boundary instead of weakening types throughout the service.
+      const { documentName, token, socketId } = payload
+      const { connection } = payload as typeof payload & {
+        connection: { readOnly: boolean }
+      }
+
       return hooks.onAuthenticate({
         documentName,
         token,
