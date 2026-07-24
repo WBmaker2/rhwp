@@ -3,6 +3,7 @@ import test from 'node:test'
 
 import {
   ConnectionAuthorizationError,
+  createFirestoreMembershipStore,
   verifyConnection,
   type MembershipStore,
   type TokenVerifier,
@@ -75,4 +76,50 @@ test('rejects an authenticated user without document membership', async () => {
     (error: unknown) =>
       error instanceof ConnectionAuthorizationError && error.code === 'forbidden',
   )
+})
+
+test('loads membership from the canonical Firestore member path', async () => {
+  let requestedPath = ''
+  const firestore = {
+    doc(path: string) {
+      requestedPath = path
+      return {
+        async get() {
+          return {
+            exists: true,
+            get(field: string) {
+              assert.equal(field, 'role')
+              return 'editor'
+            },
+          }
+        },
+      }
+    },
+  } as unknown as Parameters<typeof createFirestoreMembershipStore>[0]
+
+  const store = createFirestoreMembershipStore(firestore)
+  assert.deepEqual(await store.getMembership('doc-1', 'user-1'), {
+    role: 'editor',
+  })
+  assert.equal(requestedPath, 'documents/doc-1/members/user-1')
+})
+
+test('rejects unknown Firestore membership roles', async () => {
+  const firestore = {
+    doc() {
+      return {
+        async get() {
+          return {
+            exists: true,
+            get() {
+              return 'administrator'
+            },
+          }
+        },
+      }
+    },
+  } as unknown as Parameters<typeof createFirestoreMembershipStore>[0]
+
+  const store = createFirestoreMembershipStore(firestore)
+  assert.equal(await store.getMembership('doc-1', 'user-1'), null)
 })
