@@ -1206,6 +1206,7 @@ export interface LayerImageOp {
   fillMode?: string;
   originalSize?: { width: number; height: number };
   crop?: { left: number; top: number; right: number; bottom: number };
+  originalSizeHu?: [number, number];
   effect?: string;
   brightness?: number;
   contrast?: number;

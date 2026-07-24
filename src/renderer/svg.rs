@@ -1433,7 +1433,9 @@ impl SvgRenderer {
         }
 
         match img.fill_mode {
-            ImageFillMode::FitToSize | ImageFillMode::None => {
+            // Total(HWPX "TOTAL")은 바이너리 채우기 유형 5(크기에 맞추어)의 HWPX
+            // 표기로, FitToSize 와 같은 의미다 — 영역 전체로 늘려 채운다.
+            ImageFillMode::FitToSize | ImageFillMode::Total | ImageFillMode::None => {
                 self.output.push_str(&format!(
                     "<image x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" preserveAspectRatio=\"none\" href=\"{}\"/>\n",
                     bbox.x, bbox.y, bbox.width, bbox.height, data_uri,
@@ -1583,7 +1585,7 @@ impl SvgRenderer {
         let fill_mode = img.fill_mode.unwrap_or(ImageFillMode::FitToSize);
 
         match fill_mode {
-            ImageFillMode::FitToSize => {
+            ImageFillMode::FitToSize | ImageFillMode::Total => {
                 // 그림 자르기: crop이 있으면 원본 이미지의 일부만 표시
                 if let Some((cl, ct, cr, cb)) = img.crop {
                     if let Some((img_w, img_h)) = parse_image_dimensions(&render_data) {
@@ -3296,27 +3298,25 @@ pub(crate) fn convert_wmf_to_svg(data: &[u8]) -> Option<Vec<u8>> {
 }
 
 /// 이미지 데이터에서 픽셀 크기(width, height)를 파싱한다.
-/// HWP `pic.crop` (HWPUNIT) 로부터 SVG `viewBox` 에 쓸 원본 픽셀 단위
+/// HWP `pic.crop` 좌표로부터 SVG `viewBox` 에 쓸 원본 픽셀 단위
 /// source rect (x, y, w, h) 를 계산한다.
 ///
-/// [Task #477] HWP 표준 룰: 1 inch = 7200 HU = 96 px → **75 HU/px** (DPI 96).
-/// 한컴이 BinData 에 저장하는 image 의 표준 DPI 이며, crop 좌표 (HU) 와 image
-/// 픽셀의 변환은 이 표준 scale 로 항상 정합한다.
-///
-/// `original_size_hu` 인자는 라운드트립 보존 메타로만 유지하며 계산에는 사용하지
-/// 않는다 (Task #430 이 도입했던 `orig/img_w` scale 은 일부 케이스에서 결함을
-/// 유발 — k-water-rfp pi=31 등에서 image 좌측만 표시되는 회귀).
+/// `crop_reference_size`(`imgDim`)가 있으면 문서가 보존한 전체 좌표 범위를
+/// 디코딩 이미지 크기에 대응시킨다. 없으면 [Task #477] 표준 75 HU/px를 쓴다.
+/// `shape_attr.orgSz`는 개체 크기라서 crop 좌표 기준으로 사용하면 안 된다.
 pub(crate) fn compute_image_crop_src(
     crop_hu: (i32, i32, i32, i32),
-    _original_size_hu: Option<(u32, u32)>,
-    _img_w_px: f64,
-    _img_h_px: f64,
+    crop_reference_size: Option<(u32, u32)>,
+    img_w_px: f64,
+    img_h_px: f64,
 ) -> (f64, f64, f64, f64) {
     let (cl, ct, cr, cb) = crop_hu;
-    // HWP 표준 DPI 96 = 75 HU/px
     const HU_PER_PX: f64 = 75.0;
-    let scale_x = HU_PER_PX;
-    let scale_y = HU_PER_PX;
+    let (scale_x, scale_y) = crop_reference_size
+        .filter(|(w, h)| *w > 0 && *h > 0 && img_w_px > 0.0 && img_h_px > 0.0)
+        .map(|(w, h)| (w as f64 / img_w_px, h as f64 / img_h_px))
+        .filter(|(sx, sy)| sx.is_finite() && sy.is_finite() && *sx > 0.0 && *sy > 0.0)
+        .unwrap_or((HU_PER_PX, HU_PER_PX));
     let src_x = cl as f64 / scale_x;
     let src_y = ct as f64 / scale_y;
     let src_w = (cr - cl) as f64 / scale_x;
@@ -3508,34 +3508,12 @@ fn find_font_file(
         files
     };
 
-    // 탐색 경로 (우선순위 순)
-    let mut search_dirs: Vec<std::path::PathBuf> = extra_paths.to_vec();
-    for dir in &["ttfs/hwp", "ttfs/windows", "ttfs"] {
-        search_dirs.push(Path::new(dir).to_path_buf());
-    }
-    // 시스템 폰트 경로
-    #[cfg(target_os = "macos")]
-    {
-        search_dirs.push(Path::new("/Library/Fonts").to_path_buf());
-        search_dirs.push(Path::new("/System/Library/Fonts").to_path_buf());
-        search_dirs.push(Path::new("/System/Library/Fonts/Supplemental").to_path_buf());
-    }
-    #[cfg(target_os = "linux")]
-    {
-        search_dirs.push(Path::new("/usr/share/fonts").to_path_buf());
-        search_dirs.push(Path::new("/usr/local/share/fonts").to_path_buf());
-    }
-    #[cfg(target_os = "windows")]
-    {
-        search_dirs.push(Path::new("C:\\Windows\\Fonts").to_path_buf());
-    }
-    // WSL Windows 폰트
-    if Path::new("/mnt/c/Windows/Fonts").exists() {
-        search_dirs.push(Path::new("/mnt/c/Windows/Fonts").to_path_buf());
-    }
-    // Task #1224: 오픈소스 번들 대체 폰트 경로 — **최후 탐색**(실제 저작권/시스템 폰트가
-    // 항상 우선). 고딕 계열의 Noto Sans KR ExtraLight 대체가 여기서만 매칭된다.
-    search_dirs.push(Path::new("ttfs/opensource").to_path_buf());
+    // [#2864] 탐색 경로(우선순위 순)는 renderer::font_paths 가 단일 정의한다.
+    // 호출자 지정 → RHWP_FONT_PATH → OS 시스템 경로 → ttfs/opensource(최후 폴백).
+    // 종전의 ttfs/hwp·ttfs/windows(로컬 전용)와 /mnt/c/Windows/Fonts(WSL2 전용)는
+    // 제거했다. Task #1224 의 고딕 대체(Noto Sans KR ExtraLight)는 최후 탐색인
+    // ttfs/opensource 에서 그대로 매칭된다.
+    let search_dirs = crate::renderer::font_paths::search_dirs(extra_paths);
 
     for dir in &search_dirs {
         if !dir.exists() {

@@ -901,6 +901,9 @@ impl PaintOp {
                         left, top, right, bottom
                     );
                 }
+                if let Some((width, height)) = image.original_size_hu {
+                    let _ = write!(buf, ",\"originalSizeHu\":[{},{}]", width, height);
+                }
                 let _ = write!(
                     buf,
                     ",\"effect\":{},\"brightness\":{},\"contrast\":{}",
@@ -4335,6 +4338,8 @@ mod tests {
         image.effect = ImageEffect::BlackWhite;
         image.brightness = -50;
         image.contrast = 70;
+        image.crop = Some((0, 0, 144000, 81000));
+        image.original_size_hu = Some((144000, 81000));
 
         let tree = PageLayerTree::new(
             120.0,
@@ -4387,6 +4392,7 @@ mod tests {
         assert!(json.contains("\"effect\":\"blackWhite\""));
         assert!(json.contains("\"brightness\":-50"));
         assert!(json.contains("\"contrast\":70"));
+        assert!(json.contains("\"originalSizeHu\":[144000,81000]"));
         assert!(json.contains("\"svgContent\":\"<text>x</text>\""));
         assert!(json.contains("\"layoutBox\":{\"x\":0.000000"));
         assert!(json.contains("\"kind\":{\"type\":\"text\",\"text\":\"x\"}"));

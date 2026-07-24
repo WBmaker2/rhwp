@@ -87,6 +87,21 @@ HWP/HWPX → PDF (svg2pdf + pdf-writer).
 - `-o <파일>`, `--output <파일>` — 출력 PDF 파일(기본 `output/<입력명>.pdf`)
 - `-p <번호>`, `--page <번호>` — 0-based 단일 페이지 선택. 생략하면 전체 문서를 다중 페이지 PDF로 내보낸다.
 - `--font-path <경로>` — PDF 변환 fontdb에 추가할 폰트 탐색 경로(여러 번 지정 가능)
+  - 환경변수 `RHWP_FONT_PATH` 로도 지정할 수 있다(#2864). 복수 경로는 OS 관례
+    구분자로 나눈다(유닉스 `:`, Windows `;`). 백엔드에서 대량 변환할 때 호출마다
+    `--font-path` 를 붙이는 대신 한 번만 설정하면 된다.
+  - 조달 순서: `--font-path` → `RHWP_FONT_PATH` → 시스템 설치 폰트 →
+    저장소 번들 `ttfs/opensource`(최후 폴백, 한국어 드롭 방지).
+  - **폰트를 지정하지 않으면 산출물이 달라진다.** 문서가 쓰는 폰트(한컴 바탕/돋움,
+    Windows 폰트 등)가 시스템에 없으면 번들 대체 폰트(Noto Sans/Serif KR)로 떨어져
+    글꼴이 바뀐다. 서버·컨테이너에서 대량 변환할 때는 **필요한 폰트를 설치하고
+    `--font-path` 또는 `RHWP_FONT_PATH` 로 명시**해야 정본과 같은 결과를 얻는다.
+- `--backend <svg|direct>` — PDF backend(기본값: svg). `svg`는 기존 SVG-derived 경로,
+  `direct`는 `PageLayerTree → PDF` direct/vector 경로. `direct`는 `native-skia` feature로
+  빌드한 native CLI가 필요하며, 해당 feature 없이 빌드된 CLI에서 `--backend direct`를 쓰면
+  종료코드 1과 함께 오류 메시지를 반환한다.
+- `--raster-dpi <DPI>` — `direct` backend fallback raster DPI(기본값: 144). `direct` backend
+  에서만 사용할 수 있다.
 - `--fallback-serif <family>` — PDF serif generic fallback family
 - `--fallback-sans <family>` — PDF sans-serif generic fallback family
 - `--fallback-mono <family>` — PDF monospace generic fallback family
@@ -119,7 +134,8 @@ rhwp export-pdf input.hwp -o out.pdf \
   - Linux: `Noto Serif CJK KR` / `Noto Sans CJK KR` / `Noto Sans Mono CJK KR`
   - macOS: `AppleMyungjo` / `Apple SD Gothic Neo` / `Menlo`
 - 선택한 fallback family 또는 수식 폰트가 fontdb에 없으면 warning을 출력한다.
-- direct/vector `PageLayerTree → PDF` backend는 아직 후속 작업이다.
+- direct/vector `PageLayerTree → PDF` backend는 `--backend direct`로 이미 사용 가능하다
+  (`native-skia` feature 빌드 필요, 위 옵션 설명 참고).
 
 ### `export-text <파일> [옵션]`
 페이지별 텍스트 → TXT. `-o`, `-p`.
@@ -139,6 +155,16 @@ rhwp export-pdf input.hwp -o out.pdf \
 - `--mode auto`(기본): 개요 head_type 있으면 outline, 없으면 clause.
 - JSON: `{mode, node_count, preamble, roots:[{level,kind,marker,heading,section,paragraph,body,children}]}`.
   비제목 문단은 직전 제목 노드의 `body` 에 귀속. `-o` 생략 시 stdout.
+
+### `export-doclang <파일.hwp|.hwpx> [-o <출력.xml>] [--assets-dir <디렉터리>]`
+HWP5 / HWPX 문서를 **DocLang v0.6** 의미 XML 로 내보낸다 (다운스트림 AI 파이프라인용).
+문서를 의미 IR(SirDocument)로 낮춘 뒤 `<doclang version="0.6">` 루트의 XML 로 직렬화한다.
+- 입력은 `.hwp`(HWP5) / `.hwpx` 만 받는다. HWP3·HML·DRM·빈 파일은 사용법 오류로 거부한다.
+- `-o`, `--output <파일>` 생략 시 입력과 같은 폴더에 `<입력 stem>.dclg.xml`.
+  입력==출력 경로면 원본 보호를 위해 거부한다.
+- `--assets-dir <디렉터리>` — 그림 등 이진 자원을 이 디렉터리에 파일로 기록하고 XML 은
+  해당 경로를 참조한다. 생략 시 자원은 base64 data URI 로 XML 에 인라인된다.
+- DocLang v0.6 으로 표현할 수 없는 정보는 손실 보고 건수로 요약 출력한다(변환 자체는 성공).
 
 ---
 

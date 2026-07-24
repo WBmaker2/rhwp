@@ -1035,17 +1035,23 @@ pub(crate) fn css_color_to_hwp_bgr(css: &str) -> Option<u32> {
         } else {
             None
         }
-    } else if css.starts_with("rgb(") || css.starts_with("rgb (") {
-        // rgb(r, g, b) 형식
-        let inner = css
-            .trim_start_matches("rgb")
-            .trim_start_matches('(')
-            .trim_end_matches(')');
+    } else if css.starts_with("rgb") {
+        // rgb(r, g, b) / rgba(r, g, b, a) 형식 — 브라우저는 알파 포함 색을
+        // rgba()로 직렬화하므로 함께 처리한다.
+        let open = css.find('(')?;
+        let inner = css[open + 1..].trim_end_matches(')');
         let parts: Vec<&str> = inner.split(',').collect();
         if parts.len() >= 3 {
             let r: u32 = parts[0].trim().parse().ok()?;
             let g: u32 = parts[1].trim().parse().ok()?;
             let b: u32 = parts[2].trim().parse().ok()?;
+            // rgba()의 alpha=0(완전 투명)은 색 없음으로 처리
+            if let Some(a_str) = parts.get(3) {
+                let a: f64 = a_str.trim().parse().ok()?;
+                if a <= 0.0 {
+                    return None;
+                }
+            }
             Some(r | (g << 8) | (b << 16))
         } else {
             None
@@ -1265,7 +1271,32 @@ pub(crate) fn parse_css_border_shorthand(val: &str) -> (f64, u32, u8) {
         return (0.0, 0, 0);
     }
 
-    let parts: Vec<&str> = val.split_whitespace().collect();
+    // rgb()/rgba() 안에 공백이 있으면(예: "rgb(255, 0, 0)") 단순 split_whitespace가
+    // 색상 토큰을 여러 조각으로 쪼개버리므로, 괄호 내부의 공백은 보존한 채로 분리한다.
+    let mut parts: Vec<String> = Vec::new();
+    let mut depth = 0i32;
+    let mut cur = String::new();
+    for ch in val.chars() {
+        match ch {
+            '(' => {
+                depth += 1;
+                cur.push(ch);
+            }
+            ')' => {
+                depth -= 1;
+                cur.push(ch);
+            }
+            c if c.is_whitespace() && depth == 0 => {
+                if !cur.is_empty() {
+                    parts.push(std::mem::take(&mut cur));
+                }
+            }
+            c => cur.push(c),
+        }
+    }
+    if !cur.is_empty() {
+        parts.push(cur);
+    }
     let mut width_pt = 0.0f64;
     let mut color: u32 = 0; // black
     let mut style: u8 = 1; // solid
@@ -1296,6 +1327,19 @@ pub(crate) fn parse_css_border_shorthand(val: &str) -> (f64, u32, u8) {
             }
             "hidden" => {
                 style = 0;
+                continue;
+            }
+            // CSS 표준 border-width 키워드 (브라우저 기준 thin=1px, medium=3px, thick=5px)
+            "thin" => {
+                width_pt = 0.75; // 1px
+                continue;
+            }
+            "medium" => {
+                width_pt = 2.25; // 3px
+                continue;
+            }
+            "thick" => {
+                width_pt = 3.75; // 5px
                 continue;
             }
             _ => {}
