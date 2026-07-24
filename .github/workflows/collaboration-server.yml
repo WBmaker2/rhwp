@@ -29,14 +29,4 @@ jobs:
       - name: Test
         run: npm test
       - name: Typecheck
-        run: |
-          set -o pipefail
-          npm run build 2>&1 | tee typecheck.log
-      - name: Upload typecheck diagnostics
-        if: failure()
-        uses: actions/upload-artifact@v7
-        with:
-          name: collaboration-server-typecheck-${{ github.run_id }}
-          path: services/collaboration-server/typecheck.log
-          retention-days: 1
-          if-no-files-found: error
+        run: npm run build
