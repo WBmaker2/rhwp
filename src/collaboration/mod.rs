@@ -4,8 +4,7 @@ mod model;
 mod stable_id;
 
 pub use apply::{
-    apply_collaboration_patch, ApplyReport, CollaborationPatch, InsertedImagePatch,
-    TextReplacement,
+    apply_collaboration_patch, ApplyReport, CollaborationPatch, InsertedImagePatch, TextReplacement,
 };
 pub use import::{build_collaboration_manifest, CollaborationError};
 pub use model::{
