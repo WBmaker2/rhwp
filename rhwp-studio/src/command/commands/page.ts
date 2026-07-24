@@ -339,17 +339,17 @@ export const pageCommands: CommandDef[] = [
       if (!cursor || !cursor.isInHeaderFooter()) return;
       const isHeader = cursor.headerFooterMode === 'header';
       const pageIndex = cursor.rect?.pageIndex ?? 0;
-      // [Task #3207] 종전엔 emit 조차 없어 undo 불가에 더해 dirty 마킹도 되지 않았다 —
-      // snapshot 라우팅으로 둘 다 해소한다.
-      const bodyPos = ih.getPosition();
-      ih.executeOperation({
-        kind: 'snapshot',
-        operationType: 'toggleHideHeaderFooter',
-        operation: (wasm) => {
-          wasm.toggleHideHeaderFooter(pageIndex, isHeader);
-          return bodyPos;
-        },
-      });
+      // [Task #3207] 감추기는 히스토리에 기록하지 않는다 — toggle_hide_header_footer_native 는
+      // 세션 집합(hidden_header_footer)과 렌더 캐시만 바꾸고 document 는 건드리지 않는데
+      // (레포 가드가 Exempt::SessionState/직렬화 비대상으로 분류), 스냅샷은 document 만 담고
+      // 복원도 세션 집합을 되돌리지 않는다. 라우팅하면 되돌아가는 것 없이 redo 스택이 버려지고
+      // 스냅샷 예산만 소모돼 사용자의 진짜 undo 이력이 축출된다.
+      try {
+        const result = services.wasm.toggleHideHeaderFooter(pageIndex, isHeader);
+        console.log(`[page] ${isHeader ? '머리말' : '꼬리말'} 쪽 ${pageIndex} 감추기: ${result.hidden}`);
+      } catch (e) {
+        console.warn('[page] 감추기 토글 실패:', e);
+      }
       (ih as any).afterEdit?.();
       (ih as any).updateCaret?.();
     },
@@ -364,21 +364,19 @@ export const pageCommands: CommandDef[] = [
       const cursor = (ih as any).cursor;
       if (!cursor) return;
       const pageIndex = cursor.rect?.pageIndex ?? 0;
-      // [Task #3207] 머리말·꼬리말 토글과 불일치 보정까지 최대 3회 뮤테이션이므로 하나의
-      // snapshot 으로 원자화한다 — 개별 기록 시 undo 가 반쪽 상태를 만든다(#2374 라디오와 동형).
-      const bodyPos = ih.getPosition();
-      ih.executeOperation({
-        kind: 'snapshot',
-        operationType: 'hideCurrentPageHeaderFooter',
-        operation: (wasm) => {
-          const headerResult = wasm.toggleHideHeaderFooter(pageIndex, true);
-          const footerResult = wasm.toggleHideHeaderFooter(pageIndex, false);
-          if (headerResult.hidden !== footerResult.hidden) {
-            wasm.toggleHideHeaderFooter(pageIndex, false);
-          }
-          return bodyPos;
-        },
-      });
+      // [Task #3207] 감추기는 세션 상태라 히스토리에 기록하지 않는다(위 page:hide-headerfooter
+      // 주석 참조). 스냅샷이 담는 내용이 없어 원자화도 실효가 없으므로 종전 호출을 유지하고,
+      // dirty 마킹 경로인 emit 도 그대로 둔다.
+      try {
+        const headerResult = services.wasm.toggleHideHeaderFooter(pageIndex, true);
+        const footerResult = services.wasm.toggleHideHeaderFooter(pageIndex, false);
+        if (headerResult.hidden !== footerResult.hidden) {
+          services.wasm.toggleHideHeaderFooter(pageIndex, false);
+        }
+        services.eventBus.emit('document-changed');
+      } catch (err) {
+        console.warn('[page:hide-current] 현재 쪽 감추기 실패:', err);
+      }
     },
   },
   // ─── 머리말/꼬리말 필드 삽입 ────────────────────

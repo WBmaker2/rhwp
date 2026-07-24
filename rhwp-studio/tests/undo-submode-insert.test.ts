@@ -55,19 +55,24 @@ test('각주/미주/수식 삽입은 snapshot 으로 라우팅된다', () => {
   }
 });
 
-test('HF 구조 조작 4종이 snapshot 으로 라우팅된다', () => {
-  for (const op of ['createHeaderFooter', 'applyHfTemplate', 'deleteHeaderFooter', 'toggleHideHeaderFooter']) {
+test('HF 구조 조작 3종이 snapshot 으로 라우팅된다', () => {
+  for (const op of ['createHeaderFooter', 'applyHfTemplate', 'deleteHeaderFooter']) {
     assert.match(pageSrc, new RegExp(`operationType:\\s*'${op}'`), `${op} snapshot 라우팅`);
     assert.doesNotMatch(pageSrc, new RegExp(`services\\.wasm\\.${op}\\s*\\(`),
       `${op} 직접 호출 금지 — executeOperation 경유`);
   }
 });
 
-test('현재 쪽 감추기는 최대 3회 토글을 하나의 snapshot 으로 원자화한다', () => {
-  const block = slice(pageSrc, "id: 'page:hide-current'", '\n  {');
-  assert.match(block, /operationType:\s*'hideCurrentPageHeaderFooter'/, '전용 operationType');
-  // 헤더·푸터 토글과 불일치 보정이 같은 operation 콜백 안에 있어야 함(반쪽 undo 방지).
-  const op = slice(block, 'operation: (wasm) =>', '});');
-  const toggles = op.match(/wasm\.toggleHideHeaderFooter\(/g) ?? [];
-  assert.equal(toggles.length, 3, `3회 토글이 모두 한 operation 안에 있어야 함(현재 ${toggles.length})`);
+test('감추기 2종은 세션 상태라 의도적으로 기록하지 않는다', () => {
+  // toggle_hide_header_footer_native 는 세션 집합(hidden_header_footer)과 렌더 캐시만 바꾸고
+  // document 를 건드리지 않는다(레포 가드가 Exempt::SessionState/직렬화 비대상으로 분류).
+  // 스냅샷은 document 만 담고 복원도 세션 집합을 되돌리지 않으므로, 라우팅하면 되돌아가는 것
+  // 없이 redo 스택이 버려지고 스냅샷 예산만 소모돼 진짜 undo 이력이 축출된다.
+  assert.doesNotMatch(pageSrc, /operationType:\s*'toggleHideHeaderFooter'/,
+    '감추기를 snapshot 으로 라우팅하면 안 된다 — 세션 상태라 되돌아가지 않으면서 redo/예산만 파괴');
+  assert.doesNotMatch(pageSrc, /operationType:\s*'hideCurrentPageHeaderFooter'/,
+    '현재 쪽 감추기도 같은 이유로 라우팅 금지');
+  // 다만 dirty 마킹 경로는 유지돼야 한다(afterEdit / document-changed).
+  const hideCurrent = slice(pageSrc, "id: 'page:hide-current'", '\n  {');
+  assert.match(hideCurrent, /emit\('document-changed'\)/, 'hide-current 의 dirty 마킹 emit 유지');
 });
