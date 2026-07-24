@@ -52,3 +52,11 @@
 
 **권고: 수용.** #3241과 함께 통합 PR 후보에 포함하고, 원 PR은 통합 PR merge 후에만 supersede close 여부를
 별도 승인으로 처리한다.
+
+## Merge 완료 및 후속 처리
+
+- [#3256](https://github.com/edwardkim/rhwp/pull/3256)이 2026-07-24
+  `e05a5a8bdcf636844e80744d91fff706c1c28ce7`로 `devel`에 merge 됐다.
+- 통합 PR의 CI(Build & Test·Native Skia·기본 기능 테스트 8 shard), CodeQL, Render Diff가 모두 성공했다.
+- [#3224](https://github.com/edwardkim/rhwp/pull/3224)는 통합 완료 안내와 감사 코멘트 후 supersede close했다.
+  이 보고서에는 별도 close 대상 이슈가 없다.

@@ -73,3 +73,12 @@
   HWP 2020 PDF sweep은 TIFF SVG rasterization 공백을 드러낸 보조 점검으로만 기록한다.
 - 최종 merge 조건은 통합 PR 최신 head의 GitHub Actions 통과, 원 PR의 `BEHIND` 해소 또는
   동일 변경의 최신 통합 경로 확인, 작업지시자 승인이다.
+
+## Merge 완료 및 후속 처리
+
+- [#3256](https://github.com/edwardkim/rhwp/pull/3256)이 2026-07-24
+  `e05a5a8bdcf636844e80744d91fff706c1c28ce7`로 `devel`에 merge 됐다.
+- 통합 PR의 CI(Build & Test·Native Skia·기본 기능 테스트 8 shard), CodeQL, Render Diff가 모두 성공했다.
+- [#3239](https://github.com/edwardkim/rhwp/issues/3239)는 closing keyword 반영을 10초 간격으로 세 번
+  확인한 뒤에도 `OPEN`이어서, merge commit·CI·macOS/Windows 검증·시각 자산 링크를 남기고 수동 close했다.
+- [#3241](https://github.com/edwardkim/rhwp/pull/3241)는 통합 완료 안내와 감사 코멘트 후 supersede close했다.
