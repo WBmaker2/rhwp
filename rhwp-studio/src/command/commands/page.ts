@@ -52,9 +52,19 @@ function enterHeaderFooterEditing(
       targetResult.pageIndex!,
     );
   } else {
-    // 문서에 머리말/꼬리말이 전혀 없으면 현재 구역에 새로 생성
-    const sectionIdx = cursor.getPosition().sectionIndex;
-    services.wasm.createHeaderFooter(sectionIdx, isHeader, applyTo);
+    // 문서에 머리말/꼬리말이 전혀 없으면 현재 구역에 새로 생성.
+    // [Task #3207] 생성은 문서 구조를 바꾸므로 snapshot 으로 기록한다(기존 HF 로 진입하는
+    // 위 분기는 커서 이동뿐이라 기록 대상이 아니다).
+    const bodyPos = cursor.getPosition();
+    const sectionIdx = bodyPos.sectionIndex;
+    ih.executeOperation({
+      kind: 'snapshot',
+      operationType: 'createHeaderFooter',
+      operation: (wasm) => {
+        wasm.createHeaderFooter(sectionIdx, isHeader, applyTo);
+        return bodyPos;
+      },
+    });
     cursor.enterHeaderFooterMode(isHeader, sectionIdx, applyTo, currentPage);
   }
 
@@ -136,7 +146,18 @@ function applyHfTemplate(
   }
 
   try {
-    services.wasm.applyHfTemplate(sectionIdx, isHeader, applyTo, templateId);
+    // [Task #3207] 마당 적용은 HF 내용을 통째로 교체하므로 snapshot 으로 기록한다.
+    // 모드 탈출/재진입은 커서 상태라 기록 밖에 둔다(undo 는 본문 분기로 모드를 빠져나온다).
+    // 위에서 이미 HF 모드를 종료했으므로 여기서 읽는 위치는 본문 위치다.
+    const bodyPos = ih.getPosition();
+    ih.executeOperation({
+      kind: 'snapshot',
+      operationType: 'applyHfTemplate',
+      operation: (wasm) => {
+        wasm.applyHfTemplate(sectionIdx, isHeader, applyTo, templateId);
+        return bodyPos;
+      },
+    });
     // 템플릿 적용 후 편집 모드로 진입
     const currentPage = cursor?.rect?.pageIndex ?? 0;
     let targetResult = services.wasm.navigateHeaderFooterByPage(currentPage - 1, isHeader, 1);
@@ -255,12 +276,17 @@ export const pageCommands: CommandDef[] = [
       // 편집 모드 탈출
       cursor.exitHeaderFooterMode();
       services.eventBus.emit('headerFooterModeChanged', 'none');
-      // 컨트롤 삭제
-      try {
-        services.wasm.deleteHeaderFooter(sectionIdx, isHeader, applyTo);
-      } catch (e) {
-        console.warn('[page] 머리말/꼬리말 삭제 실패:', e);
-      }
+      // 컨트롤 삭제 — [Task #3207] snapshot 으로 기록해 undo 로 되살릴 수 있게 한다.
+      // 모드 탈출은 위에서 이미 끝났으므로 여기 커서는 본문이다.
+      const bodyPos = ih.getPosition();
+      ih.executeOperation({
+        kind: 'snapshot',
+        operationType: 'deleteHeaderFooter',
+        operation: (wasm) => {
+          wasm.deleteHeaderFooter(sectionIdx, isHeader, applyTo);
+          return bodyPos;
+        },
+      });
       (ih as any).afterEdit?.();
       (ih as any).textarea?.focus();
     },
@@ -313,12 +339,17 @@ export const pageCommands: CommandDef[] = [
       if (!cursor || !cursor.isInHeaderFooter()) return;
       const isHeader = cursor.headerFooterMode === 'header';
       const pageIndex = cursor.rect?.pageIndex ?? 0;
-      try {
-        const result = services.wasm.toggleHideHeaderFooter(pageIndex, isHeader);
-        console.log(`[page] ${isHeader ? '머리말' : '꼬리말'} 쪽 ${pageIndex} 감추기: ${result.hidden}`);
-      } catch (e) {
-        console.warn('[page] 감추기 토글 실패:', e);
-      }
+      // [Task #3207] 종전엔 emit 조차 없어 undo 불가에 더해 dirty 마킹도 되지 않았다 —
+      // snapshot 라우팅으로 둘 다 해소한다.
+      const bodyPos = ih.getPosition();
+      ih.executeOperation({
+        kind: 'snapshot',
+        operationType: 'toggleHideHeaderFooter',
+        operation: (wasm) => {
+          wasm.toggleHideHeaderFooter(pageIndex, isHeader);
+          return bodyPos;
+        },
+      });
       (ih as any).afterEdit?.();
       (ih as any).updateCaret?.();
     },
@@ -333,16 +364,21 @@ export const pageCommands: CommandDef[] = [
       const cursor = (ih as any).cursor;
       if (!cursor) return;
       const pageIndex = cursor.rect?.pageIndex ?? 0;
-      try {
-        const headerResult = services.wasm.toggleHideHeaderFooter(pageIndex, true);
-        const footerResult = services.wasm.toggleHideHeaderFooter(pageIndex, false);
-        if (headerResult.hidden !== footerResult.hidden) {
-          services.wasm.toggleHideHeaderFooter(pageIndex, false);
-        }
-        services.eventBus.emit('document-changed');
-      } catch (err) {
-        console.warn('[page:hide-current] 현재 쪽 감추기 실패:', err);
-      }
+      // [Task #3207] 머리말·꼬리말 토글과 불일치 보정까지 최대 3회 뮤테이션이므로 하나의
+      // snapshot 으로 원자화한다 — 개별 기록 시 undo 가 반쪽 상태를 만든다(#2374 라디오와 동형).
+      const bodyPos = ih.getPosition();
+      ih.executeOperation({
+        kind: 'snapshot',
+        operationType: 'hideCurrentPageHeaderFooter',
+        operation: (wasm) => {
+          const headerResult = wasm.toggleHideHeaderFooter(pageIndex, true);
+          const footerResult = wasm.toggleHideHeaderFooter(pageIndex, false);
+          if (headerResult.hidden !== footerResult.hidden) {
+            wasm.toggleHideHeaderFooter(pageIndex, false);
+          }
+          return bodyPos;
+        },
+      });
     },
   },
   // ─── 머리말/꼬리말 필드 삽입 ────────────────────
