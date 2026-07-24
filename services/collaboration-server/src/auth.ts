@@ -1,4 +1,5 @@
 import type { Auth } from 'firebase-admin/auth'
+import type { Firestore } from 'firebase-admin/firestore'
 
 export type DocumentRole = 'owner' | 'editor' | 'viewer'
 export type AuthorizationErrorCode =
@@ -122,4 +123,26 @@ export function createFirebaseTokenVerifier(
       }
     },
   }
+}
+
+export function createFirestoreMembershipStore(
+  firestore: Pick<Firestore, 'doc'>,
+): MembershipStore {
+  return {
+    async getMembership(documentId, userId) {
+      const snapshot = await firestore
+        .doc(`documents/${documentId}/members/${userId}`)
+        .get()
+      if (!snapshot.exists) {
+        return null
+      }
+
+      const role = snapshot.get('role')
+      return isDocumentRole(role) ? { role } : null
+    },
+  }
+}
+
+function isDocumentRole(value: unknown): value is DocumentRole {
+  return value === 'owner' || value === 'editor' || value === 'viewer'
 }
