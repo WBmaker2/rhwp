@@ -8,13 +8,11 @@ import type { CollaborationManifest } from '../src/collaboration/wasm-adapter.ts
 
 class FakeEvents {
   private readonly listeners = new Map<string, Set<() => void>>();
-  on(event: string, listener: () => void): void {
+  on(event: string, listener: () => void): () => void {
     const listeners = this.listeners.get(event) ?? new Set();
     listeners.add(listener);
     this.listeners.set(event, listeners);
-  }
-  off(event: string, listener: () => void): void {
-    this.listeners.get(event)?.delete(listener);
+    return () => listeners.delete(listener);
   }
   emit(event: string): void {
     for (const listener of this.listeners.get(event) ?? []) listener();
@@ -34,24 +32,29 @@ class FakeAwareness {
   off(_event: 'change', listener: () => void): void { this.listeners.delete(listener); }
 }
 
-function manifest(): CollaborationManifest {
+function manifest(text = '원본'): CollaborationManifest {
   return {
     schema_version: 1,
     source_fingerprint: 'blake3:fixture',
     sections: [{
       id: 'section-1',
-      paragraphs: [{ id: 'paragraph-1', text: '원본', style_ref: 0 }],
+      paragraphs: [{ id: 'paragraph-1', text, style_ref: 0 }],
       tables: [],
     }],
     readonly_objects: [],
   };
 }
 
-test('connects with a Firebase token, publishes cursor presence, and destroys resources', async () => {
+function immediateSync(): Promise<void> {
+  return Promise.resolve();
+}
+
+test('connects after initial sync, publishes cursor presence, and destroys resources', async () => {
   const events = new FakeEvents();
   const awareness = new FakeAwareness();
   let providerDestroyed = 0;
   let receivedToken: string | null = null;
+  let syncObserved = false;
   const cursorListeners = new Set<(value: {
     targetId: string;
     targetKind: 'paragraph' | 'cell';
@@ -69,7 +72,10 @@ test('connects with a Firebase token, publishes cursor presence, and destroys re
       }),
     },
     bridge: {
-      getManifest: () => manifest(),
+      getManifest: () => {
+        assert.equal(syncObserved, true);
+        return manifest();
+      },
       applyPatch: () => ({ updatedParagraphs: 0, updatedCells: 0, insertedImages: 0 }),
     },
     events,
@@ -84,6 +90,7 @@ test('connects with a Firebase token, publishes cursor presence, and destroys re
       return {
         document: input.document,
         awareness,
+        whenSynced: async () => { syncObserved = true; },
         destroy: () => { providerDestroyed += 1; },
       };
     },
@@ -102,10 +109,53 @@ test('connects with a Firebase token, publishes cursor presence, and destroys re
   assert.equal(cursorListeners.size, 0);
 });
 
+test('existing synced Yjs text is applied to WASM without re-inserting the source text', async () => {
+  const events = new FakeEvents();
+  const awareness = new FakeAwareness();
+  const ydoc = new Y.Doc();
+  ydoc.getMap<string | number>('collaboration:metadata').set('sourceFingerprint', 'blake3:fixture');
+  ydoc.getText('paragraph:paragraph-1').insert(0, '서버 복구 문단');
+  const patches: string[] = [];
+  const controller = new CollaborationController({
+    documentId: 'doc-1',
+    collaborationUrl: 'ws://localhost:1234',
+    auth: {
+      requireSession: async () => ({
+        identity: { userId: 'editor-1', displayName: '편집자', photoURL: null },
+        role: 'editor',
+        idToken: 'firebase-token',
+      }),
+    },
+    bridge: {
+      getManifest: () => manifest(),
+      applyPatch: (_manifest, patch) => {
+        patches.push(patch.paragraphs[0]?.text ?? '');
+        return { updatedParagraphs: 1, updatedCells: 0, insertedImages: 0 };
+      },
+    },
+    events,
+    cursor: { subscribe: () => () => undefined },
+    providerFactory: () => ({
+      document: ydoc,
+      awareness,
+      whenSynced: immediateSync,
+      destroy: () => undefined,
+    }),
+  });
+
+  await controller.connect();
+
+  assert.equal(ydoc.getText('paragraph:paragraph-1').toString(), '서버 복구 문단');
+  assert.deepEqual(patches, ['서버 복구 문단']);
+  controller.destroy();
+});
+
 test('viewer sessions receive remote state but local document changes are not written to Yjs', async () => {
   const events = new FakeEvents();
   const awareness = new FakeAwareness();
   const ydoc = new Y.Doc();
+  ydoc.getMap<string | number>('collaboration:metadata').set('sourceFingerprint', 'blake3:fixture');
+  ydoc.getText('paragraph:paragraph-1').insert(0, '원본');
   let current = manifest();
   const controller = new CollaborationController({
     documentId: 'doc-1',
@@ -123,9 +173,10 @@ test('viewer sessions receive remote state but local document changes are not wr
     },
     events,
     cursor: { subscribe: () => () => undefined },
-    providerFactory: (input) => ({
+    providerFactory: () => ({
       document: ydoc,
       awareness,
+      whenSynced: immediateSync,
       destroy: () => undefined,
     }),
   });
@@ -139,4 +190,37 @@ test('viewer sessions receive remote state but local document changes are not wr
 
   assert.equal(ydoc.getText('paragraph:paragraph-1').toString(), '원본');
   controller.destroy();
+});
+
+test('failed initial sync destroys the provider and does not initialize the document', async () => {
+  const awareness = new FakeAwareness();
+  const ydoc = new Y.Doc();
+  let destroyed = 0;
+  const controller = new CollaborationController({
+    documentId: 'doc-1',
+    collaborationUrl: 'ws://localhost:1234',
+    auth: {
+      requireSession: async () => ({
+        identity: { userId: 'editor-1', displayName: '편집자', photoURL: null },
+        role: 'editor',
+        idToken: 'firebase-token',
+      }),
+    },
+    bridge: {
+      getManifest: () => manifest(),
+      applyPatch: () => ({ updatedParagraphs: 0, updatedCells: 0, insertedImages: 0 }),
+    },
+    events: new FakeEvents(),
+    cursor: { subscribe: () => () => undefined },
+    providerFactory: () => ({
+      document: ydoc,
+      awareness,
+      whenSynced: async () => { throw new Error('authentication rejected'); },
+      destroy: () => { destroyed += 1; },
+    }),
+  });
+
+  await assert.rejects(controller.connect(), /authentication rejected/);
+  assert.equal(destroyed, 1);
+  assert.equal(ydoc.share.size, 0);
 });
