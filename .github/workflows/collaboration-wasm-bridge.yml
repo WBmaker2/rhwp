@@ -1,0 +1,26 @@
+name: Collaboration WASM bridge
+
+on:
+  pull_request:
+    branches: [devel]
+    paths:
+      - 'src/collaboration/**'
+      - 'src/wasm_api.rs'
+      - 'tests/collaboration_wasm_bridge.rs'
+      - 'rhwp-studio/src/core/wasm-bridge.ts'
+      - '.github/workflows/collaboration-wasm-bridge.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          show-progress: false
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Test collaboration WASM bridge
+        run: cargo test --test collaboration_wasm_bridge --no-default-features
