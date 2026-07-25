@@ -1,0 +1,37 @@
+name: Collaboration rustfmt diagnostic
+
+on:
+  pull_request:
+    branches: [devel]
+    paths:
+      - 'src/collaboration/**'
+      - 'tests/collaboration_model.rs'
+      - '.github/workflows/collaboration-rustfmt-diagnostic.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  format:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          show-progress: false
+      - name: Install Rust formatter
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - name: Format collaboration implementation
+        run: cargo fmt --all
+      - name: Upload formatted files
+        uses: actions/upload-artifact@v7
+        with:
+          name: formatted-collaboration-${{ github.run_id }}
+          path: |
+            src/collaboration/apply.rs
+            src/collaboration/import.rs
+            src/collaboration/mod.rs
+            tests/collaboration_model.rs
+          retention-days: 1
+          if-no-files-found: error
