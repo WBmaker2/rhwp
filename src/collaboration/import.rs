@@ -189,12 +189,7 @@ fn collect_nested_readonly_controls(
     for (control_index, control) in paragraph.controls.iter().enumerate() {
         let mut control_path = paragraph_path.to_vec();
         control_path.push(control_index as u32);
-        push_readonly_object(
-            control,
-            source_fingerprint,
-            &control_path,
-            readonly_objects,
-        );
+        push_readonly_object(control, source_fingerprint, &control_path, readonly_objects);
 
         if let Control::Table(table) = control {
             collect_nested_table_controls(
