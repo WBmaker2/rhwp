@@ -42,7 +42,7 @@ after(async () => {
 })
 
 beforeEach(async () => {
-  await testEnv.clearFirestore()
+  await Promise.all([testEnv.clearFirestore(), testEnv.clearStorage()])
 })
 
 function firestoreFor(uid) {
@@ -377,6 +377,6 @@ test('members can download completed HWPX objects', async () => {
   await seedStorageObject(path)
 
   const bytes = await assertSucceeds(getBytes(ref(storageFor('viewer-1'), path)))
-  assert.deepEqual(bytes, Uint8Array.of(1, 2, 3))
+  assert.deepEqual(new Uint8Array(bytes), Uint8Array.of(1, 2, 3))
   await assertFails(getBytes(ref(storageFor('outsider-1'), path)))
 })
