@@ -8,7 +8,7 @@ on:
       - '.github/workflows/document-api.yml'
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   check:
@@ -16,6 +16,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
         with:
+          ref: ${{ github.head_ref }}
           show-progress: false
       - uses: actions/setup-node@v5
         with:
@@ -28,18 +29,13 @@ jobs:
         run: npm test
       - name: Build
         working-directory: services/document-api
+        run: npm run build
+      - name: Commit generated lockfile
         run: |
-          npm run build > build.log 2>&1 || {
-            cat build.log
-            exit 1
-          }
-      - name: Upload build diagnostics and lock
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: document-api-build-${{ github.run_id }}
-          path: |
-            services/document-api/build.log
-            services/document-api/package-lock.json
-          retention-days: 1
-          if-no-files-found: error
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add services/document-api/package-lock.json
+          if ! git diff --cached --quiet; then
+            git commit -m "chore: lock document API dependencies"
+            git push origin HEAD:${{ github.head_ref }}
+          fi
