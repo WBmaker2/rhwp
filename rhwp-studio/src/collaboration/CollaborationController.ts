@@ -33,6 +33,7 @@ export interface CursorPresenceSource {
 export interface CollaborationProvider {
   document: Y.Doc;
   awareness: AwarenessPort;
+  whenSynced(): Promise<void>;
   destroy(): void;
 }
 
@@ -55,6 +56,7 @@ export interface CollaborationControllerOptions {
   events: CollaborationEventPort;
   cursor: CursorPresenceSource;
   providerFactory?: CollaborationProviderFactory;
+  syncTimeoutMs?: number;
 }
 
 export interface CollaborationConnectionState {
@@ -89,33 +91,46 @@ export class CollaborationController {
       token: session.idToken,
       document,
     });
-    const manifest = this.options.bridge.getManifest();
-    const adapter = new RhwpYjsAdapter(
-      provider.document,
-      this.options.bridge,
-      this.options.events,
-      { readOnly: session.role === 'viewer' },
-    );
-    adapter.initialize(manifest);
-    const presence = new PresenceController(provider.awareness, session.identity);
 
-    this.provider = provider;
-    this.adapter = adapter;
-    this.presence = presence;
-    this.unsubscribeCursor = this.options.cursor.subscribe((cursor) => {
-      if (cursor) presence.updateCursor(cursor);
-      else presence.clearCursor();
-    });
-    this.unsubscribeParticipants = presence.subscribe((participants) => {
-      for (const listener of this.participantListeners) listener(participants);
-    });
+    try {
+      await withTimeout(
+        provider.whenSynced(),
+        this.options.syncTimeoutMs ?? 20_000,
+        'initial collaboration sync timed out',
+      );
 
-    return {
-      documentId: this.options.documentId,
-      role: session.role,
-      identity: session.identity,
-      participants: presence.getRemoteParticipants(),
-    };
+      const manifest = this.options.bridge.getManifest();
+      const adapter = new RhwpYjsAdapter(
+        provider.document,
+        this.options.bridge,
+        this.options.events,
+        { readOnly: session.role === 'viewer' },
+      );
+      adapter.initialize(manifest);
+      const presence = new PresenceController(provider.awareness, session.identity);
+
+      this.provider = provider;
+      this.adapter = adapter;
+      this.presence = presence;
+      this.unsubscribeCursor = this.options.cursor.subscribe((cursor) => {
+        if (cursor) presence.updateCursor(cursor);
+        else presence.clearCursor();
+      });
+      this.unsubscribeParticipants = presence.subscribe((participants) => {
+        for (const listener of this.participantListeners) listener(participants);
+      });
+
+      return {
+        documentId: this.options.documentId,
+        role: session.role,
+        identity: session.identity,
+        participants: presence.getRemoteParticipants(),
+      };
+    } catch (error) {
+      provider.destroy();
+      provider.document.destroy();
+      throw error;
+    }
   }
 
   subscribeParticipants(
@@ -133,7 +148,9 @@ export class CollaborationController {
     this.unsubscribeParticipants = null;
     this.presence?.destroy();
     this.adapter?.destroy();
-    this.provider?.destroy();
+    const provider = this.provider;
+    provider?.destroy();
+    provider?.document.destroy();
     this.presence = null;
     this.adapter = null;
     this.provider = null;
@@ -143,15 +160,54 @@ export class CollaborationController {
 function createHocuspocusProvider(
   input: CollaborationProviderInput,
 ): CollaborationProvider {
+  let resolveSynced!: () => void;
+  let rejectSynced!: (error: Error) => void;
+  let settled = false;
+  const synced = new Promise<void>((resolve, reject) => {
+    resolveSynced = resolve;
+    rejectSynced = reject;
+  });
   const provider = new HocuspocusProvider({
     url: input.url,
     name: input.documentId,
     document: input.document,
     token: input.token,
+    onSynced: () => {
+      if (settled) return;
+      settled = true;
+      resolveSynced();
+    },
+    onAuthenticationFailed: ({ reason }) => {
+      if (settled) return;
+      settled = true;
+      rejectSynced(new Error(`collaboration authentication failed: ${reason}`));
+    },
   });
   return {
     document: input.document,
     awareness: provider.awareness as unknown as AwarenessPort,
+    whenSynced: () => synced,
     destroy: () => provider.destroy(),
   };
+}
+
+async function withTimeout<T>(
+  promise: Promise<T>,
+  timeoutMs: number,
+  message: string,
+): Promise<T> {
+  if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1) {
+    throw new Error('syncTimeoutMs must be a positive safe integer');
+  }
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<never>((_resolve, reject) => {
+        timer = setTimeout(() => reject(new Error(message)), timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
 }
