@@ -1,4 +1,5 @@
 import { Server } from '@hocuspocus/server'
+import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { Doc } from 'yjs'
 
 import {
@@ -28,6 +29,10 @@ export interface CollaborationServerDependencies {
   membershipStore: MembershipStore
   participants?: ParticipantRegistry
   persistence?: YjsSnapshotPersistence
+  internalRequestHandler?: (
+    request: IncomingMessage,
+    response: ServerResponse,
+  ) => Promise<boolean>
 }
 
 export interface AuthenticateHookInput {
@@ -106,18 +111,12 @@ export function createCollaborationHooks(
     },
 
     async onStoreDocument(input) {
-      if (!persistence) {
-        return undefined
-      }
-
+      if (!persistence) return undefined
       return persistence.save(input.documentName, input.document, 'debounce')
     },
 
     async onDisconnect(input) {
-      if (!input.context) {
-        return
-      }
-
+      if (!input.context) return
       participants.leave(
         input.context.documentId,
         input.context.userId,
@@ -154,11 +153,16 @@ export function createCollaborationServer(
     maxUnauthenticatedQueueMessages: 1000,
     maxPendingDocuments: 100,
 
+    async onRequest(payload) {
+      if (!dependencies.internalRequestHandler) return
+      const { request, response } = payload as typeof payload & {
+        request: IncomingMessage
+        response: ServerResponse
+      }
+      await dependencies.internalRequestHandler(request, response)
+    },
+
     async onAuthenticate(payload) {
-      // Hocuspocus v4 exposes `connection.readOnly` at runtime and documents it
-      // as the supported read-only switch, but 4.4.0 omits it from the shipped
-      // onAuthenticate payload declaration. Keep the compatibility cast at this
-      // library boundary instead of weakening types throughout the service.
       const { documentName, token, socketId } = payload
       const { connection } = payload as typeof payload & {
         connection: { readOnly: boolean }
@@ -185,11 +189,7 @@ export function createCollaborationServer(
     },
 
     async onDisconnect({ documentName, socketId, context }) {
-      await hooks.onDisconnect({
-        documentName,
-        socketId,
-        context,
-      })
+      await hooks.onDisconnect({ documentName, socketId, context })
     },
 
     async afterUnloadDocument({ documentName }) {
