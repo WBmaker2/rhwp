@@ -137,8 +137,12 @@ export class CollaborationController {
     listener: (participants: RemoteParticipant[]) => void,
   ): () => void {
     this.participantListeners.add(listener);
-    listener(this.presence?.getRemoteParticipants() ?? []);
+    listener(this.getRemoteParticipants());
     return () => this.participantListeners.delete(listener);
+  }
+
+  getRemoteParticipants(): RemoteParticipant[] {
+    return this.presence?.getRemoteParticipants() ?? [];
   }
 
   destroy(): void {
