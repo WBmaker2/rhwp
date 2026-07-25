@@ -18,6 +18,7 @@ import type {
 export interface CollaborationServerEnvironment {
   port: number
   storageBucket: string
+  internalApiToken: string
 }
 
 export interface CollaborationFirebaseAdapters {
@@ -92,11 +93,9 @@ export function readCollaborationServerEnvironment(
   if (!Number.isSafeInteger(port) || port < 1 || port > 65535) {
     throw new Error('PORT must be an integer from 1 to 65535')
   }
-  const storageBucket = environment.FIREBASE_STORAGE_BUCKET?.trim() ?? ''
-  if (!storageBucket) {
-    throw new Error('FIREBASE_STORAGE_BUCKET is required')
-  }
-  return { port, storageBucket }
+  const storageBucket = required(environment, 'FIREBASE_STORAGE_BUCKET')
+  const internalApiToken = required(environment, 'INTERNAL_API_TOKEN')
+  return { port, storageBucket, internalApiToken }
 }
 
 export function createCollaborationFirebaseAdapters(
@@ -115,6 +114,12 @@ export function createCollaborationFirebaseAdapters(
     objects: new FirebaseSnapshotObjectStore(bucket),
     metadata: new FirebaseSnapshotMetadataStore(firestore),
   }
+}
+
+function required(environment: NodeJS.ProcessEnv, name: string): string {
+  const value = environment[name]?.trim() ?? ''
+  if (!value) throw new Error(`${name} is required`)
+  return value
 }
 
 function documentPath(documentId: string): string {
