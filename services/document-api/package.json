@@ -8,8 +8,13 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
+    "start": "node dist/main.js",
     "test": "node --test --import tsx tests/*.test.ts",
     "check": "npm test && npm run build"
+  },
+  "dependencies": {
+    "@google-cloud/tasks": "6.2.3",
+    "firebase-admin": "14.2.0"
   },
   "devDependencies": {
     "@types/node": "26.1.1",
