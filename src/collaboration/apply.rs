@@ -1,5 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
+use serde::{Deserialize, Serialize};
+
 use crate::model::bin_data::{
     BinData, BinDataCompression, BinDataContent, BinDataStatus, BinDataType,
 };
@@ -9,8 +11,9 @@ use crate::model::image::{CropInfo, ImageAttr, ImageEffect, Picture};
 use crate::model::paragraph::Paragraph;
 use crate::model::shape::{CommonObjAttr, HorzRelTo, ShapeComponentAttr, TextWrap, VertRelTo};
 
-use super::import::CollaborationError;
-use super::{CollaborationManifest, NodeKind, StableId};
+use super::{
+    validate_source_fingerprint, CollaborationError, CollaborationManifest, NodeKind, StableId,
+};
 
 pub const MAX_INSERTED_IMAGE_BYTES: usize = 20 * 1024 * 1024;
 
@@ -483,4 +486,122 @@ fn normalize_text_metadata(paragraph: &mut Paragraph) {
     }
 
     paragraph.char_count = paragraph.char_count.max(characters.len() as u32);
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct CollaborationApplyReport {
+    pub updated: bool,
+    pub kind: String,
+    pub node_id: String,
+}
+
+fn refresh_paragraph_text(paragraph: &mut Paragraph, text: &str) {
+    paragraph.text = text.to_string();
+    paragraph.char_count = text.encode_utf16().count() as u32 + 1;
+    paragraph.char_offsets = text
+        .char_indices()
+        .map(|(byte_index, _)| text[..byte_index].encode_utf16().count() as u32)
+        .collect();
+    paragraph.line_segs.clear();
+    paragraph.has_para_text = !text.is_empty();
+}
+
+pub fn apply_collaboration_paragraph_text(
+    document: &mut Document,
+    source_fingerprint: &str,
+    section_index: u32,
+    paragraph_index: u32,
+    stable_id: &str,
+    text: &str,
+) -> Result<CollaborationApplyReport, CollaborationError> {
+    validate_source_fingerprint(source_fingerprint)?;
+    let expected = StableId::for_node(
+        source_fingerprint,
+        NodeKind::Paragraph,
+        &[section_index, paragraph_index],
+    );
+    if expected.0 != stable_id {
+        return Err(CollaborationError::StableIdMismatch {
+            expected: expected.0,
+            actual: stable_id.to_string(),
+        });
+    }
+    let paragraph = document
+        .sections
+        .get_mut(section_index as usize)
+        .and_then(|section| section.paragraphs.get_mut(paragraph_index as usize))
+        .ok_or(CollaborationError::TargetOutOfBounds {
+            kind: "paragraph".to_string(),
+        })?;
+    refresh_paragraph_text(paragraph, text);
+    Ok(CollaborationApplyReport {
+        updated: true,
+        kind: "paragraph".to_string(),
+        node_id: stable_id.to_string(),
+    })
+}
+
+pub fn apply_collaboration_cell_text(
+    document: &mut Document,
+    source_fingerprint: &str,
+    section_index: u32,
+    host_paragraph_index: u32,
+    control_index: u32,
+    cell_index: u32,
+    stable_id: &str,
+    text: &str,
+) -> Result<CollaborationApplyReport, CollaborationError> {
+    validate_source_fingerprint(source_fingerprint)?;
+    let expected = StableId::for_node(
+        source_fingerprint,
+        NodeKind::Cell,
+        &[
+            section_index,
+            host_paragraph_index,
+            control_index,
+            cell_index,
+        ],
+    );
+    if expected.0 != stable_id {
+        return Err(CollaborationError::StableIdMismatch {
+            expected: expected.0,
+            actual: stable_id.to_string(),
+        });
+    }
+    let control = document
+        .sections
+        .get_mut(section_index as usize)
+        .and_then(|section| section.paragraphs.get_mut(host_paragraph_index as usize))
+        .and_then(|paragraph| paragraph.controls.get_mut(control_index as usize))
+        .ok_or(CollaborationError::TargetOutOfBounds {
+            kind: "cell".to_string(),
+        })?;
+    let table = match control {
+        Control::Table(table) => table.as_mut(),
+        _ => {
+            return Err(CollaborationError::TargetKindMismatch {
+                expected: "table".to_string(),
+            })
+        }
+    };
+    let cell =
+        table
+            .cells
+            .get_mut(cell_index as usize)
+            .ok_or(CollaborationError::TargetOutOfBounds {
+                kind: "cell".to_string(),
+            })?;
+    if cell.paragraphs.len() != 1 {
+        return Err(CollaborationError::UnsupportedCellParagraphStructure {
+            paragraph_count: cell.paragraphs.len(),
+        });
+    }
+    refresh_paragraph_text(&mut cell.paragraphs[0], text);
+    cell.dirty_flag = true;
+    table.dirty = true;
+    Ok(CollaborationApplyReport {
+        updated: true,
+        kind: "cell".to_string(),
+        node_id: stable_id.to_string(),
+    })
 }

@@ -2391,6 +2391,29 @@ export class InputHandler {
     this.textarea.focus();
   }
 
+  /** 현재 커서 위치를 협업 가능한 텍스트 변경 위치로 발행한다. */
+  private emitCollaborationEditableChange(): void {
+    if (this.isComposing) return;
+    const pos = this.cursor.getPosition();
+    if (typeof pos.parentParaIndex === 'number' && typeof pos.controlIndex === 'number' && typeof pos.cellIndex === 'number') {
+      this.eventBus.emit('collaboration-editable-changed', {
+        kind: 'cell',
+        sectionIndex: pos.sectionIndex,
+        hostParagraphIndex: pos.parentParaIndex,
+        controlIndex: pos.controlIndex,
+        cellIndex: pos.cellIndex,
+      });
+      return;
+    }
+    if (!pos.isTextBox) {
+      this.eventBus.emit('collaboration-editable-changed', {
+        kind: 'paragraph',
+        sectionIndex: pos.sectionIndex,
+        paragraphIndex: pos.paragraphIndex,
+      });
+    }
+  }
+
   /** 편집 후 처리: 재렌더링 + 캐럿 갱신 */
   private afterEdit(flushDeferredPagination = true): void {
     if (flushDeferredPagination) {
@@ -2410,6 +2433,7 @@ export class InputHandler {
     this.clearTableResizeRuntimeCache();
     this.eventBus.emit('document-mutated', 'input-handler-edit');
     this.eventBus.emit('document-changed');
+    this.emitCollaborationEditableChange();
     this.updateCaret();
   }
 
@@ -2429,6 +2453,7 @@ export class InputHandler {
     if (this.deferredPaginationPending) {
       this.scheduleDeferredPaginationFlush();
     }
+    this.emitCollaborationEditableChange();
     this.updateCaret();
   }
 

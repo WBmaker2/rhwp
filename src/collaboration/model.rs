@@ -35,6 +35,13 @@ pub struct ParagraphManifest {
     pub id: StableId,
     pub text: String,
     pub style_ref: Option<u32>,
+    pub location: ParagraphLocation,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct ParagraphLocation {
+    pub section_index: u32,
+    pub paragraph_index: u32,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -57,6 +64,17 @@ pub struct CellManifest {
     pub text: String,
     pub style_ref: Option<u32>,
     pub structure_readonly: bool,
+    pub location: CellLocation,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct CellLocation {
+    pub section_index: u32,
+    pub host_paragraph_index: u32,
+    pub control_index: u32,
+    pub cell_index: u32,
+    pub row_index: u32,
+    pub column_index: u32,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]

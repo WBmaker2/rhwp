@@ -1,60 +1,19 @@
-use std::error::Error;
-use std::fmt;
-
 use crate::model::control::Control;
 use crate::model::document::Document;
 use crate::model::paragraph::Paragraph;
 use crate::model::table::Table;
 
 use super::{
-    CellManifest, CollaborationManifest, NodeKind, ParagraphManifest, ReadonlyObjectManifest,
+    validate_source_fingerprint, CellLocation, CellManifest, CollaborationError,
+    CollaborationManifest, NodeKind, ParagraphLocation, ParagraphManifest, ReadonlyObjectManifest,
     RowManifest, SectionManifest, StableId, TableManifest,
 };
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub enum CollaborationError {
-    EmptySourceFingerprint,
-    ReadonlyTarget(StableId),
-    UnknownTarget(StableId),
-    InvalidImage { image_id: StableId, reason: String },
-}
-
-impl fmt::Display for CollaborationError {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::EmptySourceFingerprint => {
-                formatter.write_str("source fingerprint must not be empty")
-            }
-            Self::ReadonlyTarget(target_id) => {
-                write!(
-                    formatter,
-                    "collaboration target is read-only: {}",
-                    target_id.0
-                )
-            }
-            Self::UnknownTarget(target_id) => {
-                write!(formatter, "unknown collaboration target: {}", target_id.0)
-            }
-            Self::InvalidImage { image_id, reason } => {
-                write!(
-                    formatter,
-                    "invalid collaboration image {}: {reason}",
-                    image_id.0
-                )
-            }
-        }
-    }
-}
-
-impl Error for CollaborationError {}
 
 pub fn build_collaboration_manifest(
     document: &Document,
     source_fingerprint: &str,
 ) -> Result<CollaborationManifest, CollaborationError> {
-    if source_fingerprint.is_empty() {
-        return Err(CollaborationError::EmptySourceFingerprint);
-    }
+    validate_source_fingerprint(source_fingerprint)?;
 
     let mut manifest = CollaborationManifest::empty(source_fingerprint);
 
@@ -72,6 +31,8 @@ pub fn build_collaboration_manifest(
                 paragraph,
                 source_fingerprint,
                 &paragraph_path,
+                section_index as u32,
+                paragraph_index as u32,
             ));
 
             for (control_index, control) in paragraph.controls.iter().enumerate() {
@@ -87,6 +48,9 @@ pub fn build_collaboration_manifest(
                         source_fingerprint,
                         &control_path,
                         &mut manifest.readonly_objects,
+                        section_index as u32,
+                        paragraph_index as u32,
+                        control_index as u32,
                     )),
                     other => push_readonly_object(
                         other,
@@ -108,11 +72,17 @@ fn import_paragraph(
     paragraph: &Paragraph,
     source_fingerprint: &str,
     path: &[u32],
+    section_index: u32,
+    paragraph_index: u32,
 ) -> ParagraphManifest {
     ParagraphManifest {
         id: StableId::for_node(source_fingerprint, NodeKind::Paragraph, path),
         text: paragraph.text.clone(),
         style_ref: Some(u32::from(paragraph.style_id)),
+        location: ParagraphLocation {
+            section_index,
+            paragraph_index,
+        },
     }
 }
 
@@ -121,6 +91,9 @@ fn import_table(
     source_fingerprint: &str,
     path: &[u32],
     readonly_objects: &mut Vec<ReadonlyObjectManifest>,
+    section_index: u32,
+    host_paragraph_index: u32,
+    control_index: u32,
 ) -> TableManifest {
     let mut rows = Vec::with_capacity(table.row_count as usize);
     let mut cells = Vec::with_capacity(table.cells.len());
@@ -152,6 +125,14 @@ fn import_table(
                     .first()
                     .map(|paragraph| u32::from(paragraph.style_id)),
                 structure_readonly: true,
+                location: CellLocation {
+                    section_index,
+                    host_paragraph_index,
+                    control_index,
+                    cell_index: cell_index as u32,
+                    row_index: u32::from(cell.row),
+                    column_index: u32::from(cell.col),
+                },
             });
 
             for (paragraph_index, paragraph) in cell.paragraphs.iter().enumerate() {
