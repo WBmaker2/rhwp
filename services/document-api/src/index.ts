@@ -1,3 +1,7 @@
+export * from './collaboration-client.js'
+export * from './firebase-adapters.js'
+export * from './http-server.js'
+export * from './main.js'
 export {
   ParseLease,
   type LeaseResult,
