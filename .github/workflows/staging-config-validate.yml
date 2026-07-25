@@ -1,0 +1,25 @@
+name: Staging configuration
+
+on:
+  pull_request:
+    branches: [devel]
+    paths:
+      - 'firebase/firebase.json'
+      - 'firebase/.firebaserc.example'
+      - 'firebase/staging.env.example'
+      - 'deploy/cloudrun/**'
+      - 'scripts/validate_staging_config.py'
+      - '.github/workflows/staging-config-validate.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          show-progress: false
+      - name: Validate staging templates without deployment
+        run: python3 scripts/validate_staging_config.py
