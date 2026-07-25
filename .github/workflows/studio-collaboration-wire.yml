@@ -20,8 +20,6 @@ jobs:
       - uses: actions/setup-node@v5
         with:
           node-version: '22'
-          cache: npm
-          cache-dependency-path: rhwp-studio/package-lock.json
       - name: Expose runtime and cursor snapshot
         run: |
           python3 - <<'PY'
@@ -30,18 +28,18 @@ jobs:
           input_path = Path('rhwp-studio/src/engine/input-handler.ts')
           text = input_path.read_text()
           anchor = '  /** 클릭 이벤트 처리 — hitTest로 커서 배치 */\n'
-          method = '''  /** 공동 편집 Awareness에 노출할 현재 커서와 선택의 불변 스냅샷. */
-          getCollaborationSelectionSnapshot(): {
-            position: DocumentPosition;
-            selection: { anchor: DocumentPosition; focus: DocumentPosition } | null;
-          } {
-            return {
-              position: this.cursor.getPosition(),
-              selection: this.cursor.getSelection(),
-            };
-          }
-
-          '''
+          method = (
+              '  /** 공동 편집 Awareness에 노출할 현재 커서와 선택의 불변 스냅샷. */\n'
+              '  getCollaborationSelectionSnapshot(): {\n'
+              '    position: DocumentPosition;\n'
+              '    selection: { anchor: DocumentPosition; focus: DocumentPosition } | null;\n'
+              '  } {\n'
+              '    return {\n'
+              '      position: this.cursor.getPosition(),\n'
+              '      selection: this.cursor.getSelection(),\n'
+              '    };\n'
+              '  }\n\n'
+          )
           if 'getCollaborationSelectionSnapshot' not in text:
               if anchor not in text:
                   raise SystemExit('input-handler collaboration anchor not found')
@@ -50,24 +48,22 @@ jobs:
 
           main_path = Path('rhwp-studio/src/main.ts')
           text = main_path.read_text()
-          anchor = '''    inputHandler.setPictureObjectRenderer(
-              new TableObjectRenderer(container, canvasView.getVirtualScroll(), true),
-            );
-          '''
-          # YAML removes ten indentation columns from this script block. Normalize
-          # the Python literal to the actual TypeScript indentation before matching.
-          anchor = anchor.replace('              new ', '      new ').replace('            );', '    );')
-          addition = anchor + '''
-            (window as any).__rhwpStudioRuntime = {
-              wasm,
-              eventBus,
-              inputHandler,
-              scrollContent: document.getElementById('scroll-content')!,
-              virtualScroll: canvasView.getVirtualScroll(),
-              viewportManager: canvasView.getViewportManager(),
-            };
-          '''
-          addition = addition.replace('\n            (window', '\n    (window').replace('\n              ', '\n      ').replace('\n            };', '\n    };')
+          anchor = (
+              '    inputHandler.setPictureObjectRenderer(\n'
+              '      new TableObjectRenderer(container, canvasView.getVirtualScroll(), true),\n'
+              '    );\n'
+          )
+          addition = anchor + (
+              '\n'
+              '    (window as any).__rhwpStudioRuntime = {\n'
+              '      wasm,\n'
+              '      eventBus,\n'
+              '      inputHandler,\n'
+              "      scrollContent: document.getElementById('scroll-content')!,\n"
+              '      virtualScroll: canvasView.getVirtualScroll(),\n'
+              '      viewportManager: canvasView.getViewportManager(),\n'
+              '    };\n'
+          )
           if '__rhwpStudioRuntime' not in text:
               if anchor not in text:
                   raise SystemExit('main collaboration runtime anchor not found')
@@ -84,17 +80,18 @@ jobs:
               text = text.replace(anchor, addition, 1)
           index_path.write_text(text)
           PY
-      - name: Verify studio collaboration build
+      - name: Update lockfile and verify studio collaboration
         working-directory: rhwp-studio
         run: |
+          npm install --package-lock-only --ignore-scripts --no-audit --no-fund
           npm ci --ignore-scripts --no-audit --no-fund
           npm run test:collaboration
           npm run build
-      - name: Commit studio runtime wiring and remove one-shot workflow
+      - name: Commit runtime wiring and remove one-shot workflows
         run: |
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git add rhwp-studio/src/engine/input-handler.ts rhwp-studio/src/main.ts rhwp-studio/index.html
-          git rm .github/workflows/studio-collaboration-wire.yml
+          git add rhwp-studio/package-lock.json rhwp-studio/src/engine/input-handler.ts rhwp-studio/src/main.ts rhwp-studio/index.html
+          git rm .github/workflows/studio-collaboration-wire.yml .github/workflows/studio-collaboration-lock.yml
           git commit -m "feat: wire collaboration into rhwp studio runtime"
           git push origin HEAD:${{ github.head_ref }}
