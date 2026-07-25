@@ -36,7 +36,11 @@ impl fmt::Display for CollaborationError {
                 write!(formatter, "unknown collaboration target: {}", target_id.0)
             }
             Self::InvalidImage { image_id, reason } => {
-                write!(formatter, "invalid collaboration image {}: {reason}", image_id.0)
+                write!(
+                    formatter,
+                    "invalid collaboration image {}: {reason}",
+                    image_id.0
+                )
             }
         }
     }

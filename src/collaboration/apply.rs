@@ -298,16 +298,25 @@ fn validate_inserted_images(
             return Err(invalid_image(image, "asset path must not be empty"));
         }
         if image.bytes.is_empty() {
-            return Err(invalid_image(image, "resolved image bytes must not be empty"));
+            return Err(invalid_image(
+                image,
+                "resolved image bytes must not be empty",
+            ));
         }
         if image.bytes.len() > MAX_INSERTED_IMAGE_BYTES {
-            return Err(invalid_image(image, "resolved image exceeds the 20 MiB limit"));
+            return Err(invalid_image(
+                image,
+                "resolved image exceeds the 20 MiB limit",
+            ));
         }
         if image.width == 0 || image.height == 0 {
             return Err(invalid_image(image, "display dimensions must be positive"));
         }
         if image.natural_width_px == 0 || image.natural_height_px == 0 {
-            return Err(invalid_image(image, "natural pixel dimensions must be positive"));
+            return Err(invalid_image(
+                image,
+                "natural pixel dimensions must be positive",
+            ));
         }
     }
 
