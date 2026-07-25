@@ -22,7 +22,15 @@ jobs:
           node-version: '22'
       - name: Update lockfile
         working-directory: rhwp-studio
-        run: npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+        run: npm install --package-lock-only --ignore-scripts --no-audit --no-fund > studio-lock.log 2>&1
+      - name: Upload lockfile diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: studio-lock-${{ github.run_id }}
+          path: rhwp-studio/studio-lock.log
+          retention-days: 1
+          if-no-files-found: error
       - name: Install and verify collaboration tests
         working-directory: rhwp-studio
         run: |
