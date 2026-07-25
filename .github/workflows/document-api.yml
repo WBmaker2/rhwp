@@ -33,11 +33,13 @@ jobs:
             cat build.log
             exit 1
           }
-      - name: Upload build diagnostics
+      - name: Upload build diagnostics and lock
         if: always()
         uses: actions/upload-artifact@v7
         with:
           name: document-api-build-${{ github.run_id }}
-          path: services/document-api/build.log
+          path: |
+            services/document-api/build.log
+            services/document-api/package-lock.json
           retention-days: 1
           if-no-files-found: error
