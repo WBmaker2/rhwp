@@ -22,7 +22,7 @@
 - [x] Task 4: Authenticated 10-User Collaboration Server
 - [x] Task 5: Snapshot Persistence and Server Recovery
 - [x] Task 6: Upload Completion, Parse Lease, and Export API
-- [ ] Task 7: Firestore and Storage Security Rules
+- [x] Task 7: Firestore and Storage Security Rules
 - [ ] Task 8: Presence and Remote Cursor UI
 - [ ] Task 9: Firebase Hosting, Cloud Run, and Emulator Deployment
 - [ ] Task 10: End-to-End Recovery and Export Verification
@@ -70,6 +70,7 @@ The completed Task 5 layer uses injected object-storage and metadata-store inter
 - [x] **Step 3: Implement deterministic import traversal**
 - [x] **Step 4: Run focused tests**
 - [x] **Step 5: Commit**
+- [x] **Step 6: Add nested table-cell readonly classification and HWPX roundtrip preservation regression**
 
 ---
 
@@ -178,8 +179,23 @@ The Task 6 layer uses injected token verification, membership, object metadata, 
 
 ### Task 7: Firestore and Storage Security Rules
 
-- [ ] Implement rules for document membership, owner/editor/viewer capabilities, upload paths, user asset paths, snapshots, and exports.
-- [ ] Add emulator-backed rules tests.
+**Files:**
+- Create: `firebase/firebase.json`
+- Create: `firebase/firestore.rules`
+- Create: `firebase/storage.rules`
+- Create: `firebase/firestore.indexes.json`
+- Create: `firebase/tests/rules.test.mjs`
+- Create: `.github/workflows/firebase-rules.yml`
+
+- [x] Define failing Firestore and Storage authorization contracts.
+- [x] Restrict document reads to members and client metadata updates to owner-controlled title fields.
+- [x] Restrict membership and share-link management to the document owner.
+- [x] Deny client writes to parse, snapshot, derived, and export state.
+- [x] Validate owner-only 100–200 MiB HWP source uploads.
+- [x] Validate owner/editor user images by role, size, type, uploader metadata, and create-only semantics.
+- [x] Run Firestore and Storage Emulator tests with locked dependencies.
+
+The rules suite uses the demo project and Local Emulator Suite only. No Firebase project or production rules were deployed.
 
 ---
 
