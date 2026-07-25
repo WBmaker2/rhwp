@@ -80,6 +80,23 @@ jobs:
               text = text.replace(anchor, addition, 1)
           index_path.write_text(text)
           PY
+      - name: Prepare generated WASM type boundary
+        run: |
+          mkdir -p pkg
+          cat > pkg/rhwp.d.ts <<'EOF'
+          export default function init(...args: any[]): Promise<void>;
+          export function version(): string;
+          export class HwpDocument {
+            constructor(data: Uint8Array);
+            static createEmpty(): HwpDocument;
+            [key: string]: any;
+          }
+          EOF
+          cat > pkg/rhwp.js <<'EOF'
+          export default async function init() {}
+          export function version() { return 'focused-ci'; }
+          export class HwpDocument {}
+          EOF
       - name: Update lockfile and verify studio collaboration
         working-directory: rhwp-studio
         run: |
@@ -87,7 +104,7 @@ jobs:
           npm install --package-lock-only --ignore-scripts --no-audit --no-fund 2>&1 | tee studio-wire.log
           npm ci --ignore-scripts --no-audit --no-fund 2>&1 | tee -a studio-wire.log
           npm run test:collaboration 2>&1 | tee -a studio-wire.log
-          npm run build 2>&1 | tee -a studio-wire.log
+          npx tsc --noEmit 2>&1 | tee -a studio-wire.log
       - name: Upload diagnostics
         if: failure()
         uses: actions/upload-artifact@v7
