@@ -1,0 +1,101 @@
+name: Task 8A implement
+
+on:
+  pull_request:
+    branches: [devel]
+    paths:
+      - '.github/workflows/task8a-implement.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  implement:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.head_ref }}
+          show-progress: false
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - name: Implement Rust and TypeScript bridge
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          apply = Path('src/collaboration/apply.rs')
+          text = apply.read_text()
+          text = text.replace(
+              'use std::collections::{HashMap, HashSet};\n',
+              'use std::collections::{HashMap, HashSet};\n\nuse serde::{Deserialize, Serialize};\n',
+              1,
+          )
+          text = text.replace(
+              '#[derive(Clone, Debug, Eq, PartialEq)]\npub struct TextReplacement',
+              '#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]\npub struct TextReplacement',
+              1,
+          )
+          text = text.replace(
+              '#[derive(Clone, Copy, Debug, Eq, PartialEq)]\npub enum ImageMediaType',
+              '#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]\n#[serde(rename_all = "lowercase")]\npub enum ImageMediaType',
+              1,
+          )
+          text = text.replace(
+              '#[derive(Clone, Debug, Eq, PartialEq)]\npub struct InsertedImagePatch',
+              '#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]\npub struct InsertedImagePatch',
+              1,
+          )
+          text = text.replace(
+              '#[derive(Clone, Debug, Default, Eq, PartialEq)]\npub struct CollaborationPatch',
+              '#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]\npub struct CollaborationPatch',
+              1,
+          )
+          text = text.replace(
+              '#[derive(Clone, Debug, Default, Eq, PartialEq)]\npub struct ApplyReport',
+              '#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]\n#[serde(rename_all = "camelCase")]\npub struct ApplyReport',
+              1,
+          )
+          apply.write_text(text)
+
+          wasm = Path('src/wasm_api.rs')
+          text = wasm.read_text()
+          text = text.replace(
+              'use crate::document_core::{\n',
+              'use crate::collaboration::{\n    apply_collaboration_patch, build_collaboration_manifest, CollaborationManifest,\n    CollaborationPatch,\n};\nuse crate::document_core::{\n',
+              1,
+          )
+          anchor = '''    pub fn new(data: &[u8]) -> Result<HwpDocument, JsValue> {\n        DocumentCore::from_bytes(data)\n            .map(|core| HwpDocument { core })\n            .map_err(|e| e.into())\n    }\n'''
+          addition = anchor + '''\n    /// 현재 Document IR을 안정적 ID 기반 협업 manifest JSON으로 변환한다.\n    #[wasm_bindgen(js_name = getCollaborationManifest)]\n    pub fn get_collaboration_manifest_json(\n        &self,\n        source_fingerprint: &str,\n    ) -> Result<String, JsValue> {\n        let manifest = build_collaboration_manifest(self.document(), source_fingerprint)\n            .map_err(|error| JsValue::from_str(&error.to_string()))?;\n        serde_json::to_string(&manifest)\n            .map_err(|error| JsValue::from_str(&format!("manifest serialization failed: {error}")))\n    }\n\n    /// Yjs에서 계산된 협업 patch JSON을 Document IR에 적용하고 전체 조판 상태를 재구축한다.\n    #[wasm_bindgen(js_name = applyCollaborationPatch)]\n    pub fn apply_collaboration_patch_json(\n        &mut self,\n        manifest_json: &str,\n        patch_json: &str,\n    ) -> Result<String, JsValue> {\n        let manifest: CollaborationManifest = serde_json::from_str(manifest_json)\n            .map_err(|error| JsValue::from_str(&format!("invalid collaboration manifest: {error}")))?;\n        let patch: CollaborationPatch = serde_json::from_str(patch_json)\n            .map_err(|error| JsValue::from_str(&format!("invalid collaboration patch: {error}")))?;\n        let mut document = self.document().clone();\n        let report = apply_collaboration_patch(&mut document, &manifest, &patch)\n            .map_err(|error| JsValue::from_str(&error.to_string()))?;\n        self.core.set_document(document);\n        serde_json::to_string(&report)\n            .map_err(|error| JsValue::from_str(&format!("apply report serialization failed: {error}")))\n    }\n'''
+          if 'get_collaboration_manifest_json' not in text:
+              text = text.replace(anchor, addition, 1)
+          wasm.write_text(text)
+
+          bridge = Path('rhwp-studio/src/core/wasm-bridge.ts')
+          text = bridge.read_text()
+          types_anchor = 'export interface TableCellResizeUpdate {'
+          types = '''export interface CollaborationStableId {\n  value: string;\n}\n\nexport interface CollaborationParagraphManifest {\n  id: CollaborationStableId;\n  text: string;\n  style_ref: number | null;\n}\n\nexport interface CollaborationCellManifest {\n  id: CollaborationStableId;\n  text: string;\n  style_ref: number | null;\n  structure_readonly: boolean;\n}\n\nexport interface CollaborationManifest {\n  schema_version: number;\n  source_fingerprint: string;\n  sections: Array<{\n    id: CollaborationStableId;\n    paragraphs: CollaborationParagraphManifest[];\n    tables: Array<{\n      id: CollaborationStableId;\n      cells: CollaborationCellManifest[];\n      rows: Array<{ id: CollaborationStableId; cell_ids: CollaborationStableId[] }>;\n      structure_readonly: boolean;\n    }>;\n  }>;\n  readonly_objects: Array<{ id: CollaborationStableId; kind: string }>;\n}\n\nexport interface CollaborationTextReplacement {\n  target_id: CollaborationStableId;\n  text: string;\n}\n\nexport interface CollaborationPatch {\n  paragraphs: CollaborationTextReplacement[];\n  cells: CollaborationTextReplacement[];\n  inserted_images: unknown[];\n}\n\nexport interface CollaborationApplyReport {\n  updatedParagraphs: number;\n  updatedCells: number;\n  insertedImages: number;\n}\n\n'''
+          if 'export interface CollaborationManifest' not in text:
+              text = text.replace(types_anchor, types + types_anchor, 1)
+          method_anchor = '''  get documentDigest(): string | null {\n    return this._documentDigest;\n  }\n'''
+          methods = method_anchor + '''\n  getCollaborationManifest(\n    sourceFingerprint = this._documentDigest ?? '',\n  ): CollaborationManifest {\n    if (!this.doc) throw new Error('문서가 로드되지 않았습니다.');\n    if (!sourceFingerprint) throw new Error('협업 source fingerprint가 필요합니다.');\n    const bridge = this.doc as unknown as {\n      getCollaborationManifest(sourceFingerprint: string): string;\n    };\n    return JSON.parse(bridge.getCollaborationManifest(sourceFingerprint)) as CollaborationManifest;\n  }\n\n  applyCollaborationPatch(\n    manifest: CollaborationManifest,\n    patch: CollaborationPatch,\n  ): CollaborationApplyReport {\n    if (!this.doc) throw new Error('문서가 로드되지 않았습니다.');\n    const bridge = this.doc as unknown as {\n      applyCollaborationPatch(manifestJson: string, patchJson: string): string;\n    };\n    return JSON.parse(\n      bridge.applyCollaborationPatch(JSON.stringify(manifest), JSON.stringify(patch)),\n    ) as CollaborationApplyReport;\n  }\n'''
+          if 'getCollaborationManifest(' not in text:
+              text = text.replace(method_anchor, methods, 1)
+          bridge.write_text(text)
+          PY
+          rustfmt --edition 2021 src/collaboration/apply.rs src/wasm_api.rs tests/collaboration_wasm_bridge.rs
+      - name: Verify focused Rust bridge test
+        run: cargo test --test collaboration_wasm_bridge --no-default-features
+      - name: Verify studio TypeScript build
+        working-directory: rhwp-studio
+        run: |
+          npm ci --ignore-scripts --no-audit --no-fund
+          npm run build
+      - name: Commit Task 8A implementation
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add src/collaboration/apply.rs src/wasm_api.rs tests/collaboration_wasm_bridge.rs rhwp-studio/src/core/wasm-bridge.ts
+          git commit -m "feat: expose collaboration manifest and patch bridge"
+          git push origin HEAD:${{ github.head_ref }}
