@@ -5,7 +5,10 @@ import {
   PresenceController,
   colorIndexForUser,
   isPresenceState,
+  type RemoteParticipant,
 } from '../src/collaboration/PresenceController.ts';
+import { createRemoteCursorResolver } from '../src/collaboration/StudioCursorSource.ts';
+import type { CollaborationManifest } from '../src/collaboration/wasm-adapter.ts';
 
 class FakeAwareness {
   readonly clientID = 1;
@@ -98,4 +101,50 @@ test('projects only valid remote participant states and excludes the local clien
   assert.equal(participants[0].clientId, 2);
   assert.equal(participants[0].state.userId, 'remote-1');
   controller.destroy();
+});
+
+test('maps a remote cursor through page offset, page left, and zoom', () => {
+  const manifest: CollaborationManifest = {
+    schema_version: 1,
+    source_fingerprint: 'blake3:fixture',
+    sections: [{
+      id: 'section-1',
+      paragraphs: [{ id: 'paragraph-1', text: '문단', style_ref: 0 }],
+      tables: [],
+    }],
+    readonly_objects: [],
+  };
+  const participant: RemoteParticipant = {
+    clientId: 2,
+    state: {
+      userId: 'remote-1',
+      displayName: '원격 사용자',
+      photoURL: null,
+      colorIndex: 3,
+      targetId: 'paragraph-1',
+      targetKind: 'paragraph',
+      anchorOffset: 1,
+      headOffset: 2,
+      lastActiveAt: '2026-07-25T05:00:00.000Z',
+    },
+  };
+  const resolve = createRemoteCursorResolver(
+    manifest,
+    {
+      getCursorRect: () => ({ pageIndex: 2, x: 10, y: 20, height: 5 }),
+    },
+    {
+      getPageOffset: () => 1_000,
+      getPageLeft: () => 40,
+      getPageWidth: () => 800,
+      getZoom: () => 2,
+      getContentWidth: () => 1_200,
+    },
+  );
+
+  assert.deepEqual(resolve(participant), {
+    left: 60,
+    top: 1_040,
+    height: 10,
+  });
 });
