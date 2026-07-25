@@ -5,9 +5,10 @@ on:
     branches: [devel]
     paths:
       - 'src/collaboration/**'
-      - 'src/wasm_api.rs'
+      - 'src/collaboration_wasm.rs'
+      - 'src/lib.rs'
       - 'tests/collaboration_wasm_bridge.rs'
-      - 'rhwp-studio/src/core/wasm-bridge.ts'
+      - 'rhwp-studio/src/collaboration/wasm-adapter.ts'
       - '.github/workflows/collaboration-wasm-bridge.yml'
 
 permissions:
@@ -23,4 +24,12 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - name: Test collaboration WASM bridge
-        run: cargo test --test collaboration_wasm_bridge --no-default-features
+        run: cargo test --test collaboration_wasm_bridge --no-default-features > collaboration-wasm-bridge.log 2>&1
+      - name: Upload diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: collaboration-wasm-bridge-${{ github.run_id }}
+          path: collaboration-wasm-bridge.log
+          retention-days: 1
+          if-no-files-found: error
