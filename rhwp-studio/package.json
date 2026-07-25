@@ -45,7 +45,7 @@
     "canvaskit-wasm": "^0.41.1",
     "firebase": "12.16.0",
     "pixelmatch": "^7.1.0",
-    "pngjs": "^7.1.0",
+    "pngjs": "7.0.0",
     "y-protocols": "1.0.7",
     "yjs": "13.6.31"
   }
