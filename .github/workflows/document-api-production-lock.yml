@@ -1,0 +1,34 @@
+name: Document API production lock
+
+on:
+  pull_request:
+    branches: [devel]
+    paths:
+      - '.github/workflows/document-api-production-lock.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  lock:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.head_ref }}
+          show-progress: false
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+      - name: Generate lockfile
+        working-directory: services/document-api
+        run: npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+      - name: Commit lockfile
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add services/document-api/package-lock.json
+          if ! git diff --cached --quiet; then
+            git commit -m "chore: lock document API production dependencies"
+            git push origin HEAD:${{ github.head_ref }}
+          fi
