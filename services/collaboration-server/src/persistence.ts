@@ -1,5 +1,7 @@
 import { createHash } from 'node:crypto'
 
+import { encodeStateAsUpdate, type Doc } from 'yjs'
+
 export type SnapshotReason =
   | 'debounce'
   | 'size-threshold'
@@ -31,12 +33,21 @@ export interface SnapshotMetadataStore {
   commit(documentId: string, state: SnapshotDocumentState): Promise<void>
 }
 
+export interface SnapshotRepository {
+  load(documentId: string): Promise<Uint8Array | null>
+  save(
+    documentId: string,
+    update: Uint8Array,
+    reason: SnapshotReason,
+  ): Promise<SnapshotRecord>
+}
+
 export interface SnapshotStoreOptions {
   now?: () => Date
   maxSnapshots?: number
 }
 
-export class SnapshotStore {
+export class SnapshotStore implements SnapshotRepository {
   readonly #now: () => Date
   readonly #maxSnapshots: number
 
@@ -121,6 +132,54 @@ export class SnapshotStore {
     )
 
     return record
+  }
+}
+
+export class YjsSnapshotPersistence {
+  readonly #documents = new Map<string, Doc>()
+
+  constructor(readonly repository: SnapshotRepository) {}
+
+  async load(documentId: string): Promise<Uint8Array | null> {
+    return this.repository.load(documentId)
+  }
+
+  register(documentId: string, document: Doc): void {
+    this.#documents.set(documentId, document)
+  }
+
+  unregister(documentId: string): void {
+    this.#documents.delete(documentId)
+  }
+
+  async save(
+    documentId: string,
+    document: Doc,
+    reason: SnapshotReason,
+  ): Promise<SnapshotRecord> {
+    this.register(documentId, document)
+    return this.repository.save(
+      documentId,
+      encodeStateAsUpdate(document),
+      reason,
+    )
+  }
+
+  async flushForExport(documentId: string): Promise<SnapshotRecord | null> {
+    const document = this.#documents.get(documentId)
+    if (!document) {
+      return null
+    }
+
+    return this.save(documentId, document, 'export')
+  }
+
+  async flushForShutdown(): Promise<SnapshotRecord[]> {
+    const records: SnapshotRecord[] = []
+    for (const [documentId, document] of this.#documents) {
+      records.push(await this.save(documentId, document, 'shutdown'))
+    }
+    return records
   }
 }
 
