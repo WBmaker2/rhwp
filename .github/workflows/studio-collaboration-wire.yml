@@ -83,10 +83,19 @@ jobs:
       - name: Update lockfile and verify studio collaboration
         working-directory: rhwp-studio
         run: |
-          npm install --package-lock-only --ignore-scripts --no-audit --no-fund
-          npm ci --ignore-scripts --no-audit --no-fund
-          npm run test:collaboration
-          npm run build
+          set -o pipefail
+          npm install --package-lock-only --ignore-scripts --no-audit --no-fund 2>&1 | tee studio-wire.log
+          npm ci --ignore-scripts --no-audit --no-fund 2>&1 | tee -a studio-wire.log
+          npm run test:collaboration 2>&1 | tee -a studio-wire.log
+          npm run build 2>&1 | tee -a studio-wire.log
+      - name: Upload diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: studio-wire-${{ github.run_id }}
+          path: rhwp-studio/studio-wire.log
+          retention-days: 1
+          if-no-files-found: error
       - name: Commit runtime wiring and remove one-shot workflows
         run: |
           git config user.name github-actions[bot]
