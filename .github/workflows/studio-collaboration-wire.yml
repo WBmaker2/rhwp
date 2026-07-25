@@ -54,6 +54,9 @@ jobs:
               new TableObjectRenderer(container, canvasView.getVirtualScroll(), true),
             );
           '''
+          # YAML removes ten indentation columns from this script block. Normalize
+          # the Python literal to the actual TypeScript indentation before matching.
+          anchor = anchor.replace('              new ', '      new ').replace('            );', '    );')
           addition = anchor + '''
             (window as any).__rhwpStudioRuntime = {
               wasm,
@@ -64,6 +67,7 @@ jobs:
               viewportManager: canvasView.getViewportManager(),
             };
           '''
+          addition = addition.replace('\n            (window', '\n    (window').replace('\n              ', '\n      ').replace('\n            };', '\n    };')
           if '__rhwpStudioRuntime' not in text:
               if anchor not in text:
                   raise SystemExit('main collaboration runtime anchor not found')
