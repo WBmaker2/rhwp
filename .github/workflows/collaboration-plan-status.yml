@@ -1,0 +1,46 @@
+name: Collaboration plan status
+
+on:
+  pull_request:
+    branches: [devel]
+    paths:
+      - '.github/workflows/collaboration-plan-status.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.head_ref }}
+          show-progress: false
+      - name: Update implementation plan status
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('docs/superpowers/plans/2026-07-24-rhwp-firebase-collaboration-v1.md')
+          text = path.read_text()
+          text = text.replace(
+              '- [ ] Task 7: Firestore and Storage Security Rules',
+              '- [x] Task 7: Firestore and Storage Security Rules',
+          )
+          text = text.replace(
+              '- [x] **Step 5: Commit**\n\n---\n\n### Task 3:',
+              '- [x] **Step 5: Commit**\n- [x] **Step 6: Add nested table-cell readonly classification and HWPX roundtrip preservation regression**\n\n---\n\n### Task 3:',
+          )
+          text = text.replace(
+              "### Task 7: Firestore and Storage Security Rules\n\n- [ ] Implement rules for document membership, owner/editor/viewer capabilities, upload paths, user asset paths, snapshots, and exports.\n- [ ] Add emulator-backed rules tests.",
+              "### Task 7: Firestore and Storage Security Rules\n\n**Files:**\n- Create: `firebase/firebase.json`\n- Create: `firebase/firestore.rules`\n- Create: `firebase/storage.rules`\n- Create: `firebase/firestore.indexes.json`\n- Create: `firebase/tests/rules.test.mjs`\n- Create: `.github/workflows/firebase-rules.yml`\n\n- [x] Define failing Firestore and Storage authorization contracts.\n- [x] Restrict document reads to members and client metadata updates to owner-controlled title fields.\n- [x] Restrict membership and share-link management to the document owner.\n- [x] Deny client writes to parse, snapshot, derived, and export state.\n- [x] Validate owner-only 100–200 MiB HWP source uploads.\n- [x] Validate owner/editor user images by role, size, type, uploader metadata, and create-only semantics.\n- [x] Run Firestore and Storage Emulator tests with locked dependencies.\n\nThe rules suite uses the demo project and Local Emulator Suite only. No Firebase project or production rules were deployed.",
+          )
+          path.write_text(text)
+          PY
+      - name: Commit plan status
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add docs/superpowers/plans/2026-07-24-rhwp-firebase-collaboration-v1.md
+          git commit -m "docs: mark nested preservation and Task 7 complete"
+          git push origin HEAD:${{ github.head_ref }}
