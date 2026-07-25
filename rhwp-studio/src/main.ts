@@ -413,6 +413,15 @@ async function initialize(): Promise<void> {
       new TableObjectRenderer(container, canvasView.getVirtualScroll(), true),
     );
 
+    (window as any).__rhwpStudioRuntime = {
+      wasm,
+      eventBus,
+      inputHandler,
+      scrollContent: document.getElementById('scroll-content')!,
+      virtualScroll: canvasView.getVirtualScroll(),
+      viewportManager: canvasView.getViewportManager(),
+    };
+
     new MenuBar(document.getElementById('menu-bar')!, eventBus, dispatcher, registry, {
       onMenuOpen: (menuName) => {
         if (menuName === 'file') void renderRecentSubmenu();

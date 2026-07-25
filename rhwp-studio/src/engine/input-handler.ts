@@ -659,6 +659,17 @@ export class InputHandler {
     });
   }
 
+  /** 공동 편집 Awareness에 노출할 현재 커서와 선택의 불변 스냅샷. */
+  getCollaborationSelectionSnapshot(): {
+    position: DocumentPosition;
+    selection: { anchor: DocumentPosition; focus: DocumentPosition } | null;
+  } {
+    return {
+      position: this.cursor.getPosition(),
+      selection: this.cursor.getSelection(),
+    };
+  }
+
   /** 클릭 이벤트 처리 — hitTest로 커서 배치 */
   private onClick(e: MouseEvent): void {
     _mouse.onClick.call(this, e);
