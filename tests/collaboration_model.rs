@@ -3,8 +3,9 @@ use rhwp::collaboration::{
     CollaborationPatch, ImageMediaType, InsertedImagePatch, NodeKind, StableId, TextReplacement,
 };
 use rhwp::model::control::{Control, Equation};
-use rhwp::model::document::{Document, Section};
+use rhwp::model::document::{DocInfo, Document, Section};
 use rhwp::model::paragraph::Paragraph;
+use rhwp::model::style::{BorderFill, CharShape, Font, ParaShape, Style, TabDef};
 use rhwp::model::table::{Cell, Table};
 use rhwp::parser::parse_document;
 use rhwp::serializer::hwpx::serialize_hwpx;
@@ -236,6 +237,7 @@ fn sample_document() -> Document {
         col: 0,
         col_span: 1,
         row_span: 1,
+        border_fill_id: 1,
         paragraphs: vec![Paragraph {
             text: "원본 셀".to_string(),
             style_id: 4,
@@ -249,6 +251,7 @@ fn sample_document() -> Document {
         col_count: 1,
         row_sizes: vec![1],
         cells: vec![cell],
+        border_fill_id: 1,
         ..Table::default()
     };
 
@@ -264,11 +267,45 @@ fn sample_document() -> Document {
     };
 
     Document {
+        doc_info: serializable_doc_info(),
         sections: vec![Section {
             paragraphs: vec![body, host],
             ..Section::default()
         }],
         ..Document::default()
+    }
+}
+
+fn serializable_doc_info() -> DocInfo {
+    let font = Font {
+        name: "함초롬바탕".to_string(),
+        ..Font::default()
+    };
+    let char_shape = CharShape {
+        ratios: [100; 7],
+        relative_sizes: [100; 7],
+        base_size: 1_000,
+        ..CharShape::default()
+    };
+    let styles = (0..=4)
+        .map(|index| Style {
+            local_name: format!("테스트 스타일 {index}"),
+            english_name: format!("Test Style {index}"),
+            lang_id: 1_042,
+            para_shape_id: 0,
+            char_shape_id: 0,
+            ..Style::default()
+        })
+        .collect();
+
+    DocInfo {
+        font_faces: (0..7).map(|_| vec![font.clone()]).collect(),
+        border_fills: vec![BorderFill::default()],
+        char_shapes: vec![char_shape],
+        tab_defs: vec![TabDef::default()],
+        para_shapes: vec![ParaShape::default()],
+        styles,
+        ..DocInfo::default()
     }
 }
 
