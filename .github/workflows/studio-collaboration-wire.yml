@@ -92,6 +92,6 @@ jobs:
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
           git add rhwp-studio/package-lock.json rhwp-studio/src/engine/input-handler.ts rhwp-studio/src/main.ts rhwp-studio/index.html
-          git rm .github/workflows/studio-collaboration-wire.yml .github/workflows/studio-collaboration-lock.yml
+          git rm -f --ignore-unmatch .github/workflows/studio-collaboration-wire.yml .github/workflows/studio-collaboration-lock.yml
           git commit -m "feat: wire collaboration into rhwp studio runtime"
           git push origin HEAD:${{ github.head_ref }}
