@@ -1,0 +1,85 @@
+name: Studio collaboration wire
+
+on:
+  pull_request:
+    branches: [devel]
+    paths:
+      - '.github/workflows/studio-collaboration-wire.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  wire:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.head_ref }}
+          show-progress: false
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+      - name: Expose runtime and cursor snapshot
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          input_path = Path('rhwp-studio/src/engine/input-handler.ts')
+          text = input_path.read_text()
+          anchor = '  /** 클릭 이벤트 처리 — hitTest로 커서 배치 */\n'
+          method = '''  /** 공동 편집 Awareness에 노출할 현재 커서와 선택의 불변 스냅샷. */
+          getCollaborationSelectionSnapshot(): {
+            position: DocumentPosition;
+            selection: { anchor: DocumentPosition; focus: DocumentPosition } | null;
+          } {
+            return {
+              position: this.cursor.getPosition(),
+              selection: this.cursor.getSelection(),
+            };
+          }
+
+'''
+          if 'getCollaborationSelectionSnapshot' not in text:
+              text = text.replace(anchor, method + anchor, 1)
+          input_path.write_text(text)
+
+          main_path = Path('rhwp-studio/src/main.ts')
+          text = main_path.read_text()
+          anchor = '''    inputHandler.setPictureObjectRenderer(
+              new TableObjectRenderer(container, canvasView.getVirtualScroll(), true),
+            );
+'''
+          addition = anchor + '''
+            (window as any).__rhwpStudioRuntime = {
+              wasm,
+              eventBus,
+              inputHandler,
+              scrollContent: document.getElementById('scroll-content')!,
+            };
+'''
+          if '__rhwpStudioRuntime' not in text:
+              text = text.replace(anchor, addition, 1)
+          main_path.write_text(text)
+
+          index_path = Path('rhwp-studio/index.html')
+          text = index_path.read_text()
+          anchor = '  <script type="module" src="/src/main.ts"></script>\n'
+          addition = anchor + '  <script type="module" src="/src/collaboration-entry.ts"></script>\n'
+          if 'collaboration-entry.ts' not in text:
+              text = text.replace(anchor, addition, 1)
+          index_path.write_text(text)
+          PY
+      - name: Verify studio collaboration build
+        working-directory: rhwp-studio
+        run: |
+          npm install --ignore-scripts --no-audit --no-fund
+          node --test --import tsx tests/collaboration-*.test.ts
+          npm run build
+      - name: Commit studio runtime wiring
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add rhwp-studio/src/engine/input-handler.ts rhwp-studio/src/main.ts rhwp-studio/index.html
+          git commit -m "feat: wire collaboration into rhwp studio runtime"
+          git push origin HEAD:${{ github.head_ref }}
