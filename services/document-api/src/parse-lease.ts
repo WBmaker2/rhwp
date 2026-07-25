@@ -54,44 +54,49 @@ export class ParseLease {
       throw new RangeError('lease time must be valid')
     }
 
-    return this.store.runTransaction(normalizedDocumentId, (current) => {
-      if (current?.sourceGeneration === normalizedGeneration) {
-        if (current.status === 'ready') {
-          return {
-            state: current,
-            result: {
-              acquired: false,
-              reason: 'already-complete',
-            } as const,
+    return this.store.runTransaction<LeaseResult>(
+      normalizedDocumentId,
+      (current) => {
+        if (current?.sourceGeneration === normalizedGeneration) {
+          if (current.status === 'ready') {
+            return {
+              state: current,
+              result: {
+                acquired: false,
+                reason: 'already-complete',
+              },
+            }
+          }
+
+          const expiresAtMs = current.leaseExpiresAt
+            ? Date.parse(current.leaseExpiresAt)
+            : Number.NaN
+          if (current.status === 'processing' && expiresAtMs > nowMs) {
+            return {
+              state: current,
+              result: {
+                acquired: false,
+                reason: 'already-processing',
+              },
+            }
           }
         }
 
-        const expiresAtMs = current.leaseExpiresAt
-          ? Date.parse(current.leaseExpiresAt)
-          : Number.NaN
-        if (current.status === 'processing' && expiresAtMs > nowMs) {
-          return {
-            state: current,
-            result: {
-              acquired: false,
-              reason: 'already-processing',
-            } as const,
-          }
+        const expiresAt = new Date(
+          nowMs + this.#leaseDurationMs,
+        ).toISOString()
+        return {
+          state: {
+            sourceGeneration: normalizedGeneration,
+            status: 'processing',
+            leaseExpiresAt: expiresAt,
+          },
+          result: {
+            acquired: true,
+            expiresAt,
+          },
         }
-      }
-
-      const expiresAt = new Date(nowMs + this.#leaseDurationMs).toISOString()
-      return {
-        state: {
-          sourceGeneration: normalizedGeneration,
-          status: 'processing',
-          leaseExpiresAt: expiresAt,
-        },
-        result: {
-          acquired: true,
-          expiresAt,
-        } as const,
-      }
-    })
+      },
+    )
   }
 }
