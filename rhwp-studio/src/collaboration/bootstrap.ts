@@ -21,6 +21,14 @@ export interface StudioCollaborationRuntime {
     getCollaborationSelectionSnapshot(): StudioCursorSnapshot;
   };
   scrollContent: HTMLElement;
+  virtualScroll: {
+    getPageOffset(pageIndex: number): number;
+    getPageLeft(pageIndex: number): number;
+    getPageWidth(pageIndex: number): number;
+  };
+  viewportManager: {
+    getZoom(): number;
+  };
 }
 
 export interface CollaborationEnvironment {
@@ -75,18 +83,32 @@ export async function bootstrapStudioCollaboration(
   const geometryCursor = new CursorState(runtime.wasm);
   const layer = new RemoteCursorLayer(
     runtime.scrollContent,
-    createRemoteCursorResolver(manifest, {
-      getCursorRect(position) {
-        geometryCursor.moveTo(position);
-        return geometryCursor.getRect();
+    createRemoteCursorResolver(
+      manifest,
+      {
+        getCursorRect(position) {
+          geometryCursor.moveTo(position);
+          return geometryCursor.getRect();
+        },
       },
-    }),
+      {
+        getPageOffset: (pageIndex) => runtime.virtualScroll.getPageOffset(pageIndex),
+        getPageLeft: (pageIndex) => runtime.virtualScroll.getPageLeft(pageIndex),
+        getPageWidth: (pageIndex) => runtime.virtualScroll.getPageWidth(pageIndex),
+        getZoom: () => runtime.viewportManager.getZoom(),
+        getContentWidth: () => runtime.scrollContent.clientWidth,
+      },
+    ),
   );
 
-  const unsubscribeParticipants = controller.subscribeParticipants((participants) => {
+  const renderParticipants = (participants: Parameters<PresenceView['renderParticipants']>[0]): void => {
     view.renderParticipants(participants);
     layer.render(participants);
-  });
+  };
+  const unsubscribeParticipants = controller.subscribeParticipants(renderParticipants);
+  const rerender = (): void => layer.render(controller.getRemoteParticipants());
+  const unsubscribeZoom = runtime.eventBus.on('zoom-changed', rerender);
+  const unsubscribeView = runtime.eventBus.on('document-view-changed', rerender);
 
   try {
     view.setConnected(await controller.connect());
@@ -94,6 +116,8 @@ export async function bootstrapStudioCollaboration(
     view.setError(error);
     window.clearInterval(cursorTimer);
     unsubscribeParticipants();
+    unsubscribeZoom();
+    unsubscribeView();
     layer.destroy();
     controller.destroy();
     throw error;
@@ -102,6 +126,8 @@ export async function bootstrapStudioCollaboration(
   return () => {
     window.clearInterval(cursorTimer);
     unsubscribeParticipants();
+    unsubscribeZoom();
+    unsubscribeView();
     layer.destroy();
     view.destroy();
     controller.destroy();
