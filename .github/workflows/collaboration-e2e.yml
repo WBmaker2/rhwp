@@ -12,6 +12,7 @@ on:
       - 'src/collaboration_wasm.rs'
       - 'tests/collaboration_nested_objects.rs'
       - 'tests/collaboration_wasm_bridge.rs'
+      - 'tests/collaboration_end_to_end.rs'
       - '.github/workflows/collaboration-e2e.yml'
 
 permissions:
@@ -41,9 +42,22 @@ jobs:
       - name: Verify process-level collaboration recovery flow
         working-directory: services/e2e
         run: |
+          set -o pipefail
           npm ci --ignore-scripts --no-audit --no-fund
-          npm test
-      - name: Verify HWPX nested readonly preservation and WASM bridge
+          npm test 2>&1 | tee collaboration-e2e.log
+      - name: Verify HWPX export and readonly preservation
         run: |
-          cargo test --test collaboration_nested_objects --no-default-features
-          cargo test --test collaboration_wasm_bridge --no-default-features
+          set -o pipefail
+          cargo test --test collaboration_nested_objects --no-default-features 2>&1 | tee -a services/e2e/collaboration-e2e.log
+          cargo test --test collaboration_wasm_bridge --no-default-features 2>&1 | tee -a services/e2e/collaboration-e2e.log
+          if test -f tests/collaboration_end_to_end.rs; then
+            cargo test --test collaboration_end_to_end --no-default-features 2>&1 | tee -a services/e2e/collaboration-e2e.log
+          fi
+      - name: Upload diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: collaboration-e2e-${{ github.run_id }}
+          path: services/e2e/collaboration-e2e.log
+          retention-days: 1
+          if-no-files-found: error
