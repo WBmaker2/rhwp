@@ -1,0 +1,32 @@
+name: Firebase rules
+
+on:
+  pull_request:
+    branches: [devel]
+    paths:
+      - 'firebase/**'
+      - '.github/workflows/firebase-rules.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          show-progress: false
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+      - name: Install dependencies
+        working-directory: firebase
+        run: npm install --ignore-scripts --no-audit --no-fund
+      - name: Test Firestore and Storage rules
+        working-directory: firebase
+        run: npm run test:rules
