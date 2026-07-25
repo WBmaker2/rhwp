@@ -1,0 +1,49 @@
+name: Collaboration recovery E2E
+
+on:
+  pull_request:
+    branches: [devel]
+    paths:
+      - 'services/e2e/**'
+      - 'services/collaboration-server/src/**'
+      - 'services/document-api/src/**'
+      - 'firebase/**'
+      - 'src/collaboration/**'
+      - 'src/collaboration_wasm.rs'
+      - 'tests/collaboration_nested_objects.rs'
+      - 'tests/collaboration_wasm_bridge.rs'
+      - '.github/workflows/collaboration-e2e.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          show-progress: false
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Verify Firebase authorization contracts in emulators
+        working-directory: firebase
+        run: |
+          npm ci --ignore-scripts --no-audit --no-fund
+          npm run test:rules
+      - name: Verify process-level collaboration recovery flow
+        working-directory: services/e2e
+        run: |
+          npm ci --ignore-scripts --no-audit --no-fund
+          npm test
+      - name: Verify HWPX nested readonly preservation and WASM bridge
+        run: |
+          cargo test --test collaboration_nested_objects --no-default-features
+          cargo test --test collaboration_wasm_bridge --no-default-features
