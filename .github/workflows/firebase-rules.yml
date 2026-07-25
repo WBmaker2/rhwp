@@ -8,7 +8,7 @@ on:
       - '.github/workflows/firebase-rules.yml'
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   test:
@@ -16,7 +16,6 @@ jobs:
     steps:
       - uses: actions/checkout@v5
         with:
-          ref: ${{ github.head_ref }}
           show-progress: false
       - uses: actions/setup-java@v4
         with:
@@ -25,18 +24,15 @@ jobs:
       - uses: actions/setup-node@v5
         with:
           node-version: '22'
+          cache: npm
+          cache-dependency-path: firebase/package-lock.json
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/firebase/emulators
+          key: firebase-emulators-${{ runner.os }}-${{ hashFiles('firebase/package-lock.json') }}
       - name: Install dependencies
         working-directory: firebase
-        run: npm install --ignore-scripts --no-audit --no-fund
+        run: npm ci --ignore-scripts --no-audit --no-fund
       - name: Test Firestore and Storage rules
         working-directory: firebase
         run: npm run test:rules
-      - name: Commit generated lockfile
-        run: |
-          git config user.name github-actions[bot]
-          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git add firebase/package-lock.json
-          if ! git diff --cached --quiet; then
-            git commit -m "chore: lock Firebase rules dependencies"
-            git push origin HEAD:${{ github.head_ref }}
-          fi
