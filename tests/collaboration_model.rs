@@ -6,6 +6,8 @@ use rhwp::model::control::{Control, Equation};
 use rhwp::model::document::{Document, Section};
 use rhwp::model::paragraph::Paragraph;
 use rhwp::model::table::{Cell, Table};
+use rhwp::parser::parse_document;
+use rhwp::serializer::hwpx::serialize_hwpx;
 
 #[test]
 fn stable_id_is_deterministic_for_same_source_and_path() {
@@ -137,6 +139,70 @@ fn apply_inserts_resolved_image_at_paragraph_anchor() {
     assert_eq!(document.bin_data_content.len(), 1);
     assert_eq!(document.bin_data_content[0].extension, "png");
     assert_eq!(document.bin_data_content[0].data.load(), image_bytes);
+}
+
+#[test]
+fn collaboration_patch_survives_hwpx_roundtrip() {
+    let mut document = sample_document();
+    let manifest = build_collaboration_manifest(&document, "sha256:fixture").unwrap();
+    let paragraph_id = manifest.sections[0].paragraphs[0].id.clone();
+    let cell_id = manifest.sections[0].tables[0].cells[0].id.clone();
+    let image_bytes = test_png();
+    let patch = CollaborationPatch {
+        paragraphs: vec![TextReplacement {
+            target_id: paragraph_id.clone(),
+            text: "왕복 본문".to_string(),
+        }],
+        cells: vec![TextReplacement {
+            target_id: cell_id,
+            text: "왕복 셀".to_string(),
+        }],
+        inserted_images: vec![InsertedImagePatch {
+            id: StableId::for_node("sha256:fixture", NodeKind::Image, &[0, 0, 0]),
+            anchor_paragraph_id: paragraph_id,
+            asset_path: "documents/doc-1/assets/user/image-1/pixel.png".to_string(),
+            bytes: image_bytes.clone(),
+            media_type: ImageMediaType::Png,
+            width: 2_400,
+            height: 1_200,
+            natural_width_px: 1,
+            natural_height_px: 1,
+            description: "왕복 이미지".to_string(),
+        }],
+    };
+
+    apply_collaboration_patch(&mut document, &manifest, &patch).unwrap();
+    let hwpx = serialize_hwpx(&document).expect("serialize patched HWPX");
+    let reparsed = parse_document(&hwpx).expect("parse serialized HWPX");
+
+    assert_eq!(reparsed.sections[0].paragraphs[0].text, "왕복 본문");
+
+    let table = reparsed.sections[0]
+        .paragraphs
+        .iter()
+        .flat_map(|paragraph| paragraph.controls.iter())
+        .find_map(|control| match control {
+            Control::Table(table) => Some(table.as_ref()),
+            _ => None,
+        })
+        .expect("expected round-tripped table");
+    assert_eq!(table.cells[0].paragraphs[0].text, "왕복 셀");
+
+    let picture = reparsed.sections[0]
+        .paragraphs
+        .iter()
+        .flat_map(|paragraph| paragraph.controls.iter())
+        .find_map(|control| match control {
+            Control::Picture(picture) => Some(picture.as_ref()),
+            _ => None,
+        })
+        .expect("expected round-tripped picture");
+    assert_eq!(picture.common.width, 2_400);
+    assert_eq!(picture.common.height, 1_200);
+    assert_eq!(picture.common.description, "왕복 이미지");
+    assert!(reparsed.bin_data_content.iter().any(|content| {
+        content.extension.eq_ignore_ascii_case("png") && content.data.load() == image_bytes
+    }));
 }
 
 #[test]
