@@ -16,6 +16,7 @@ pub enum CollaborationError {
     EmptySourceFingerprint,
     ReadonlyTarget(StableId),
     UnknownTarget(StableId),
+    InvalidImage { image_id: StableId, reason: String },
 }
 
 impl fmt::Display for CollaborationError {
@@ -33,6 +34,9 @@ impl fmt::Display for CollaborationError {
             }
             Self::UnknownTarget(target_id) => {
                 write!(formatter, "unknown collaboration target: {}", target_id.0)
+            }
+            Self::InvalidImage { image_id, reason } => {
+                write!(formatter, "invalid collaboration image {}: {reason}", image_id.0)
             }
         }
     }
@@ -127,10 +131,14 @@ fn import_table(table: &Table, source_fingerprint: &str, path: &[u32]) -> TableM
             cell_path.push(cell_index as u32);
             let cell_id = StableId::for_node(source_fingerprint, NodeKind::Cell, &cell_path);
             cell_ids.push(cell_id.clone());
-
             cells.push(CellManifest {
                 id: cell_id,
-                text: join_paragraph_text(&cell.paragraphs),
+                text: cell
+                    .paragraphs
+                    .iter()
+                    .map(|paragraph| paragraph.text.as_str())
+                    .collect::<Vec<_>>()
+                    .join("\n"),
                 style_ref: cell
                     .paragraphs
                     .first()
@@ -153,37 +161,17 @@ fn import_table(table: &Table, source_fingerprint: &str, path: &[u32]) -> TableM
     }
 }
 
-fn join_paragraph_text(paragraphs: &[Paragraph]) -> String {
-    paragraphs
-        .iter()
-        .map(|paragraph| paragraph.text.as_str())
-        .collect::<Vec<_>>()
-        .join("\n")
-}
-
 fn readonly_control_kind(control: &Control) -> &'static str {
     match control {
-        Control::SectionDef(_) => "section_definition",
-        Control::ColumnDef(_) => "column_definition",
-        Control::Table(_) => "table",
         Control::Shape(_) => "shape",
         Control::Picture(_) => "picture",
+        Control::Equation(_) => "equation",
         Control::Header(_) => "header",
         Control::Footer(_) => "footer",
         Control::Footnote(_) => "footnote",
         Control::Endnote(_) => "endnote",
-        Control::AutoNumber(_) => "auto_number",
-        Control::NewNumber(_) => "new_number",
-        Control::PageNumberPos(_) => "page_number_position",
-        Control::Bookmark(_) => "bookmark",
-        Control::Hyperlink(_) => "hyperlink",
-        Control::Ruby(_) => "ruby",
-        Control::CharOverlap(_) => "character_overlap",
-        Control::PageHide(_) => "page_hide",
-        Control::HiddenComment(_) => "hidden_comment",
-        Control::Equation(_) => "equation",
-        Control::Field(_) => "field",
         Control::Form(_) => "form",
         Control::Unknown(_) => "unknown",
+        _ => "control",
     }
 }
