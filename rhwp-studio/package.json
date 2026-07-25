@@ -38,12 +38,12 @@
     "serialize-javascript": "7.0.5"
   },
   "dependencies": {
-    "@hocuspocus/provider": "4.0.3",
+    "@hocuspocus/provider": "4.4.0",
     "@noble/hashes": "^2.2.0",
     "canvaskit-wasm": "^0.41.1",
     "firebase": "12.16.0",
     "pixelmatch": "^7.1.0",
     "pngjs": "^7.0.0",
-    "yjs": "13.6.27"
+    "yjs": "13.6.31"
   }
 }
