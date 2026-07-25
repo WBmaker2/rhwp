@@ -23,13 +23,18 @@ export interface CollaborationEventPort {
   emit(event: string): void;
 }
 
+export interface RhwpYjsAdapterOptions {
+  readOnly?: boolean;
+}
+
 export class RhwpYjsAdapter {
   private manifest: CollaborationManifest | null = null;
   private initialized = false;
   private applyingRemote = false;
+  private readonly readOnly: boolean;
 
   private readonly onDocumentChanged = (): void => {
-    if (!this.initialized || this.applyingRemote || !this.manifest) return;
+    if (this.readOnly || !this.initialized || this.applyingRemote || !this.manifest) return;
     const current = this.bridge.getManifest(this.manifest.source_fingerprint);
     this.document.transact(() => this.writeManifestText(current), LOCAL_COLLABORATION_ORIGIN);
   };
@@ -62,14 +67,17 @@ export class RhwpYjsAdapter {
     private readonly document: Y.Doc,
     private readonly bridge: CollaborationWasmPort,
     private readonly events: CollaborationEventPort,
-  ) {}
+    options: RhwpYjsAdapterOptions = {},
+  ) {
+    this.readOnly = options.readOnly === true;
+  }
 
   initialize(manifest: CollaborationManifest): void {
     if (this.initialized) this.destroy();
     this.manifest = manifest;
     this.document.transact(() => this.writeManifestText(manifest), INITIALIZE_ORIGIN);
     this.document.on('afterTransaction', this.onAfterTransaction);
-    this.events.on('document-changed', this.onDocumentChanged);
+    if (!this.readOnly) this.events.on('document-changed', this.onDocumentChanged);
     this.initialized = true;
   }
 
