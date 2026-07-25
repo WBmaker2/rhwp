@@ -1,4 +1,5 @@
 import { Server } from '@hocuspocus/server'
+import type { Doc } from 'yjs'
 
 import {
   verifyConnection,
@@ -7,6 +8,10 @@ import {
   type TokenVerifier,
 } from './auth.js'
 import { ParticipantRegistry } from './participants.js'
+import {
+  type SnapshotRecord,
+  YjsSnapshotPersistence,
+} from './persistence.js'
 
 export class ParticipantLimitError extends Error {
   readonly code = 'participant-limit'
@@ -22,6 +27,7 @@ export interface CollaborationServerDependencies {
   tokenVerifier: TokenVerifier
   membershipStore: MembershipStore
   participants?: ParticipantRegistry
+  persistence?: YjsSnapshotPersistence
 }
 
 export interface AuthenticateHookInput {
@@ -33,21 +39,41 @@ export interface AuthenticateHookInput {
   }
 }
 
+export interface DocumentHookInput {
+  documentName: string
+  document: Doc
+}
+
+export interface LoadDocumentHookInput {
+  documentName: string
+}
+
 export interface DisconnectHookInput {
   documentName: string
   socketId: string
   context: AuthorizedConnection | undefined
 }
 
+export interface UnloadDocumentHookInput {
+  documentName: string
+}
+
 export interface CollaborationHooks {
   onAuthenticate(input: AuthenticateHookInput): Promise<AuthorizedConnection>
-  onDisconnect(input: DisconnectHookInput): void
+  onLoadDocument(input: LoadDocumentHookInput): Promise<Uint8Array | undefined>
+  afterLoadDocument(input: DocumentHookInput): void
+  onStoreDocument(input: DocumentHookInput): Promise<SnapshotRecord | undefined>
+  onDisconnect(input: DisconnectHookInput): Promise<void>
+  afterUnloadDocument(input: UnloadDocumentHookInput): void
+  onDestroy(): Promise<void>
+  flushForExport(documentId: string): Promise<SnapshotRecord | null>
 }
 
 export function createCollaborationHooks(
   dependencies: CollaborationServerDependencies,
 ): CollaborationHooks {
   const participants = dependencies.participants ?? new ParticipantRegistry()
+  const persistence = dependencies.persistence
 
   return {
     async onAuthenticate(input) {
@@ -71,7 +97,23 @@ export function createCollaborationHooks(
       return authorized
     },
 
-    onDisconnect(input) {
+    async onLoadDocument(input) {
+      return (await persistence?.load(input.documentName)) ?? undefined
+    },
+
+    afterLoadDocument(input) {
+      persistence?.register(input.documentName, input.document)
+    },
+
+    async onStoreDocument(input) {
+      if (!persistence) {
+        return undefined
+      }
+
+      return persistence.save(input.documentName, input.document, 'debounce')
+    },
+
+    async onDisconnect(input) {
       if (!input.context) {
         return
       }
@@ -81,6 +123,21 @@ export function createCollaborationHooks(
         input.context.userId,
         input.socketId,
       )
+      if (participants.uniqueUsers(input.context.documentId) === 0) {
+        await persistence?.flush(input.context.documentId, 'last-user')
+      }
+    },
+
+    afterUnloadDocument(input) {
+      persistence?.unregister(input.documentName)
+    },
+
+    async onDestroy() {
+      await persistence?.flushForShutdown()
+    },
+
+    async flushForExport(documentId) {
+      return (await persistence?.flushForExport(documentId)) ?? null
     },
   }
 }
@@ -115,12 +172,32 @@ export function createCollaborationServer(
       })
     },
 
+    async onLoadDocument({ documentName }) {
+      return hooks.onLoadDocument({ documentName })
+    },
+
+    async afterLoadDocument({ documentName, document }) {
+      hooks.afterLoadDocument({ documentName, document })
+    },
+
+    async onStoreDocument({ documentName, document }) {
+      return hooks.onStoreDocument({ documentName, document })
+    },
+
     async onDisconnect({ documentName, socketId, context }) {
-      hooks.onDisconnect({
+      await hooks.onDisconnect({
         documentName,
         socketId,
         context,
       })
+    },
+
+    async afterUnloadDocument({ documentName }) {
+      hooks.afterUnloadDocument({ documentName })
+    },
+
+    async onDestroy() {
+      await hooks.onDestroy()
     },
   })
 }
