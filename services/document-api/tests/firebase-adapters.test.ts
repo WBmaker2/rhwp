@@ -9,21 +9,33 @@ import {
 
 class FakeTransaction {
   readonly writes: Array<{ path: string; value: unknown }> = []
-  constructor(private readonly data: Map<string, unknown>) {}
-  async get(reference: { path: string }): Promise<{ exists: boolean; data(): unknown }> {
+  constructor(private readonly data: Map<string, Record<string, unknown>>) {}
+  async get(reference: { path: string }): Promise<{
+    exists: boolean
+    get(field: string): unknown
+  }> {
+    const value = this.data.get(reference.path)
     return {
-      exists: this.data.has(reference.path),
-      data: () => this.data.get(reference.path),
+      exists: value !== undefined,
+      get: (field) => value?.[field],
     }
   }
-  set(reference: { path: string }, value: unknown): void {
-    this.data.set(reference.path, value)
+  set(
+    reference: { path: string },
+    value: Record<string, unknown>,
+    options: { merge: boolean },
+  ): void {
+    assert.equal(options.merge, true)
+    this.data.set(reference.path, {
+      ...(this.data.get(reference.path) ?? {}),
+      ...value,
+    })
     this.writes.push({ path: reference.path, value })
   }
 }
 
 class FakeFirestore {
-  readonly data = new Map<string, unknown>()
+  readonly data = new Map<string, Record<string, unknown>>()
   doc(path: string): { path: string } { return { path } }
   async runTransaction<T>(operation: (transaction: FakeTransaction) => Promise<T>): Promise<T> {
     return operation(new FakeTransaction(this.data))
@@ -34,7 +46,7 @@ test('parse lease store performs the callback inside one Firestore transaction',
   const firestore = new FakeFirestore()
   const store = new FirestoreParseLeaseStore(firestore as never)
 
-  const result = await store.runTransaction('doc-1', async (state) => {
+  const result = await store.runTransaction('doc-1', (state) => {
     assert.equal(state, null)
     return {
       state: {
