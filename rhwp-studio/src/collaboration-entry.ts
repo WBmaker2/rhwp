@@ -3,6 +3,7 @@ import {
   collaborationEnvironmentFromWindow,
   type StudioCollaborationRuntime,
 } from './collaboration/bootstrap';
+import { CollaborationSessionManager } from './collaboration/collaboration-session-manager';
 
 declare global {
   interface Window {
@@ -20,8 +21,12 @@ async function start(
 ): Promise<void> {
   try {
     const runtime = await waitForRuntime();
-    const destroy = await bootstrapStudioCollaboration(runtime, config);
-    window.addEventListener('beforeunload', destroy, { once: true });
+    const manager = new CollaborationSessionManager({
+      runtime,
+      environment: config,
+      bootstrap: bootstrapStudioCollaboration,
+    });
+    await manager.start();
   } catch (error) {
     console.error('[Collaboration] bootstrap failed', error);
   }

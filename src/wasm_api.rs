@@ -744,13 +744,6 @@ impl HwpDocument {
         Ok(())
     }
 
-    /// 현재 문서를 협업 manifest JSON 문자열로 반환한다.
-    #[wasm_bindgen(js_name = getCollaborationManifest)]
-    pub fn get_collaboration_manifest(&self, source_fingerprint: &str) -> Result<String, JsValue> {
-        self.get_collaboration_manifest_native(source_fingerprint)
-            .map_err(|error| JsValue::from_str(&error.to_string()))
-    }
-
     #[wasm_bindgen(js_name = getCollaborationParagraphText)]
     pub fn get_collaboration_paragraph_text(
         &self,

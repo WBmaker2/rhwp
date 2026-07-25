@@ -86,11 +86,7 @@ impl From<CollaborationPatchDto> for CollaborationPatch {
         Self {
             paragraphs: value.paragraphs.into_iter().map(Into::into).collect(),
             cells: value.cells.into_iter().map(Into::into).collect(),
-            inserted_images: value
-                .inserted_images
-                .into_iter()
-                .map(Into::into)
-                .collect(),
+            inserted_images: value.inserted_images.into_iter().map(Into::into).collect(),
         }
     }
 }
@@ -116,8 +112,10 @@ impl HwpDocument {
         manifest_json: &str,
         patch_json: &str,
     ) -> Result<String, JsValue> {
-        let manifest: CollaborationManifest = serde_json::from_str(manifest_json)
-            .map_err(|error| JsValue::from_str(&format!("invalid collaboration manifest: {error}")))?;
+        let manifest: CollaborationManifest =
+            serde_json::from_str(manifest_json).map_err(|error| {
+                JsValue::from_str(&format!("invalid collaboration manifest: {error}"))
+            })?;
         let patch: CollaborationPatchDto = serde_json::from_str(patch_json)
             .map_err(|error| JsValue::from_str(&format!("invalid collaboration patch: {error}")))?;
         let mut document = self.document().clone();

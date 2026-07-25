@@ -911,6 +911,7 @@ async function initializeDocument(
 
     // #2527: 자동 보정을 하지 않으므로 로드 직후 문서는 항상 clean.
     documentState.markClean('document-initialized');
+    eventBus.emit('collaboration-document-ready');
   } catch (error) {
     console.error('[initDoc] 오류:', error);
     if (window.innerWidth < 768) alert(`초기화 오류: ${error}`);
@@ -1139,6 +1140,7 @@ async function createNewDocument(): Promise<void> {
   const msg = sbMessage();
   try {
     msg.textContent = '새 문서 생성 중...';
+    eventBus.emit('collaboration-document-replacing');
     const docInfo = wasm.createNewDocument();
     prepareCanvasRendererDocument();
     await autosaveManager.beginDocument(
@@ -1182,6 +1184,7 @@ eventBus.on('open-document-bytes', async (payload) => {
       notifyDone(false, '문서 열기가 취소되었습니다.');
       return;
     }
+    eventBus.emit('collaboration-document-replacing');
     await loadBytes(data.bytes, data.fileName, data.fileHandle);
     notifyDone(true);
   } catch (error) {

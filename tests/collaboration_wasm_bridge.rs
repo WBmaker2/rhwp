@@ -38,8 +38,7 @@ fn wasm_bridge_builds_manifest_and_applies_json_text_patch() {
     let report_json = document
         .apply_collaboration_patch_json(&manifest_json, &patch_json)
         .expect("apply collaboration patch");
-    let report: serde_json::Value =
-        serde_json::from_str(&report_json).expect("parse apply report");
+    let report: serde_json::Value = serde_json::from_str(&report_json).expect("parse apply report");
 
     assert_eq!(report["updatedParagraphs"], 1);
     let updated_manifest: CollaborationManifest = serde_json::from_str(
