@@ -66,8 +66,44 @@ jobs:
               'use crate::collaboration::{\n    apply_collaboration_patch, build_collaboration_manifest, CollaborationManifest,\n    CollaborationPatch,\n};\nuse crate::document_core::{\n',
               1,
           )
-          anchor = '''    pub fn new(data: &[u8]) -> Result<HwpDocument, JsValue> {\n        DocumentCore::from_bytes(data)\n            .map(|core| HwpDocument { core })\n            .map_err(|e| e.into())\n    }\n'''
-          addition = anchor + '''\n    /// 현재 Document IR을 안정적 ID 기반 협업 manifest JSON으로 변환한다.\n    #[wasm_bindgen(js_name = getCollaborationManifest)]\n    pub fn get_collaboration_manifest_json(\n        &self,\n        source_fingerprint: &str,\n    ) -> Result<String, JsValue> {\n        let manifest = build_collaboration_manifest(self.document(), source_fingerprint)\n            .map_err(|error| JsValue::from_str(&error.to_string()))?;\n        serde_json::to_string(&manifest)\n            .map_err(|error| JsValue::from_str(&format!("manifest serialization failed: {error}")))\n    }\n\n    /// Yjs에서 계산된 협업 patch JSON을 Document IR에 적용하고 전체 조판 상태를 재구축한다.\n    #[wasm_bindgen(js_name = applyCollaborationPatch)]\n    pub fn apply_collaboration_patch_json(\n        &mut self,\n        manifest_json: &str,\n        patch_json: &str,\n    ) -> Result<String, JsValue> {\n        let manifest: CollaborationManifest = serde_json::from_str(manifest_json)\n            .map_err(|error| JsValue::from_str(&format!("invalid collaboration manifest: {error}")))?;\n        let patch: CollaborationPatch = serde_json::from_str(patch_json)\n            .map_err(|error| JsValue::from_str(&format!("invalid collaboration patch: {error}")))?;\n        let mut document = self.document().clone();\n        let report = apply_collaboration_patch(&mut document, &manifest, &patch)\n            .map_err(|error| JsValue::from_str(&error.to_string()))?;\n        self.core.set_document(document);\n        serde_json::to_string(&report)\n            .map_err(|error| JsValue::from_str(&format!("apply report serialization failed: {error}")))\n    }\n'''
+          anchor = '''    pub fn new(data: &[u8]) -> Result<HwpDocument, JsValue> {
+        DocumentCore::from_bytes(data)
+            .map(|core| HwpDocument { core })
+            .map_err(|e| e.into())
+    }
+'''
+          addition = anchor + '''
+    /// 현재 Document IR을 안정적 ID 기반 협업 manifest JSON으로 변환한다.
+    #[wasm_bindgen(js_name = getCollaborationManifest)]
+    pub fn get_collaboration_manifest_json(
+        &self,
+        source_fingerprint: &str,
+    ) -> Result<String, JsValue> {
+        let manifest = build_collaboration_manifest(self.document(), source_fingerprint)
+            .map_err(|error| JsValue::from_str(&error.to_string()))?;
+        serde_json::to_string(&manifest)
+            .map_err(|error| JsValue::from_str(&format!("manifest serialization failed: {error}")))
+    }
+
+    /// Yjs에서 계산된 협업 patch JSON을 Document IR에 적용하고 전체 조판 상태를 재구축한다.
+    #[wasm_bindgen(js_name = applyCollaborationPatch)]
+    pub fn apply_collaboration_patch_json(
+        &mut self,
+        manifest_json: &str,
+        patch_json: &str,
+    ) -> Result<String, JsValue> {
+        let manifest: CollaborationManifest = serde_json::from_str(manifest_json)
+            .map_err(|error| JsValue::from_str(&format!("invalid collaboration manifest: {error}")))?;
+        let patch: CollaborationPatch = serde_json::from_str(patch_json)
+            .map_err(|error| JsValue::from_str(&format!("invalid collaboration patch: {error}")))?;
+        let mut document = self.document().clone();
+        let report = apply_collaboration_patch(&mut document, &manifest, &patch)
+            .map_err(|error| JsValue::from_str(&error.to_string()))?;
+        self.core.set_document(document);
+        serde_json::to_string(&report)
+            .map_err(|error| JsValue::from_str(&format!("apply report serialization failed: {error}")))
+    }
+'''
           if 'get_collaboration_manifest_json' not in text:
               text = text.replace(anchor, addition, 1)
           wasm.write_text(text)
@@ -75,11 +111,86 @@ jobs:
           bridge = Path('rhwp-studio/src/core/wasm-bridge.ts')
           text = bridge.read_text()
           types_anchor = 'export interface TableCellResizeUpdate {'
-          types = '''export interface CollaborationStableId {\n  value: string;\n}\n\nexport interface CollaborationParagraphManifest {\n  id: CollaborationStableId;\n  text: string;\n  style_ref: number | null;\n}\n\nexport interface CollaborationCellManifest {\n  id: CollaborationStableId;\n  text: string;\n  style_ref: number | null;\n  structure_readonly: boolean;\n}\n\nexport interface CollaborationManifest {\n  schema_version: number;\n  source_fingerprint: string;\n  sections: Array<{\n    id: CollaborationStableId;\n    paragraphs: CollaborationParagraphManifest[];\n    tables: Array<{\n      id: CollaborationStableId;\n      cells: CollaborationCellManifest[];\n      rows: Array<{ id: CollaborationStableId; cell_ids: CollaborationStableId[] }>;\n      structure_readonly: boolean;\n    }>;\n  }>;\n  readonly_objects: Array<{ id: CollaborationStableId; kind: string }>;\n}\n\nexport interface CollaborationTextReplacement {\n  target_id: CollaborationStableId;\n  text: string;\n}\n\nexport interface CollaborationPatch {\n  paragraphs: CollaborationTextReplacement[];\n  cells: CollaborationTextReplacement[];\n  inserted_images: unknown[];\n}\n\nexport interface CollaborationApplyReport {\n  updatedParagraphs: number;\n  updatedCells: number;\n  insertedImages: number;\n}\n\n'''
+          types = '''export type CollaborationStableId = string;
+
+export interface CollaborationParagraphManifest {
+  id: CollaborationStableId;
+  text: string;
+  style_ref: number | null;
+}
+
+export interface CollaborationCellManifest {
+  id: CollaborationStableId;
+  text: string;
+  style_ref: number | null;
+  structure_readonly: boolean;
+}
+
+export interface CollaborationManifest {
+  schema_version: number;
+  source_fingerprint: string;
+  sections: Array<{
+    id: CollaborationStableId;
+    paragraphs: CollaborationParagraphManifest[];
+    tables: Array<{
+      id: CollaborationStableId;
+      cells: CollaborationCellManifest[];
+      rows: Array<{ id: CollaborationStableId; cell_ids: CollaborationStableId[] }>;
+      structure_readonly: boolean;
+    }>;
+  }>;
+  readonly_objects: Array<{ id: CollaborationStableId; kind: string }>;
+}
+
+export interface CollaborationTextReplacement {
+  target_id: CollaborationStableId;
+  text: string;
+}
+
+export interface CollaborationPatch {
+  paragraphs: CollaborationTextReplacement[];
+  cells: CollaborationTextReplacement[];
+  inserted_images: unknown[];
+}
+
+export interface CollaborationApplyReport {
+  updatedParagraphs: number;
+  updatedCells: number;
+  insertedImages: number;
+}
+
+'''
           if 'export interface CollaborationManifest' not in text:
               text = text.replace(types_anchor, types + types_anchor, 1)
-          method_anchor = '''  get documentDigest(): string | null {\n    return this._documentDigest;\n  }\n'''
-          methods = method_anchor + '''\n  getCollaborationManifest(\n    sourceFingerprint = this._documentDigest ?? '',\n  ): CollaborationManifest {\n    if (!this.doc) throw new Error('문서가 로드되지 않았습니다.');\n    if (!sourceFingerprint) throw new Error('협업 source fingerprint가 필요합니다.');\n    const bridge = this.doc as unknown as {\n      getCollaborationManifest(sourceFingerprint: string): string;\n    };\n    return JSON.parse(bridge.getCollaborationManifest(sourceFingerprint)) as CollaborationManifest;\n  }\n\n  applyCollaborationPatch(\n    manifest: CollaborationManifest,\n    patch: CollaborationPatch,\n  ): CollaborationApplyReport {\n    if (!this.doc) throw new Error('문서가 로드되지 않았습니다.');\n    const bridge = this.doc as unknown as {\n      applyCollaborationPatch(manifestJson: string, patchJson: string): string;\n    };\n    return JSON.parse(\n      bridge.applyCollaborationPatch(JSON.stringify(manifest), JSON.stringify(patch)),\n    ) as CollaborationApplyReport;\n  }\n'''
+          method_anchor = '''  get documentDigest(): string | null {
+    return this._documentDigest;
+  }
+'''
+          methods = method_anchor + '''
+  getCollaborationManifest(
+    sourceFingerprint = this._documentDigest ?? '',
+  ): CollaborationManifest {
+    if (!this.doc) throw new Error('문서가 로드되지 않았습니다.');
+    if (!sourceFingerprint) throw new Error('협업 source fingerprint가 필요합니다.');
+    const bridge = this.doc as unknown as {
+      getCollaborationManifest(sourceFingerprint: string): string;
+    };
+    return JSON.parse(bridge.getCollaborationManifest(sourceFingerprint)) as CollaborationManifest;
+  }
+
+  applyCollaborationPatch(
+    manifest: CollaborationManifest,
+    patch: CollaborationPatch,
+  ): CollaborationApplyReport {
+    if (!this.doc) throw new Error('문서가 로드되지 않았습니다.');
+    const bridge = this.doc as unknown as {
+      applyCollaborationPatch(manifestJson: string, patchJson: string): string;
+    };
+    return JSON.parse(
+      bridge.applyCollaborationPatch(JSON.stringify(manifest), JSON.stringify(patch)),
+    ) as CollaborationApplyReport;
+  }
+'''
           if 'getCollaborationManifest(' not in text:
               text = text.replace(method_anchor, methods, 1)
           bridge.write_text(text)
@@ -87,11 +198,20 @@ jobs:
           rustfmt --edition 2021 src/collaboration/apply.rs src/wasm_api.rs tests/collaboration_wasm_bridge.rs
       - name: Verify focused Rust bridge test
         run: cargo test --test collaboration_wasm_bridge --no-default-features
+      - name: Install studio dependencies
+        working-directory: rhwp-studio
+        run: npm ci --ignore-scripts --no-audit --no-fund
       - name: Verify studio TypeScript build
         working-directory: rhwp-studio
-        run: |
-          npm ci --ignore-scripts --no-audit --no-fund
-          npm run build
+        run: npm run build > task8a-build.log 2>&1
+      - name: Upload Task 8A diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: task8a-build-${{ github.run_id }}
+          path: rhwp-studio/task8a-build.log
+          retention-days: 1
+          if-no-files-found: error
       - name: Commit Task 8A implementation
         run: |
           git config user.name github-actions[bot]
