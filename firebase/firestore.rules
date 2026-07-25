@@ -1,0 +1,203 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function documentPath(documentId) {
+      return /databases/$(database)/documents/documents/$(documentId);
+    }
+
+    function membershipPath(documentId, userId) {
+      return /databases/$(database)/documents/documents/$(documentId)/members/$(userId);
+    }
+
+    function documentExists(documentId) {
+      return exists(documentPath(documentId));
+    }
+
+    function isMember(documentId) {
+      return signedIn()
+        && exists(membershipPath(documentId, request.auth.uid));
+    }
+
+    function memberRole(documentId) {
+      return get(membershipPath(documentId, request.auth.uid)).data.role;
+    }
+
+    function isOwner(documentId) {
+      return isMember(documentId)
+        && memberRole(documentId) == 'owner'
+        && get(documentPath(documentId)).data.ownerId == request.auth.uid;
+    }
+
+    function validInitialDocument(documentId) {
+      return signedIn()
+        && request.resource.data.keys().hasOnly([
+          'ownerId',
+          'title',
+          'sourceFilename',
+          'sourceSize',
+          'sourceStoragePath',
+          'status',
+          'parserVersion',
+          'createdAt',
+          'updatedAt',
+          'latestSnapshotPath',
+          'latestExportPath',
+          'maxParticipants'
+        ])
+        && request.resource.data.keys().hasAll([
+          'ownerId',
+          'title',
+          'sourceFilename',
+          'sourceSize',
+          'sourceStoragePath',
+          'status',
+          'createdAt',
+          'updatedAt',
+          'maxParticipants'
+        ])
+        && request.resource.data.ownerId == request.auth.uid
+        && request.resource.data.title is string
+        && request.resource.data.title.size() > 0
+        && request.resource.data.title.size() <= 200
+        && request.resource.data.sourceFilename is string
+        && request.resource.data.sourceSize is int
+        && request.resource.data.sourceSize >= 0
+        && request.resource.data.sourceStoragePath
+          == 'documents/' + documentId + '/source/original.hwp'
+        && request.resource.data.status == 'uploading'
+        && request.resource.data.parserVersion == null
+        && request.resource.data.createdAt is timestamp
+        && request.resource.data.updatedAt is timestamp
+        && request.resource.data.latestSnapshotPath == null
+        && request.resource.data.latestExportPath == null
+        && request.resource.data.maxParticipants == 10;
+    }
+
+    function validMemberDocument() {
+      return request.resource.data.keys().hasOnly([
+          'role',
+          'invitedBy',
+          'createdAt'
+        ])
+        && request.resource.data.keys().hasAll([
+          'role',
+          'invitedBy',
+          'createdAt'
+        ])
+        && request.resource.data.invitedBy is string
+        && request.resource.data.createdAt is timestamp;
+    }
+
+    function validCollaboratorRole() {
+      return request.resource.data.role in ['editor', 'viewer'];
+    }
+
+    function validShareLink() {
+      return request.resource.data.keys().hasOnly([
+          'documentId',
+          'role',
+          'enabled',
+          'expiresAt',
+          'createdBy',
+          'createdAt'
+        ])
+        && request.resource.data.keys().hasAll([
+          'documentId',
+          'role',
+          'enabled',
+          'expiresAt',
+          'createdBy'
+        ])
+        && request.resource.data.documentId is string
+        && request.resource.data.role in ['editor', 'viewer']
+        && request.resource.data.enabled is bool
+        && (request.resource.data.expiresAt == null
+          || request.resource.data.expiresAt is timestamp)
+        && request.resource.data.createdBy == request.auth.uid
+        && (!('createdAt' in request.resource.data)
+          || request.resource.data.createdAt is timestamp);
+    }
+
+    match /documents/{documentId} {
+      allow create: if validInitialDocument(documentId);
+      allow get: if isMember(documentId);
+      allow list: if false;
+      allow update: if isOwner(documentId)
+        && request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['title', 'updatedAt'])
+        && request.resource.data.title is string
+        && request.resource.data.title.size() > 0
+        && request.resource.data.title.size() <= 200
+        && request.resource.data.ownerId == resource.data.ownerId
+        && request.resource.data.sourceStoragePath == resource.data.sourceStoragePath
+        && request.resource.data.status == resource.data.status
+        && request.resource.data.latestSnapshotPath == resource.data.latestSnapshotPath
+        && request.resource.data.latestExportPath == resource.data.latestExportPath
+        && request.resource.data.maxParticipants == resource.data.maxParticipants;
+      allow delete: if false;
+
+      match /members/{userId} {
+        allow get, list: if isMember(documentId);
+
+        allow create: if documentExists(documentId)
+          && validMemberDocument()
+          && (
+            (
+              userId == request.auth.uid
+              && get(documentPath(documentId)).data.ownerId == request.auth.uid
+              && request.resource.data.role == 'owner'
+              && request.resource.data.invitedBy == request.auth.uid
+            )
+            || (
+              isOwner(documentId)
+              && userId != get(documentPath(documentId)).data.ownerId
+              && validCollaboratorRole()
+              && request.resource.data.invitedBy == request.auth.uid
+            )
+          );
+
+        allow update: if isOwner(documentId)
+          && userId != get(documentPath(documentId)).data.ownerId
+          && validMemberDocument()
+          && validCollaboratorRole()
+          && request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['role']);
+
+        allow delete: if isOwner(documentId)
+          && userId != get(documentPath(documentId)).data.ownerId;
+      }
+
+      match /exports/{exportId} {
+        allow get, list: if isMember(documentId);
+        allow create, update, delete: if false;
+      }
+
+      match /{nestedDocument=**} {
+        allow read, write: if false;
+      }
+    }
+
+    match /shareLinks/{shareId} {
+      allow create: if signedIn()
+        && validShareLink()
+        && isOwner(request.resource.data.documentId);
+      allow get: if signedIn() && isOwner(resource.data.documentId);
+      allow list: if false;
+      allow update: if signedIn()
+        && isOwner(resource.data.documentId)
+        && validShareLink()
+        && request.resource.data.documentId == resource.data.documentId
+        && request.resource.data.createdBy == resource.data.createdBy;
+      allow delete: if signedIn() && isOwner(resource.data.documentId);
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
