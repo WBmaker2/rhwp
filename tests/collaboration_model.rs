@@ -1,6 +1,6 @@
 use rhwp::collaboration::{
     apply_collaboration_patch, build_collaboration_manifest, CollaborationError,
-    CollaborationPatch, NodeKind, StableId, TextReplacement,
+    CollaborationPatch, ImageMediaType, InsertedImagePatch, NodeKind, StableId, TextReplacement,
 };
 use rhwp::model::control::{Control, Equation};
 use rhwp::model::document::{Document, Section};
@@ -95,6 +95,51 @@ fn apply_updates_supported_paragraph_and_cell_targets() {
 }
 
 #[test]
+fn apply_inserts_resolved_image_at_paragraph_anchor() {
+    let mut document = sample_document();
+    let manifest = build_collaboration_manifest(&document, "sha256:fixture").unwrap();
+    let anchor_paragraph_id = manifest.sections[0].paragraphs[0].id.clone();
+    let image_bytes = test_png();
+    let patch = CollaborationPatch {
+        paragraphs: Vec::new(),
+        cells: Vec::new(),
+        inserted_images: vec![InsertedImagePatch {
+            id: StableId::for_node("sha256:fixture", NodeKind::Image, &[0, 0, 0]),
+            anchor_paragraph_id,
+            asset_path: "documents/doc-1/assets/user/image-1/pixel.png".to_string(),
+            bytes: image_bytes.clone(),
+            media_type: ImageMediaType::Png,
+            width: 2_400,
+            height: 1_200,
+            natural_width_px: 1,
+            natural_height_px: 1,
+            description: "공동 편집 이미지".to_string(),
+        }],
+    };
+
+    let report = apply_collaboration_patch(&mut document, &manifest, &patch).unwrap();
+
+    assert_eq!(report.inserted_images, 1);
+    let picture = document.sections[0].paragraphs[0]
+        .controls
+        .iter()
+        .find_map(|control| match control {
+            Control::Picture(picture) => Some(picture.as_ref()),
+            _ => None,
+        })
+        .expect("expected inserted picture control");
+    assert_eq!(picture.common.width, 2_400);
+    assert_eq!(picture.common.height, 1_200);
+    assert_eq!(picture.common.description, "공동 편집 이미지");
+    assert_eq!(picture.image_attr.bin_data_id, 1);
+
+    assert_eq!(document.doc_info.bin_data_list.len(), 1);
+    assert_eq!(document.bin_data_content.len(), 1);
+    assert_eq!(document.bin_data_content[0].extension, "png");
+    assert_eq!(document.bin_data_content[0].data.load(), image_bytes);
+}
+
+#[test]
 fn apply_rejects_readonly_object_target() {
     let mut document = sample_document();
     let manifest = build_collaboration_manifest(&document, "sha256:fixture").unwrap();
@@ -159,4 +204,14 @@ fn sample_document() -> Document {
         }],
         ..Document::default()
     }
+}
+
+fn test_png() -> Vec<u8> {
+    vec![
+        0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x48,
+        0x44, 0x52, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x06, 0x00, 0x00,
+        0x00, 0x1f, 0x15, 0xc4, 0x89, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x44, 0x41, 0x54, 0x08,
+        0xd7, 0x63, 0xf8, 0xcf, 0xc0, 0xf0, 0x1f, 0x00, 0x05, 0x00, 0x01, 0xff, 0x89, 0x99,
+        0x3d, 0x1d, 0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4e, 0x44, 0xae, 0x42, 0x60, 0x82,
+    ]
 }
