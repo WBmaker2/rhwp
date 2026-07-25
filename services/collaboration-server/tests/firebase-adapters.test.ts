@@ -85,20 +85,36 @@ test('snapshot metadata adapter publishes the latest path and retained records',
   )
 })
 
-test('collaboration environment validates port and bucket without secrets', () => {
+test('collaboration environment validates port, bucket, and internal token', () => {
   assert.deepEqual(readCollaborationServerEnvironment({
     PORT: '8080',
     FIREBASE_STORAGE_BUCKET: 'example-staging.appspot.com',
+    INTERNAL_API_TOKEN: 'test-internal-token',
   }), {
     port: 8080,
     storageBucket: 'example-staging.appspot.com',
+    internalApiToken: 'test-internal-token',
   })
   assert.throws(
-    () => readCollaborationServerEnvironment({ PORT: '0', FIREBASE_STORAGE_BUCKET: 'bucket' }),
+    () => readCollaborationServerEnvironment({
+      PORT: '0',
+      FIREBASE_STORAGE_BUCKET: 'bucket',
+      INTERNAL_API_TOKEN: 'token',
+    }),
     /PORT/,
   )
   assert.throws(
-    () => readCollaborationServerEnvironment({ PORT: '8080' }),
+    () => readCollaborationServerEnvironment({
+      PORT: '8080',
+      INTERNAL_API_TOKEN: 'token',
+    }),
     /FIREBASE_STORAGE_BUCKET/,
+  )
+  assert.throws(
+    () => readCollaborationServerEnvironment({
+      PORT: '8080',
+      FIREBASE_STORAGE_BUCKET: 'bucket',
+    }),
+    /INTERNAL_API_TOKEN/,
   )
 })
