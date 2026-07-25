@@ -25,8 +25,17 @@ jobs:
           cache: npm
           cache-dependency-path: services/collaboration-server/package-lock.json
       - name: Install dependencies
-        run: npm ci --no-audit --no-fund
-      - name: Test
-        run: npm test
-      - name: Typecheck
-        run: npm run build
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Test and typecheck
+        run: |
+          set -o pipefail
+          npm test 2>&1 | tee collaboration-server.log
+          npm run build 2>&1 | tee -a collaboration-server.log
+      - name: Upload diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: collaboration-server-${{ github.run_id }}
+          path: services/collaboration-server/collaboration-server.log
+          retention-days: 1
+          if-no-files-found: error
