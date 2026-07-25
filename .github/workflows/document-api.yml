@@ -28,4 +28,16 @@ jobs:
         run: npm test
       - name: Build
         working-directory: services/document-api
-        run: npm run build
+        run: |
+          npm run build > build.log 2>&1 || {
+            cat build.log
+            exit 1
+          }
+      - name: Upload build diagnostics
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: document-api-build-${{ github.run_id }}
+          path: services/document-api/build.log
+          retention-days: 1
+          if-no-files-found: error
