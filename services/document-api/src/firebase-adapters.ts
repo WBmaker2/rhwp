@@ -1,0 +1,235 @@
+import { getApps, initializeApp, type App } from 'firebase-admin/app'
+import { getAuth, type Auth } from 'firebase-admin/auth'
+import { getFirestore, type Firestore } from 'firebase-admin/firestore'
+import { getStorage, type Bucket } from 'firebase-admin/storage'
+import { CloudTasksClient } from '@google-cloud/tasks'
+
+import type { ParseLeaseState, ParseLeaseStore } from './parse-lease.js'
+import type { DocumentRole } from './routes/complete-upload.js'
+
+export interface TaskQueueConfiguration {
+  projectId: string
+  location: string
+  queue: string
+  targetUrl: string
+  serviceAccountEmail: string
+}
+
+export interface DocumentApiEnvironment {
+  port: number
+  storageBucket: string
+  collaborationFlushUrl: string
+  parseQueue: TaskQueueConfiguration
+  exportQueue: TaskQueueConfiguration
+}
+
+export interface DocumentApiFirebaseAdapters {
+  app: App
+  auth: FirebaseIdTokenVerifier
+  members: FirestoreMemberStore
+  objects: FirebaseObjectMetadataStore
+  leaseStore: FirestoreParseLeaseStore
+  parseQueue: CloudTasksJobQueue
+  exportQueue: CloudTasksJobQueue
+}
+
+export class FirebaseIdTokenVerifier {
+  constructor(private readonly auth: Pick<Auth, 'verifyIdToken'>) {}
+  async verifyIdToken(token: string): Promise<{ uid: string }> {
+    const decoded = await this.auth.verifyIdToken(token)
+    if (!decoded.uid) throw new Error('verified token has no uid')
+    return { uid: decoded.uid }
+  }
+}
+
+export class FirestoreMemberStore {
+  constructor(private readonly firestore: Pick<Firestore, 'doc'>) {}
+  async getRole(documentId: string, uid: string): Promise<DocumentRole | null> {
+    const snapshot = await this.firestore
+      .doc(`documents/${assertId(documentId)}/members/${assertId(uid)}`)
+      .get()
+    if (!snapshot.exists) return null
+    const role = snapshot.get('role')
+    return isDocumentRole(role) ? role : null
+  }
+}
+
+export class FirebaseObjectMetadataStore {
+  constructor(private readonly bucket: Pick<Bucket, 'file'>) {}
+  async stat(path: string): Promise<{
+    sizeBytes: number
+    generation: string
+    contentType: string
+  } | null> {
+    try {
+      const [metadata] = await this.bucket.file(assertObjectPath(path)).getMetadata()
+      const sizeBytes = Number(metadata.size)
+      const generation = String(metadata.generation ?? '')
+      if (!Number.isSafeInteger(sizeBytes) || sizeBytes < 0 || !generation) {
+        throw new Error('invalid storage object metadata')
+      }
+      return {
+        sizeBytes,
+        generation,
+        contentType: String(metadata.contentType ?? 'application/octet-stream'),
+      }
+    } catch (error) {
+      if (isNotFound(error)) return null
+      throw error
+    }
+  }
+}
+
+export class FirestoreParseLeaseStore implements ParseLeaseStore {
+  constructor(private readonly firestore: Pick<Firestore, 'doc' | 'runTransaction'>) {}
+
+  async runTransaction<T>(
+    documentId: string,
+    operation: (current: ParseLeaseState | null) => {
+      state: ParseLeaseState
+      result: T
+    },
+  ): Promise<T> {
+    const reference = this.firestore.doc(`documents/${assertId(documentId)}`)
+    return this.firestore.runTransaction(async (transaction) => {
+      const snapshot = await transaction.get(reference)
+      const raw = snapshot.exists ? snapshot.get('parseLease') : null
+      const current = isParseLeaseState(raw) ? raw : null
+      const next = operation(current)
+      transaction.set(reference, { parseLease: next.state }, { merge: true })
+      return next.result
+    })
+  }
+}
+
+export class CloudTasksJobQueue {
+  constructor(
+    private readonly client: Pick<CloudTasksClient, 'queuePath' | 'createTask'>,
+    private readonly configuration: TaskQueueConfiguration,
+  ) {}
+
+  async enqueue(input: Record<string, unknown>): Promise<{ jobId: string }> {
+    const parent = this.client.queuePath(
+      this.configuration.projectId,
+      this.configuration.location,
+      this.configuration.queue,
+    )
+    const body = Buffer.from(JSON.stringify(input)).toString('base64')
+    const [task] = await this.client.createTask({
+      parent,
+      task: {
+        httpRequest: {
+          httpMethod: 'POST',
+          url: this.configuration.targetUrl,
+          headers: { 'Content-Type': 'application/json' },
+          body,
+          oidcToken: {
+            serviceAccountEmail: this.configuration.serviceAccountEmail,
+            audience: this.configuration.targetUrl,
+          },
+        },
+      },
+    })
+    return { jobId: task.name ?? `${this.configuration.queue}/unknown` }
+  }
+}
+
+export function readDocumentApiEnvironment(
+  environment: NodeJS.ProcessEnv,
+): DocumentApiEnvironment {
+  const port = parsePort(environment.PORT ?? '8080')
+  const projectId = required(environment, 'GCP_PROJECT_ID')
+  const location = required(environment, 'GCP_LOCATION')
+  const serviceAccountEmail = required(environment, 'TASKS_SERVICE_ACCOUNT_EMAIL')
+  const queue = (
+    queueName: 'PARSE_QUEUE' | 'EXPORT_QUEUE',
+    workerUrl: 'PARSE_WORKER_URL' | 'EXPORT_WORKER_URL',
+  ): TaskQueueConfiguration => ({
+    projectId,
+    location,
+    queue: required(environment, queueName),
+    targetUrl: assertHttpsUrl(required(environment, workerUrl), workerUrl),
+    serviceAccountEmail,
+  })
+  return {
+    port,
+    storageBucket: required(environment, 'FIREBASE_STORAGE_BUCKET'),
+    collaborationFlushUrl: assertHttpsUrl(
+      required(environment, 'COLLABORATION_FLUSH_URL'),
+      'COLLABORATION_FLUSH_URL',
+    ),
+    parseQueue: queue('PARSE_QUEUE', 'PARSE_WORKER_URL'),
+    exportQueue: queue('EXPORT_QUEUE', 'EXPORT_WORKER_URL'),
+  }
+}
+
+export function createDocumentApiFirebaseAdapters(
+  environment: NodeJS.ProcessEnv = process.env,
+): DocumentApiFirebaseAdapters {
+  const configuration = readDocumentApiEnvironment(environment)
+  const app = getApps()[0] ?? initializeApp({ storageBucket: configuration.storageBucket })
+  const firestore = getFirestore(app)
+  const bucket = getStorage(app).bucket(configuration.storageBucket)
+  const tasks = new CloudTasksClient()
+  return {
+    app,
+    auth: new FirebaseIdTokenVerifier(getAuth(app)),
+    members: new FirestoreMemberStore(firestore),
+    objects: new FirebaseObjectMetadataStore(bucket),
+    leaseStore: new FirestoreParseLeaseStore(firestore),
+    parseQueue: new CloudTasksJobQueue(tasks, configuration.parseQueue),
+    exportQueue: new CloudTasksJobQueue(tasks, configuration.exportQueue),
+  }
+}
+
+function required(environment: NodeJS.ProcessEnv, name: string): string {
+  const value = environment[name]?.trim() ?? ''
+  if (!value) throw new Error(`${name} is required`)
+  return value
+}
+
+function parsePort(value: string): number {
+  const port = Number(value)
+  if (!Number.isSafeInteger(port) || port < 1 || port > 65535) {
+    throw new Error('PORT must be an integer from 1 to 65535')
+  }
+  return port
+}
+
+function assertHttpsUrl(value: string, name: string): string {
+  const url = new URL(value)
+  if (url.protocol !== 'https:') throw new Error(`${name} must use https`)
+  return url.toString().replace(/\/$/, '')
+}
+
+function assertId(value: string): string {
+  const normalized = value.trim()
+  if (!/^[A-Za-z0-9_-]{1,128}$/.test(normalized)) throw new Error('invalid identifier')
+  return normalized
+}
+
+function assertObjectPath(value: string): string {
+  const normalized = value.trim()
+  if (!normalized.startsWith('documents/') || normalized.includes('..')) {
+    throw new Error('invalid object path')
+  }
+  return normalized
+}
+
+function isDocumentRole(value: unknown): value is DocumentRole {
+  return value === 'owner' || value === 'editor' || value === 'viewer'
+}
+
+function isParseLeaseState(value: unknown): value is ParseLeaseState {
+  if (!value || typeof value !== 'object') return false
+  const state = value as Partial<ParseLeaseState>
+  return typeof state.sourceGeneration === 'string'
+    && (state.status === 'processing' || state.status === 'ready' || state.status === 'failed')
+    && (state.leaseExpiresAt === null || typeof state.leaseExpiresAt === 'string')
+}
+
+function isNotFound(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false
+  const code = (error as { code?: unknown }).code
+  return code === 404 || code === '404' || code === 'storage/object-not-found'
+}
