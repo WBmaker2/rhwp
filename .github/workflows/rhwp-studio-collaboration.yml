@@ -1,0 +1,36 @@
+name: rhwp-studio collaboration
+
+on:
+  pull_request:
+    branches: [devel]
+    paths:
+      - 'rhwp-studio/src/collaboration/**'
+      - 'rhwp-studio/tests/collaboration-*.test.ts'
+      - 'rhwp-studio/package.json'
+      - 'rhwp-studio/package-lock.json'
+      - '.github/workflows/rhwp-studio-collaboration.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          show-progress: false
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: rhwp-studio/package-lock.json
+      - name: Install dependencies
+        working-directory: rhwp-studio
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Test collaboration adapter and awareness
+        working-directory: rhwp-studio
+        run: node --test --import tsx tests/collaboration-*.test.ts
+      - name: Build studio
+        working-directory: rhwp-studio
+        run: npm run build
