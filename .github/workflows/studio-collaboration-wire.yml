@@ -20,6 +20,8 @@ jobs:
       - uses: actions/setup-node@v5
         with:
           node-version: '22'
+          cache: npm
+          cache-dependency-path: rhwp-studio/package-lock.json
       - name: Expose runtime and cursor snapshot
         run: |
           python3 - <<'PY'
@@ -39,8 +41,10 @@ jobs:
             };
           }
 
-'''
+          '''
           if 'getCollaborationSelectionSnapshot' not in text:
+              if anchor not in text:
+                  raise SystemExit('input-handler collaboration anchor not found')
               text = text.replace(anchor, method + anchor, 1)
           input_path.write_text(text)
 
@@ -49,16 +53,20 @@ jobs:
           anchor = '''    inputHandler.setPictureObjectRenderer(
               new TableObjectRenderer(container, canvasView.getVirtualScroll(), true),
             );
-'''
+          '''
           addition = anchor + '''
             (window as any).__rhwpStudioRuntime = {
               wasm,
               eventBus,
               inputHandler,
               scrollContent: document.getElementById('scroll-content')!,
+              virtualScroll: canvasView.getVirtualScroll(),
+              viewportManager: canvasView.getViewportManager(),
             };
-'''
+          '''
           if '__rhwpStudioRuntime' not in text:
+              if anchor not in text:
+                  raise SystemExit('main collaboration runtime anchor not found')
               text = text.replace(anchor, addition, 1)
           main_path.write_text(text)
 
@@ -67,19 +75,22 @@ jobs:
           anchor = '  <script type="module" src="/src/main.ts"></script>\n'
           addition = anchor + '  <script type="module" src="/src/collaboration-entry.ts"></script>\n'
           if 'collaboration-entry.ts' not in text:
+              if anchor not in text:
+                  raise SystemExit('index collaboration entry anchor not found')
               text = text.replace(anchor, addition, 1)
           index_path.write_text(text)
           PY
       - name: Verify studio collaboration build
         working-directory: rhwp-studio
         run: |
-          npm install --ignore-scripts --no-audit --no-fund
-          node --test --import tsx tests/collaboration-*.test.ts
+          npm ci --ignore-scripts --no-audit --no-fund
+          npm run test:collaboration
           npm run build
-      - name: Commit studio runtime wiring
+      - name: Commit studio runtime wiring and remove one-shot workflow
         run: |
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
           git add rhwp-studio/src/engine/input-handler.ts rhwp-studio/src/main.ts rhwp-studio/index.html
+          git rm .github/workflows/studio-collaboration-wire.yml
           git commit -m "feat: wire collaboration into rhwp studio runtime"
           git push origin HEAD:${{ github.head_ref }}
