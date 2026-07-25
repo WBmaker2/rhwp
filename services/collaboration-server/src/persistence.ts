@@ -165,19 +165,29 @@ export class YjsSnapshotPersistence {
     )
   }
 
-  async flushForExport(documentId: string): Promise<SnapshotRecord | null> {
+  async flush(
+    documentId: string,
+    reason: SnapshotReason,
+  ): Promise<SnapshotRecord | null> {
     const document = this.#documents.get(documentId)
     if (!document) {
       return null
     }
 
-    return this.save(documentId, document, 'export')
+    return this.save(documentId, document, reason)
+  }
+
+  async flushForExport(documentId: string): Promise<SnapshotRecord | null> {
+    return this.flush(documentId, 'export')
   }
 
   async flushForShutdown(): Promise<SnapshotRecord[]> {
     const records: SnapshotRecord[] = []
-    for (const [documentId, document] of this.#documents) {
-      records.push(await this.save(documentId, document, 'shutdown'))
+    for (const documentId of this.#documents.keys()) {
+      const record = await this.flush(documentId, 'shutdown')
+      if (record) {
+        records.push(record)
+      }
     }
     return records
   }
