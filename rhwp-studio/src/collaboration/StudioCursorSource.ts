@@ -1,7 +1,7 @@
 import { blake3 } from '@noble/hashes/blake3.js';
 import { bytesToHex } from '@noble/hashes/utils.js';
 
-import type { DocumentPosition } from '@/core/types';
+import type { CursorRect, DocumentPosition } from '@/core/types';
 import type { CursorPresenceSource } from './CollaborationController';
 import type { PresenceCursor, RemoteParticipant } from './PresenceController';
 import type { CollaborationManifest } from './wasm-adapter';
@@ -15,11 +15,15 @@ export interface StudioCursorSnapshot {
 }
 
 export interface RemoteGeometryPort {
-  getCursorRect(position: DocumentPosition): {
-    x: number;
-    y: number;
-    height: number;
-  } | null;
+  getCursorRect(position: DocumentPosition): CursorRect | null;
+}
+
+export interface RemoteLayoutPort {
+  getPageOffset(pageIndex: number): number;
+  getPageLeft(pageIndex: number): number;
+  getPageWidth(pageIndex: number): number;
+  getZoom(): number;
+  getContentWidth(): number;
 }
 
 export class StudioCursorSource implements CursorPresenceSource {
@@ -95,6 +99,7 @@ export function targetForPosition(
 export function createRemoteCursorResolver(
   manifest: CollaborationManifest,
   geometry: RemoteGeometryPort,
+  layout: RemoteLayoutPort,
 ): (participant: RemoteParticipant) => {
   left: number;
   top: number;
@@ -108,7 +113,18 @@ export function createRemoteCursorResolver(
       ...target,
       charOffset: participant.state.headOffset,
     });
-    return rect ? { left: rect.x, top: rect.y, height: rect.height } : null;
+    if (!rect) return null;
+
+    const zoom = Math.max(0.01, layout.getZoom());
+    const gridLeft = layout.getPageLeft(rect.pageIndex);
+    const pageLeft = gridLeft >= 0
+      ? gridLeft
+      : (layout.getContentWidth() - layout.getPageWidth(rect.pageIndex)) / 2;
+    return {
+      left: pageLeft + rect.x * zoom,
+      top: layout.getPageOffset(rect.pageIndex) + rect.y * zoom,
+      height: rect.height * zoom,
+    };
   };
 }
 
