@@ -1,4 +1,4 @@
-use rhwp::collaboration::{CollaborationManifest, CollaborationPatch, TextReplacement};
+use rhwp::collaboration::CollaborationManifest;
 use rhwp::model::document::{Document, Section};
 use rhwp::model::paragraph::Paragraph;
 use rhwp::serializer::hwpx::serialize_hwpx;
@@ -25,20 +25,18 @@ fn wasm_bridge_builds_manifest_and_applies_json_text_patch() {
     let manifest: CollaborationManifest =
         serde_json::from_str(&manifest_json).expect("parse collaboration manifest");
     let paragraph_id = manifest.sections[0].paragraphs[0].id.clone();
-    let patch = CollaborationPatch {
-        paragraphs: vec![TextReplacement {
-            target_id: paragraph_id,
-            text: "원격 공동 편집 문단".to_string(),
+    let patch_json = serde_json::json!({
+        "paragraphs": [{
+            "target_id": paragraph_id,
+            "text": "원격 공동 편집 문단"
         }],
-        cells: Vec::new(),
-        inserted_images: Vec::new(),
-    };
+        "cells": [],
+        "inserted_images": []
+    })
+    .to_string();
 
     let report_json = document
-        .apply_collaboration_patch_json(
-            &manifest_json,
-            &serde_json::to_string(&patch).expect("serialize collaboration patch"),
-        )
+        .apply_collaboration_patch_json(&manifest_json, &patch_json)
         .expect("apply collaboration patch");
     let report: serde_json::Value =
         serde_json::from_str(&report_json).expect("parse apply report");
