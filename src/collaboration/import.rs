@@ -86,15 +86,14 @@ pub fn build_collaboration_manifest(
                         table,
                         source_fingerprint,
                         &control_path,
+                        &mut manifest.readonly_objects,
                     )),
-                    other => manifest.readonly_objects.push(ReadonlyObjectManifest {
-                        id: StableId::for_node(
-                            source_fingerprint,
-                            NodeKind::ReadonlyObject,
-                            &control_path,
-                        ),
-                        kind: readonly_control_kind(other).to_string(),
-                    }),
+                    other => push_readonly_object(
+                        other,
+                        source_fingerprint,
+                        &control_path,
+                        &mut manifest.readonly_objects,
+                    ),
                 }
             }
         }
@@ -117,7 +116,12 @@ fn import_paragraph(
     }
 }
 
-fn import_table(table: &Table, source_fingerprint: &str, path: &[u32]) -> TableManifest {
+fn import_table(
+    table: &Table,
+    source_fingerprint: &str,
+    path: &[u32],
+    readonly_objects: &mut Vec<ReadonlyObjectManifest>,
+) -> TableManifest {
     let mut rows = Vec::with_capacity(table.row_count as usize);
     let mut cells = Vec::with_capacity(table.cells.len());
 
@@ -149,6 +153,17 @@ fn import_table(table: &Table, source_fingerprint: &str, path: &[u32]) -> TableM
                     .map(|paragraph| u32::from(paragraph.style_id)),
                 structure_readonly: true,
             });
+
+            for (paragraph_index, paragraph) in cell.paragraphs.iter().enumerate() {
+                let mut paragraph_path = cell_path.clone();
+                paragraph_path.push(paragraph_index as u32);
+                collect_nested_readonly_controls(
+                    paragraph,
+                    source_fingerprint,
+                    &paragraph_path,
+                    readonly_objects,
+                );
+            }
         }
 
         rows.push(RowManifest {
@@ -165,8 +180,71 @@ fn import_table(table: &Table, source_fingerprint: &str, path: &[u32]) -> TableM
     }
 }
 
+fn collect_nested_readonly_controls(
+    paragraph: &Paragraph,
+    source_fingerprint: &str,
+    paragraph_path: &[u32],
+    readonly_objects: &mut Vec<ReadonlyObjectManifest>,
+) {
+    for (control_index, control) in paragraph.controls.iter().enumerate() {
+        let mut control_path = paragraph_path.to_vec();
+        control_path.push(control_index as u32);
+        push_readonly_object(
+            control,
+            source_fingerprint,
+            &control_path,
+            readonly_objects,
+        );
+
+        if let Control::Table(table) = control {
+            collect_nested_table_controls(
+                table,
+                source_fingerprint,
+                &control_path,
+                readonly_objects,
+            );
+        }
+    }
+}
+
+fn collect_nested_table_controls(
+    table: &Table,
+    source_fingerprint: &str,
+    table_path: &[u32],
+    readonly_objects: &mut Vec<ReadonlyObjectManifest>,
+) {
+    for (cell_index, cell) in table.cells.iter().enumerate() {
+        let mut cell_path = table_path.to_vec();
+        cell_path.push(cell_index as u32);
+
+        for (paragraph_index, paragraph) in cell.paragraphs.iter().enumerate() {
+            let mut paragraph_path = cell_path.clone();
+            paragraph_path.push(paragraph_index as u32);
+            collect_nested_readonly_controls(
+                paragraph,
+                source_fingerprint,
+                &paragraph_path,
+                readonly_objects,
+            );
+        }
+    }
+}
+
+fn push_readonly_object(
+    control: &Control,
+    source_fingerprint: &str,
+    path: &[u32],
+    readonly_objects: &mut Vec<ReadonlyObjectManifest>,
+) {
+    readonly_objects.push(ReadonlyObjectManifest {
+        id: StableId::for_node(source_fingerprint, NodeKind::ReadonlyObject, path),
+        kind: readonly_control_kind(control).to_string(),
+    });
+}
+
 fn readonly_control_kind(control: &Control) -> &'static str {
     match control {
+        Control::Table(_) => "table",
         Control::Shape(_) => "shape",
         Control::Picture(_) => "picture",
         Control::Equation(_) => "equation",
