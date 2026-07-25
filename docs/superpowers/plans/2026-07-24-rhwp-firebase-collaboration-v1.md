@@ -21,7 +21,7 @@
   - [x] HWPX serialize/reparse roundtrip regression test
 - [x] Task 4: Authenticated 10-User Collaboration Server
 - [x] Task 5: Snapshot Persistence and Server Recovery
-- [ ] Task 6: Upload Completion, Parse Lease, and Export API
+- [x] Task 6: Upload Completion, Parse Lease, and Export API
 - [ ] Task 7: Firestore and Storage Security Rules
 - [ ] Task 8: Presence and Remote Cursor UI
 - [ ] Task 9: Firebase Hosting, Cloud Run, and Emulator Deployment
@@ -165,12 +165,14 @@ The object is written before the metadata pointer is published. Loads verify SHA
 - Produces: HWPX export orchestration
 - Consumes: collaboration `flushForExport(documentId)` and Rust document conversion path
 
-- [ ] **Step 1: Define failing storage-path and lease tests**
-- [ ] **Step 2: Implement canonical source/asset/export paths**
-- [ ] **Step 3: Implement single-owner parse lease acquisition and expiry**
-- [ ] **Step 4: Implement upload-completion orchestration**
-- [ ] **Step 5: Implement export orchestration with mandatory collaboration flush**
-- [ ] **Step 6: Run tests and build**
+- [x] **Step 1: Define failing storage-path and lease tests**
+- [x] **Step 2: Implement canonical source/asset/export paths**
+- [x] **Step 3: Implement single-owner parse lease acquisition and expiry**
+- [x] **Step 4: Implement upload-completion orchestration**
+- [x] **Step 5: Implement export orchestration with mandatory collaboration flush**
+- [x] **Step 6: Run tests and build**
+
+The Task 6 layer uses injected token verification, membership, object metadata, atomic lease storage, parse job, collaboration flush, and export job interfaces. Concrete Firebase adapters, a Cloud Run HTTP listener, and deployment configuration remain in Tasks 7–9 and are not deployed by this change.
 
 ---
 
