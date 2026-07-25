@@ -1,6 +1,6 @@
 use rhwp::collaboration::{
-    apply_collaboration_patch, build_collaboration_manifest, CollaborationError,
-    CollaborationPatch, ImageMediaType, InsertedImagePatch, NodeKind, StableId, TextReplacement,
+    apply_collaboration_patch, build_collaboration_manifest, CollaborationError, CollaborationPatch,
+    ImageMediaType, InsertedImagePatch, NodeKind, StableId, TextReplacement,
 };
 use rhwp::model::control::{Control, Equation};
 use rhwp::model::document::{Document, Section};
