@@ -67,7 +67,6 @@ export async function bootstrapStudioCollaboration(
     bridge,
     events: {
       on: (event, listener) => runtime.eventBus.on(event, listener),
-      off: () => undefined,
       emit: (event) => runtime.eventBus.emit(event),
     },
     cursor: cursorSource,
