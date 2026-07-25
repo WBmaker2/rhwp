@@ -1,0 +1,38 @@
+name: Studio collaboration lock
+
+on:
+  pull_request:
+    branches: [devel]
+    paths:
+      - '.github/workflows/studio-collaboration-lock.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  lock:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.head_ref }}
+          show-progress: false
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+      - name: Update lockfile
+        working-directory: rhwp-studio
+        run: npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+      - name: Install and verify collaboration tests
+        working-directory: rhwp-studio
+        run: |
+          npm ci --ignore-scripts --no-audit --no-fund
+          node --test --import tsx tests/collaboration-*.test.ts
+          npm run build
+      - name: Commit lockfile
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add rhwp-studio/package-lock.json
+          git commit -m "chore: lock studio collaboration dependencies"
+          git push origin HEAD:${{ github.head_ref }}
