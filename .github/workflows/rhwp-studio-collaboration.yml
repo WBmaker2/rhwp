@@ -5,6 +5,10 @@ on:
     branches: [devel]
     paths:
       - 'rhwp-studio/src/collaboration/**'
+      - 'rhwp-studio/src/collaboration-entry.ts'
+      - 'rhwp-studio/src/engine/input-handler.ts'
+      - 'rhwp-studio/src/main.ts'
+      - 'rhwp-studio/index.html'
       - 'rhwp-studio/tests/collaboration-*.test.ts'
       - 'rhwp-studio/package.json'
       - 'rhwp-studio/package-lock.json'
@@ -28,9 +32,17 @@ jobs:
       - name: Install dependencies
         working-directory: rhwp-studio
         run: npm ci --ignore-scripts --no-audit --no-fund
-      - name: Test collaboration adapter and awareness
+      - name: Test and build collaboration
         working-directory: rhwp-studio
-        run: node --test --import tsx tests/collaboration-*.test.ts
-      - name: Build studio
-        working-directory: rhwp-studio
-        run: npm run build
+        run: |
+          set -o pipefail
+          npm run test:collaboration 2>&1 | tee studio-collaboration.log
+          npm run build 2>&1 | tee -a studio-collaboration.log
+      - name: Upload diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: studio-collaboration-${{ github.run_id }}
+          path: rhwp-studio/studio-collaboration.log
+          retention-days: 1
+          if-no-files-found: error
