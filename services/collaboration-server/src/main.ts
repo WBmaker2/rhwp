@@ -5,11 +5,12 @@ import {
   readCollaborationServerEnvironment,
   type CollaborationFirebaseAdapters,
 } from './firebase-adapters.js'
+import { createCollaborationInternalRequestHandler } from './internal-http.js'
 import {
   SnapshotStore,
   YjsSnapshotPersistence,
 } from './persistence.js'
-import { createCollaborationServer } from './server.js'
+import { createCollaborationHooks, createCollaborationServer } from './server.js'
 
 export interface CollaborationRuntime {
   listen(): Promise<void>
@@ -23,11 +24,19 @@ export function createCollaborationRuntime(
   const configuration = readCollaborationServerEnvironment(environment)
   const snapshots = new SnapshotStore(adapters.objects, adapters.metadata)
   const persistence = new YjsSnapshotPersistence(snapshots)
-  const server = createCollaborationServer({
+  const hookDependencies = {
     port: configuration.port,
     tokenVerifier: adapters.tokenVerifier,
     membershipStore: adapters.membershipStore,
     persistence,
+  }
+  const hooks = createCollaborationHooks(hookDependencies)
+  const server = createCollaborationServer({
+    ...hookDependencies,
+    internalRequestHandler: createCollaborationInternalRequestHandler({
+      internalApiToken: configuration.internalApiToken,
+      flushForExport: (documentId) => hooks.flushForExport(documentId),
+    }),
   })
   let listening = false
   let shuttingDown: Promise<void> | null = null
