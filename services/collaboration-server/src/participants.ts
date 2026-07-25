@@ -68,4 +68,8 @@ export class ParticipantRegistry {
       this.#documents.delete(documentId)
     }
   }
+
+  uniqueUsers(documentId: string): number {
+    return this.#documents.get(documentId)?.size ?? 0
+  }
 }
