@@ -24,10 +24,18 @@ jobs:
           cache-dependency-path: services/document-api/package-lock.json
       - name: Install dependencies
         working-directory: services/document-api
-        run: npm ci --ignore-scripts
-      - name: Test
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Test and build
         working-directory: services/document-api
-        run: npm test
-      - name: Build
-        working-directory: services/document-api
-        run: npm run build
+        run: |
+          set -o pipefail
+          npm test 2>&1 | tee document-api.log
+          npm run build 2>&1 | tee -a document-api.log
+      - name: Upload diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: document-api-${{ github.run_id }}
+          path: services/document-api/document-api.log
+          retention-days: 1
+          if-no-files-found: error
