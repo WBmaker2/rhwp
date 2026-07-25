@@ -5,6 +5,7 @@
 use wasm_bindgen::prelude::*;
 
 pub mod collaboration;
+pub mod collaboration_wasm;
 pub mod diagnostics;
 pub mod doclang;
 pub mod document_core;
