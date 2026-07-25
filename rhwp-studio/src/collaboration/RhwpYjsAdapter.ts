@@ -18,8 +18,7 @@ export interface CollaborationWasmPort {
 }
 
 export interface CollaborationEventPort {
-  on(event: string, listener: () => void): void;
-  off(event: string, listener: () => void): void;
+  on(event: string, listener: () => void): (() => void) | void;
   emit(event: string): void;
 }
 
@@ -32,6 +31,7 @@ export class RhwpYjsAdapter {
   private initialized = false;
   private applyingRemote = false;
   private readonly readOnly: boolean;
+  private unsubscribeDocumentChanged: (() => void) | null = null;
 
   private readonly onDocumentChanged = (): void => {
     if (this.readOnly || !this.initialized || this.applyingRemote || !this.manifest) return;
@@ -77,13 +77,19 @@ export class RhwpYjsAdapter {
     this.manifest = manifest;
     this.document.transact(() => this.writeManifestText(manifest), INITIALIZE_ORIGIN);
     this.document.on('afterTransaction', this.onAfterTransaction);
-    if (!this.readOnly) this.events.on('document-changed', this.onDocumentChanged);
+    if (!this.readOnly) {
+      this.unsubscribeDocumentChanged = this.events.on(
+        'document-changed',
+        this.onDocumentChanged,
+      ) ?? null;
+    }
     this.initialized = true;
   }
 
   destroy(): void {
     this.document.off('afterTransaction', this.onAfterTransaction);
-    this.events.off('document-changed', this.onDocumentChanged);
+    this.unsubscribeDocumentChanged?.();
+    this.unsubscribeDocumentChanged = null;
     this.initialized = false;
     this.applyingRemote = false;
     this.manifest = null;
