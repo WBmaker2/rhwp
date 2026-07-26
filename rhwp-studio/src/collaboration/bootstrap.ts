@@ -14,6 +14,7 @@ import {
   createRemoteCursorResolver,
   type StudioCursorSnapshot,
 } from './StudioCursorSource';
+import { installViewerInputGuard } from './ViewerInputGuard';
 import { RhwpCollaborationWasmAdapter } from './wasm-adapter';
 
 export interface StudioCollaborationRuntime {
@@ -142,11 +143,15 @@ export async function bootstrapStudioCollaboration(
   const unsubscribeZoom = runtime.eventBus.on('zoom-changed', rerender);
   const unsubscribeView = runtime.eventBus.on('document-view-changed', rerender);
   let connectedRole: DocumentRole | null = null;
+  let removeViewerInputGuard: (() => void) | null = null;
 
   try {
     const state = await controller.connect();
     connectedRole = state.role;
     view.setConnected(state);
+    if (state.role === 'viewer') {
+      removeViewerInputGuard = installViewerInputGuard();
+    }
     if (state.role === 'owner' && shareDialog) {
       view.setShareAction(() => void shareDialog.open());
     }
@@ -160,6 +165,7 @@ export async function bootstrapStudioCollaboration(
       );
     }
   } catch (error) {
+    removeViewerInputGuard?.();
     view.setError(error);
     window.clearInterval(cursorTimer);
     unsubscribeParticipants();
@@ -172,6 +178,7 @@ export async function bootstrapStudioCollaboration(
   }
 
   return () => {
+    removeViewerInputGuard?.();
     window.clearInterval(cursorTimer);
     unsubscribeParticipants();
     unsubscribeZoom();
