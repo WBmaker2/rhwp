@@ -106,12 +106,19 @@ test('two real Studio browser contexts show presence, remote cursor, viewer bloc
       { timeout: 15_000 },
     )
 
+    const readOnlyFlag = await viewerPage.evaluate(() => (
+      document.documentElement.dataset.collaborationReadOnly
+    ))
+    assert.equal(readOnlyFlag, 'true')
     await viewerPage.evaluate(() => {
-      ;(window as any).__rhwpCollaborationDebug.applyLocalFirstParagraphText(
-        '열람자가 전파해서는 안 되는 변경',
-      )
+      const textarea = document.querySelector<HTMLTextAreaElement>('textarea')
+      if (!textarea) throw new Error('Studio hidden textarea not found')
+      textarea.focus()
     })
+    await viewerPage.keyboard.type('열람자 입력은 차단되어야 함')
+    await viewerPage.keyboard.press('Backspace')
     await delay(800)
+    assert.equal(await paragraphText(viewerPage), synchronizedText)
     assert.equal(await paragraphText(editorPage), synchronizedText)
 
     await Promise.all([
