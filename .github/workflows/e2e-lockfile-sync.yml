@@ -1,0 +1,44 @@
+name: E2E lockfile sync
+
+on:
+  pull_request:
+    branches: [devel]
+    paths:
+      - 'services/e2e/package.json'
+      - 'services/e2e/package-lock.json'
+      - '.github/workflows/e2e-lockfile-sync.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  generate-and-verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          show-progress: false
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+
+      - name: Regenerate E2E lockfile
+        working-directory: services/e2e
+        run: |
+          rm package-lock.json
+          npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+
+      - name: Verify reproducible install
+        working-directory: services/e2e
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Upload regenerated lockfile
+        uses: actions/upload-artifact@v7
+        with:
+          name: e2e-package-lock-${{ github.run_id }}
+          path: services/e2e/package-lock.json
+          retention-days: 1
+          if-no-files-found: error
