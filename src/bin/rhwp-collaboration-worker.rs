@@ -75,8 +75,8 @@ fn main() {
 
 fn import_document(args: &[String]) -> Result<(), String> {
     let parsed = parse_args(args, &["--manifest"])?;
-    let source = parsed.input;
     let manifest_path = required_path(&parsed, "--manifest")?;
+    let source = parsed.input;
     let source_bytes = read_file(&source, "source document")?;
     let fingerprint = source_fingerprint(&source_bytes);
     let document =
@@ -111,10 +111,10 @@ fn import_document(args: &[String]) -> Result<(), String> {
 
 fn export_document(args: &[String]) -> Result<(), String> {
     let parsed = parse_args(args, &["--manifest", "--patch", "--output"])?;
-    let source = parsed.input;
     let manifest_path = required_path(&parsed, "--manifest")?;
     let patch_path = required_path(&parsed, "--patch")?;
     let output_path = required_path(&parsed, "--output")?;
+    let source = parsed.input;
 
     let source_bytes = read_file(&source, "source document")?;
     let computed_fingerprint = source_fingerprint(&source_bytes);
