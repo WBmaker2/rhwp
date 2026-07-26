@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import type { IncomingMessage, ServerResponse } from 'node:http'
 import test from 'node:test'
 
 import { Server } from '@hocuspocus/server'
@@ -6,9 +7,11 @@ import { Server } from '@hocuspocus/server'
 import type { MembershipStore, TokenVerifier } from '../src/auth.js'
 import { ParticipantRegistry } from '../src/participants.js'
 import {
+  InternalHttpRequestHandledError,
   ParticipantLimitError,
   createCollaborationHooks,
   createCollaborationServer,
+  handleInternalHttpRequest,
 } from '../src/server.js'
 
 const tokenVerifier: TokenVerifier = {
@@ -94,6 +97,22 @@ test('releases the participant slot on disconnect', async () => {
     connection: { readOnly: false },
   })
   assert.equal(admitted.userId, 'user-11')
+})
+
+test('rejects the Hocuspocus hook chain after an internal response was handled', async () => {
+  const request = {} as IncomingMessage
+  const response = {} as ServerResponse
+
+  await assert.rejects(
+    handleInternalHttpRequest(async (receivedRequest, receivedResponse) => {
+      assert.equal(receivedRequest, request)
+      assert.equal(receivedResponse, response)
+      return true
+    }, request, response),
+    (error: unknown) => error instanceof InternalHttpRequestHandledError,
+  )
+
+  await handleInternalHttpRequest(async () => false, request, response)
 })
 
 test('creates a Hocuspocus server without starting a listener', () => {
