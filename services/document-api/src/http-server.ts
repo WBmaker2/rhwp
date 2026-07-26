@@ -21,12 +21,14 @@ export async function dispatchDocumentApiRequest(
     return { status: 200, body: { status: 'ok' } }
   }
   const complete = /^\/v1\/documents\/([A-Za-z0-9_-]{1,128})\/complete-upload$/.exec(url.pathname)
-  if (input.method === 'POST' && complete) {
-    return handlers.completeUpload(toApiRequest(complete[1], input.headers, input.body))
+  const completeDocumentId = complete?.[1]
+  if (input.method === 'POST' && completeDocumentId) {
+    return handlers.completeUpload(toApiRequest(completeDocumentId, input.headers, input.body))
   }
   const exportMatch = /^\/v1\/documents\/([A-Za-z0-9_-]{1,128})\/export-hwpx$/.exec(url.pathname)
-  if (input.method === 'POST' && exportMatch) {
-    return handlers.exportHwpx(toApiRequest(exportMatch[1], input.headers, input.body))
+  const exportDocumentId = exportMatch?.[1]
+  if (input.method === 'POST' && exportDocumentId) {
+    return handlers.exportHwpx(toApiRequest(exportDocumentId, input.headers, input.body))
   }
   return { status: 404, body: { error: 'not-found' } }
 }
