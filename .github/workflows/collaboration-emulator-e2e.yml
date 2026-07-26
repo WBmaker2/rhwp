@@ -55,6 +55,7 @@ jobs:
             firebase/package-lock.json
             services/collaboration-server/package-lock.json
             services/document-api/package-lock.json
+            services/e2e/package-lock.json
 
       - name: Install Firebase emulator dependencies
         working-directory: firebase
@@ -74,7 +75,7 @@ jobs:
 
       - name: Install E2E dependencies
         working-directory: services/e2e
-        run: npm install --ignore-scripts --no-audit --no-fund
+        run: npm ci --ignore-scripts --no-audit --no-fund
 
       - name: Check Rust formatting
         run: cargo fmt --all -- --check
