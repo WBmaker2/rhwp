@@ -53,6 +53,7 @@ const apiRequest = {
 test('upload, collaborate, snapshot, restart, recover, and flush export as one flow', async () => {
   const leaseStore = new MemoryLeaseStore()
   let parseJobs = 0
+  const parsePayloads: unknown[] = []
   const completeUpload = createCompleteUploadHandler({
     auth: { verifyIdToken: async () => ({ uid: 'owner-1' }) },
     members: { getRole: async () => 'owner' },
@@ -64,13 +65,24 @@ test('upload, collaborate, snapshot, restart, recover, and flush export as one f
       }),
     },
     lease: new ParseLease(leaseStore),
-    parseJobs: { enqueue: async () => { parseJobs += 1 } },
+    parseJobs: {
+      enqueue: async (input) => {
+        parseJobs += 1
+        parsePayloads.push(input)
+      },
+    },
     now: () => new Date('2026-07-25T06:00:00.000Z'),
   })
 
   assert.equal((await completeUpload(apiRequest)).body.status, 'processing')
   assert.equal((await completeUpload(apiRequest)).body.status, 'already-processing')
   assert.equal(parseJobs, 1)
+  assert.deepEqual(parsePayloads, [{
+    schemaVersion: 1,
+    documentId: 'doc-1',
+    sourceGeneration: 'generation-1',
+    sourcePath: 'documents/doc-1/source/original.hwp',
+  }])
 
   const editorA = new Y.Doc()
   const editorB = new Y.Doc()
@@ -120,6 +132,7 @@ test('upload, collaborate, snapshot, restart, recover, and flush export as one f
   restartedPersistence.register('doc-1', recovered)
   const order: string[] = []
   let exportedSnapshotPath = ''
+  const exportPayloads: unknown[] = []
   const exportHwpx = createExportHwpxHandler({
     auth: { verifyIdToken: async () => ({ uid: 'editor-1' }) },
     members: { getRole: async () => 'editor' },
@@ -134,16 +147,24 @@ test('upload, collaborate, snapshot, restart, recover, and flush export as one f
     exportJobs: {
       enqueue: async (input) => {
         order.push('queue')
+        exportPayloads.push(input)
         assert.equal(input.snapshotPath, exportedSnapshotPath)
-        return { jobId: 'export-1' }
+        return { jobId: 'projects/p/locations/l/queues/q/tasks/export-task-1' }
       },
     },
+    createExportId: () => 'export-1',
   })
 
   const exportResponse = await exportHwpx(apiRequest)
   assert.equal(exportResponse.status, 202)
   assert.deepEqual(order, ['flush', 'queue'])
   assert.match(exportedSnapshotPath, /\/collaboration\/snapshots\//)
+  assert.deepEqual(exportPayloads, [{
+    schemaVersion: 1,
+    documentId: 'doc-1',
+    exportId: 'export-1',
+    snapshotPath: exportedSnapshotPath,
+  }])
   assert.equal(exportResponse.body.outputPath, 'documents/doc-1/exports/export-1.hwpx')
 })
 
