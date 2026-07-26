@@ -55,6 +55,7 @@ jobs:
             firebase/package-lock.json
             services/collaboration-server/package-lock.json
             services/document-api/package-lock.json
+            services/document-worker/package-lock.json
             services/e2e/package-lock.json
 
       - name: Install Firebase emulator dependencies
@@ -71,7 +72,7 @@ jobs:
 
       - name: Install document worker dependencies
         working-directory: services/document-worker
-        run: npm install --ignore-scripts --no-audit --no-fund
+        run: npm ci --ignore-scripts --no-audit --no-fund
 
       - name: Install E2E dependencies
         working-directory: services/e2e
