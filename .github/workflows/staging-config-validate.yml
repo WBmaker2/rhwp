@@ -10,10 +10,12 @@ on:
       - 'deploy/cloudrun/**'
       - 'deploy/staging/**'
       - 'docs/approvals/**'
+      - 'docs/runbooks/staging-bootstrap-readiness.md'
       - 'scripts/validate_staging_config.py'
       - 'scripts/staging_preflight.py'
       - 'scripts/staging_approval_packet.py'
       - 'scripts/staging_bootstrap_materializer.py'
+      - 'scripts/staging_bootstrap_readiness.py'
       - 'scripts/staging_infrastructure_plan.py'
       - 'scripts/tests/**'
       - '.github/workflows/staging-config-validate.yml'
@@ -103,6 +105,87 @@ jobs:
         with:
           name: staging-bootstrap-test-evidence
           path: artifacts/bootstrap-test/**
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Generate deterministic readiness test evidence
+        run: |
+          mkdir -p artifacts/readiness-test
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          source = Path('deploy/staging/staging-bootstrap-readiness.example.json')
+          payload = json.loads(source.read_text())
+          commit = '7' * 40
+          payload['repository']['commitSha'] = commit
+          run_numbers = {
+              'CI': 403,
+              'CodeQL': 402,
+              'Render Diff': 285,
+              'Staging configuration': 228,
+          }
+          payload['workflows'] = [
+              {
+                  'name': name,
+                  'runNumber': number,
+                  'commitSha': commit,
+                  'status': 'completed',
+                  'conclusion': 'success',
+              }
+              for name, number in run_numbers.items()
+          ]
+          for key in payload['governance']:
+              payload['governance'][key] = (
+                  'approved' if key == 'decisionStatus' else True
+              )
+          payload['protectedEnvironment'] = {
+              'name': 'staging-bootstrap',
+              'configured': True,
+              'requiredReviewerCount': 1,
+              'branchRestricted': True,
+              'secretNames': [],
+              'cloudCredentialsPresent': False,
+              'idTokenWrite': False,
+              'variableNames': sorted([
+                  'STAGING_PROJECT_ID',
+                  'STAGING_BILLING_ACCOUNT',
+                  'STAGING_FORBIDDEN_PROJECT_IDS_JSON',
+                  'STAGING_STORAGE_BUCKET',
+                  'STAGING_MONTHLY_BUDGET_KRW',
+                  'STAGING_BUDGET_NOTIFICATION_CHANNELS_JSON',
+                  'STAGING_DATA_RETENTION_DAYS',
+                  'STAGING_APPROVAL_REFERENCE',
+                  'STAGING_INTERNAL_FLUSH_DECISION',
+              ]),
+          }
+          Path('artifacts/readiness-test/staging-bootstrap-readiness-input-test.json').write_text(
+              json.dumps(payload, ensure_ascii=False, indent=2) + '\n'
+          )
+          PY
+          python3 scripts/staging_bootstrap_readiness.py \
+            --input artifacts/readiness-test/staging-bootstrap-readiness-input-test.json \
+            --json-output artifacts/readiness-test/staging-bootstrap-readiness-test.json \
+            --markdown-output artifacts/readiness-test/staging-bootstrap-readiness-test.md \
+            --normalized-values-output artifacts/readiness-test/staging-bootstrap-values-normalized-test.json
+          python3 scripts/staging_bootstrap_materializer.py \
+            --manifest deploy/staging/staging-manifest.json \
+            --values artifacts/readiness-test/staging-bootstrap-values-normalized-test.json \
+            --output artifacts/readiness-test/staging-manifest-bootstrap-test.json
+          python3 scripts/staging_preflight.py \
+            --manifest artifacts/readiness-test/staging-manifest-bootstrap-test.json \
+            --report artifacts/readiness-test/staging-preflight-readiness-test.json
+          python3 scripts/staging_approval_packet.py \
+            --phase bootstrap \
+            --manifest artifacts/readiness-test/staging-manifest-bootstrap-test.json \
+            --static-report artifacts/readiness-test/staging-preflight-readiness-test.json \
+            --json-output artifacts/readiness-test/staging-approval-packet-readiness-test.json \
+            --markdown-output artifacts/readiness-test/staging-approval-packet-readiness-test.md
+      - name: Upload deterministic readiness test evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: staging-bootstrap-readiness-test-evidence
+          path: artifacts/readiness-test/**
           if-no-files-found: warn
           retention-days: 14
       - name: Generate static preflight report
