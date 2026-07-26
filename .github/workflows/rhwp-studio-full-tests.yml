@@ -1,0 +1,56 @@
+name: rhwp-studio full tests
+
+on:
+  pull_request:
+    branches: [devel]
+    paths:
+      - 'rhwp-studio/**'
+      - 'npm/editor/**'
+      - 'src/wasm_api.rs'
+      - 'src/lib.rs'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - '.github/workflows/rhwp-studio-full-tests.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rhwp-studio-full-tests-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          show-progress: false
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.93.1
+          targets: wasm32-unknown-unknown
+      - uses: ./.github/actions/install-wasm-pack
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: rhwp-studio/package-lock.json
+      - name: Build fresh WASM package
+        run: wasm-pack build --target web --dev
+      - name: Install Studio dependencies
+        working-directory: rhwp-studio
+        run: npm ci --no-audit --no-fund
+      - name: Run all Studio unit tests
+        working-directory: rhwp-studio
+        run: |
+          set -o pipefail
+          npm test 2>&1 | tee studio-full-tests.log
+      - name: Upload Studio test diagnostics
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: studio-full-tests-${{ github.run_id }}
+          path: rhwp-studio/studio-full-tests.log
+          retention-days: 1
+          if-no-files-found: error
