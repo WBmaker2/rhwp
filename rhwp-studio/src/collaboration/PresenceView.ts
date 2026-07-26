@@ -17,6 +17,7 @@ export class PresenceView {
   constructor(parent: HTMLElement = document.body) {
     this.element = document.createElement('div');
     this.element.id = 'collaboration-presence';
+    this.element.dataset.testid = 'collaboration-presence';
     Object.assign(this.element.style, {
       position: 'fixed',
       top: '8px',
@@ -32,12 +33,15 @@ export class PresenceView {
       font: '12px system-ui, sans-serif',
     });
     this.status = document.createElement('span');
+    this.status.dataset.testid = 'collaboration-status';
     this.participants = document.createElement('div');
+    this.participants.dataset.testid = 'collaboration-participants';
     this.participants.setAttribute('aria-label', '공동 편집 접속자');
     Object.assign(this.participants.style, { display: 'flex', gap: '4px' });
     this.shareButton = document.createElement('button');
     this.shareButton.type = 'button';
     this.shareButton.textContent = '공유';
+    this.shareButton.dataset.testid = 'collaboration-share';
     this.shareButton.setAttribute('aria-label', '공유 링크 관리');
     Object.assign(this.shareButton.style, {
       display: 'none',
@@ -68,6 +72,7 @@ export class PresenceView {
 
   setConnected(state: CollaborationConnectionState): void {
     this.role = state.role;
+    this.element.dataset.role = state.role;
     const roleLabel = state.role === 'owner' ? '소유자' : state.role === 'editor' ? '편집자' : '열람자';
     this.status.textContent = `${state.identity.displayName || state.identity.userId} · ${roleLabel}`;
     this.renderParticipants(state.participants);
@@ -77,6 +82,8 @@ export class PresenceView {
   renderParticipants(participants: RemoteParticipant[]): void {
     this.participants.replaceChildren(...participants.map((participant) => {
       const chip = document.createElement('span');
+      chip.dataset.testid = 'collaboration-participant';
+      chip.dataset.userId = participant.state.userId;
       chip.textContent = participant.state.displayName || participant.state.userId;
       chip.title = participant.state.userId;
       Object.assign(chip.style, {
