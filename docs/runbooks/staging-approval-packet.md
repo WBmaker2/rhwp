@@ -4,64 +4,144 @@
 
 - 적용 환경: staging only
 - generator: `scripts/staging_approval_packet.py`
-- unit tests: `scripts/tests/test_staging_approval_packet.py`
+- unit tests: `scripts/tests/test_staging_approval_packet.py`, `scripts/tests/test_staging_approval_packet_phases.py`
 - workflow: `.github/workflows/staging-config-validate.yml`
 - 실제 Firebase/GCP 리소스 변경: 없음
-- cloud CLI 실행: 없음
-- 이 문서 또는 생성된 packet 자체가 배포 승인을 의미하지 않음
+- generator의 cloud CLI 실행: 없음
+- packet 생성은 리소스 생성이나 배포 승인을 의미하지 않음
 
 ## 1. 목적
 
-Staging Approval Packet Generator는 다음 세 입력을 검토 가능한 하나의 JSON·Markdown 승인 패킷으로 변환한다.
+Staging Approval Packet Generator는 staging 수명 주기의 승인 시점을 다음 두 단계로 분리한다.
 
-```text
-deploy/staging/staging-manifest.json
-artifacts/staging-preflight-static.json
-artifacts/staging-preflight-live.json  # 선택 입력
-```
+| Phase | 시점 | Cloud 조회 | Placeholder 정책 |
+|---|---|---|---|
+| `bootstrap` | staging 리소스 생성 전 | 없음 | 정확히 허용된 resource-derived 값만 유예 |
+| `deployment` | live preflight 후, 배포 전 | 기존 read-only preflight 결과 사용 | 모든 placeholder 금지 |
 
-생성 결과:
+두 phase 모두 다음 파일을 출력한다.
 
 ```text
 artifacts/staging-approval-packet.json
 artifacts/staging-approval-packet.md
 ```
 
-Generator는 입력 파일만 읽는다. `gcloud`, `firebase`, Docker, Cloud Run, Cloud Tasks, IAM, billing 또는 Secret Manager 명령을 실행하지 않는다.
+Generator는 manifest와 preflight JSON만 읽는다. `gcloud`, `firebase`, Docker, Cloud Run, Cloud Tasks, IAM, billing 또는 Secret Manager 명령을 실행하지 않는다.
 
-## 2. 실행 전 필수 조건
+## 2. 공통 입력 계약
 
-다음 조건 중 하나라도 충족하지 않으면 승인 패킷을 생성하지 않는다.
+다음 조건 중 하나라도 충족하지 않으면 packet을 생성하지 않는다.
 
 1. manifest schema가 `rhwp.staging/v1`이다.
 2. environment가 `staging`이다.
 3. `operations.cloudMutationApproved=false`가 유지된다.
-4. manifest 전체에 `${PLACEHOLDER}` 또는 문자열 내부 placeholder가 남아 있지 않다.
-5. static report schema가 `rhwp.preflight-report/v1`이다.
-6. static report mode와 status가 각각 `static`, `pass`다.
-7. static report의 `cloudQueries`와 `mutationCommands`가 빈 배열이다.
-8. live report를 입력하면 mode가 `live`이고 status가 `pass` 또는 `review`다.
-9. 모든 report의 `projectId`가 manifest project ID와 일치한다.
-10. 모든 report의 `mutationCommands`가 빈 배열이다.
+4. static report schema가 `rhwp.preflight-report/v1`이다.
+5. static report mode와 status가 각각 `static`, `pass`다.
+6. static report의 `cloudQueries`와 `mutationCommands`가 빈 배열이다.
+7. 모든 report의 `projectId`가 manifest project ID와 일치한다.
+8. 모든 report의 `mutationCommands`가 빈 배열이다.
+9. secret 원문, token, credential 또는 private key를 입력 계약이나 출력에 포함하지 않는다.
 
-현재 repository manifest에는 승인 전 placeholder가 의도적으로 남아 있으므로 PR static job에서는 packet을 생성하지 않는다. 실제 packet 생성은 concrete manifest와 보호된 `workflow_dispatch live_check=true` 실행에서만 수행한다.
+## 3. Bootstrap phase
 
-## 3. 로컬 실행
+### 3.1 목적
 
-Static report만 사용하는 검토 초안:
+Bootstrap packet은 staging project·billing·region·원화 예산·IAM·service account·queue·보안 결정을 검토한 뒤, 아직 생성되지 않은 리소스의 준비 작업을 별도로 승인하기 위한 문서다.
+
+Bootstrap은 live report를 받지 않는다. live report가 전달되면 실패한다.
+
+### 3.2 Bootstrap에서 반드시 concrete여야 하는 값
+
+- staging project ID
+- forbidden production project ID 목록
+- billing account
+- `asia-northeast3` region
+- Firebase auth domain과 authorized domain
+- Artifact Registry 이름과 위치
+- Cloud Run service 이름, service account, ingress, runtime
+- Cloud Tasks caller account, queue 이름, target URL, retry, rate limit, deadline
+- IAM principal, role, resource
+- Secret 이름과 version reference
+- 월간 예산 원화 금액, 50%·80%·100% threshold, 알림 채널
+- data retention
+- approval reference
+- internal flush security decision
+
+### 3.3 Bootstrap에서만 허용되는 deferred path
+
+다음 14개 경로만 placeholder를 유지할 수 있다.
+
+```text
+manifest.project.number
+manifest.firebase.webAppId
+manifest.firebase.apiKeyReference
+manifest.firebase.storageBucket
+manifest.firebase.hostingSite
+manifest.cloudRun.collaboration.image
+manifest.cloudRun.collaboration.digest
+manifest.cloudRun.documentApi.image
+manifest.cloudRun.documentApi.digest
+manifest.cloudRun.documentWorker.image
+manifest.cloudRun.documentWorker.digest
+manifest.operations.rollbackRevisionIds[0]
+manifest.operations.rollbackRevisionIds[1]
+manifest.operations.rollbackRevisionIds[2]
+```
+
+허용 이유:
+
+- project number: staging project가 존재한 뒤 확정
+- Firebase 식별자: Firebase resource 생성 뒤 확정
+- image와 digest: container build와 digest 조회 뒤 확정
+- rollback revision: 최초 Cloud Run 배포 뒤 확정
+
+목록에 없는 placeholder는 bootstrap에서도 실패한다. 오류에는 값이 아니라 JSON path만 기록한다.
+
+### 3.4 실행
 
 ```bash
 python3 scripts/staging_approval_packet.py \
+  --phase bootstrap \
   --manifest deploy/staging/staging-manifest.json \
   --static-report artifacts/staging-preflight-static.json \
   --json-output artifacts/staging-approval-packet.json \
   --markdown-output artifacts/staging-approval-packet.md
 ```
 
-Static·live report를 모두 사용하는 실제 승인 검토 패킷:
+Bootstrap packet 핵심 필드:
+
+```json
+{
+  "schemaVersion": "rhwp.staging-approval-packet/v1",
+  "phase": "bootstrap",
+  "status": "ready-for-bootstrap-approval",
+  "deferredValues": []
+}
+```
+
+실제 deferred value가 있으면 `deferredValues`에 path와 해결 시점을 기록한다.
+
+## 4. Deployment phase
+
+### 4.1 목적
+
+Deployment packet은 실제 staging project 상태를 read-only로 조회한 뒤 container image, Firebase 식별자, IAM diff와 rollback 정보를 포함해 배포 여부를 검토하는 문서다.
+
+### 4.2 필수 조건
+
+- live report가 반드시 존재한다.
+- live report mode는 `live`다.
+- live report status는 `pass` 또는 `review`다.
+- manifest 전체에 placeholder가 하나도 없어야 한다.
+- image digest, Firebase 식별자와 rollback 전략이 concrete여야 한다.
+
+Live status가 `pass`이면 packet status는 `ready-for-deployment-approval`이다. 예상하지 못한 resource 등으로 live status가 `review`이면 packet status는 `review-required`다.
+
+### 4.3 실행
 
 ```bash
 python3 scripts/staging_approval_packet.py \
+  --phase deployment \
   --manifest deploy/staging/staging-manifest.json \
   --static-report artifacts/staging-preflight-static.json \
   --live-report artifacts/staging-preflight-live.json \
@@ -69,104 +149,35 @@ python3 scripts/staging_approval_packet.py \
   --markdown-output artifacts/staging-approval-packet.md
 ```
 
-Placeholder가 남아 있으면 generator는 종료 코드 1로 중단하며 성공 packet을 쓰지 않는다. 오류에는 placeholder가 발견된 JSON path만 기록하고 값은 기록하지 않는다.
+Deployment packet 핵심 필드:
 
-## 4. Packet 내용
-
-### 4.1 Project와 Firebase
-
-- project ID와 project number
-- billing account
-- `asia-northeast3` region
-- forbidden project ID 목록
-- Firebase Web App ID와 API key reference
-- authorized domains
-- Firestore·Storage location
-- Storage bucket과 Hosting site
-
-### 4.2 Budget
-
-- 통화 `KRW`
-- 승인 대상 월간 예산 금액
-- 50%·80%·100% threshold
-- notification channel
-
-금액은 변환하지 않고 manifest의 원화 정수 값을 그대로 기록한다.
-
-### 4.3 IAM diff
-
-기존 live preflight가 조회하는 project IAM policy 범위에서는 다음처럼 비교한다.
-
-```text
-present  -> plannedAction=none
-missing  -> plannedAction=grant-after-approval
+```json
+{
+  "schemaVersion": "rhwp.staging-approval-packet/v1",
+  "phase": "deployment",
+  "status": "ready-for-deployment-approval",
+  "deferredValues": []
+}
 ```
 
-Secret, queue, bucket, Cloud Run처럼 resource-level IAM policy를 기존 preflight가 직접 조회하지 않는 항목은 누락으로 단정하지 않는다.
+## 5. Packet 공통 내용
 
-```text
-state=not-observed
-plannedAction=verify-before-grant
-```
+- project ID, number, billing account, region, forbidden project IDs
+- Firebase Web App·domain·Firestore·Storage·Hosting metadata
+- 통화 `KRW`, 월간 예산, threshold와 notification channel
+- IAM `present`, `missing`, `not-observed` 비교
+- Secret 이름, version, access principal, `valueIncluded=false`
+- Cloud Run service, digest, ingress, reachability, runtime
+- Cloud Tasks queue, retry, rate limit, 900초 deadline
+- internal flush security decision
+- rollback revision과 data retention
+- 11개 staging acceptance checklist
+- static/live preflight evidence
+- `mutationCommands=[]`
 
-이 항목은 실제 mutation 전에 별도 조회와 승인이 필요하다.
+금액은 변환하지 않고 manifest의 원화 값을 그대로 기록한다.
 
-### 4.4 Secret metadata
-
-Packet에는 다음 metadata만 들어간다.
-
-- secret 이름
-- version reference
-- manifest IAM 계약에서 파생한 access principal
-- `valueIncluded=false`
-
-Secret 원문, token과 credential은 넣지 않는다.
-
-### 4.5 Cloud Run과 Cloud Tasks
-
-Cloud Run:
-
-- service 이름
-- image와 digest
-- service account
-- ingress
-- 공개 도달 경계
-- CPU, memory, concurrency, timeout, scale
-
-Cloud Tasks:
-
-- parse/export queue 이름과 location
-- target URL
-- retry와 rate limit
-- `dispatchDeadlineSeconds=900`
-- caller service account
-
-### 4.6 보안 결정과 rollback
-
-- `internalFlushSecurityDecision`
-- staging의 public Collaboration service + high-entropy internal token 제한
-- production 전 private service 또는 private endpoint 분리 권고
-- Cloud Run revision ID 3개
-- data retention
-- 자동 삭제 금지
-
-### 4.7 Acceptance tests
-
-Packet은 다음 11개 검증 항목을 pending checklist로 생성한다.
-
-1. Google 로그인과 ACL
-2. 200 MiB 이하 HWP 업로드
-3. parse worker 완료
-4. 두 번째 계정의 공유 링크 수락
-5. 두 브라우저 동시 편집
-6. WebSocket 재연결과 상태 수렴
-7. Collaboration restart와 snapshot 복구
-8. HWPX export
-9. export HWPX 재가져오기
-10. 편집 내용과 readonly 복잡 개체 보존
-11. rollback revision 준비
-
-## 5. Redaction 계약
+## 6. Redaction 계약
 
 다음 key 또는 값은 `[REDACTED]`로 치환한다.
 
@@ -183,53 +194,67 @@ secret value
 Bearer token 문자열
 ```
 
-Markdown은 raw manifest나 raw report에서 직접 렌더링하지 않는다. 먼저 sanitized JSON packet을 만든 뒤 그 packet만 사용한다.
+Markdown은 raw manifest나 raw report에서 직접 만들지 않는다. sanitized JSON packet만 사용해 렌더링한다.
 
-## 6. GitHub Actions
+## 7. GitHub Actions
 
 Workflow: `Staging configuration`
 
-PR과 `live_check=false` 실행:
-
-- 기존 Python tests와 static preflight만 실행
-- repository placeholder manifest로 packet 생성하지 않음
-- 기존 static report artifact 유지
-
-승인된 `workflow_dispatch live_check=true` 실행:
-
-1. `staging-preflight` protected environment 승인을 통과한다.
-2. WIF로 read-only identity를 사용한다.
-3. live job 안에서 static report를 다시 생성한다.
-4. 기존 live read-only preflight를 실행한다.
-5. 두 report와 concrete manifest로 packet을 생성한다.
-6. 다음 artifact를 업로드한다.
+### 7.1 workflow_dispatch 입력
 
 ```text
-staging-preflight-report-live
-staging-approval-packet
+approval_phase=none|bootstrap|deployment
+live_check=false|true
+manifest_path=<repository-relative path>
 ```
 
-`staging-approval-packet` artifact에는 다음 파일이 포함된다.
+허용 조합:
 
 ```text
-staging-preflight-static.json
-staging-preflight-live.json
-staging-approval-packet.json
-staging-approval-packet.md
+none + false
+bootstrap + false
+deployment + true
 ```
 
-Workflow에는 cloud mutation job이나 직접적인 `gcloud`·`firebase` mutation 명령이 없다.
+다른 조합은 static job에서 실패한다.
 
-## 7. 검증
+### 7.2 Bootstrap job
+
+```text
+approval_phase=bootstrap
+live_check=false
+```
+
+- GCP 인증 없음
+- cloud CLI 설치 없음
+- static preflight와 bootstrap generator만 실행
+- artifact: `staging-approval-packet-bootstrap`
+
+### 7.3 Deployment job
+
+```text
+approval_phase=deployment
+live_check=true
+```
+
+- `staging-preflight` protected environment 사용
+- WIF read-only identity 사용
+- static report 재생성
+- live read-only preflight 실행
+- deployment generator 실행
+- artifacts:
+  - `staging-preflight-report-live`
+  - `staging-approval-packet-deployment`
+
+Workflow에는 cloud resource 생성·수정·삭제·배포 명령이 없다.
+
+## 8. 검증
 
 ```bash
 python3 -m py_compile \
   scripts/staging_approval_packet.py \
-  scripts/tests/test_staging_approval_packet.py
-
-python3 -m unittest \
-  scripts.tests.test_staging_approval_packet \
-  -v
+  scripts/tests/test_staging_approval_packet.py \
+  scripts/tests/test_staging_approval_packet_phases.py
 
 python3 -m unittest discover \
   -s scripts/tests \
@@ -239,4 +264,4 @@ python3 -m unittest discover \
 python3 scripts/validate_staging_config.py
 ```
 
-배포 또는 cloud mutation은 이 검증 범위에 포함되지 않는다.
+배포, live preflight 실행, cloud authentication, image build/push와 cloud mutation은 이 구현 검증 범위에 포함되지 않는다.
