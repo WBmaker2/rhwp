@@ -79,7 +79,8 @@ fn import_document(args: &[String]) -> Result<(), String> {
     let manifest_path = required_path(&parsed, "--manifest")?;
     let source_bytes = read_file(&source, "source document")?;
     let fingerprint = source_fingerprint(&source_bytes);
-    let document = parse_document(&source_bytes).map_err(|error| format!("parse failed: {error}"))?;
+    let document =
+        parse_document(&source_bytes).map_err(|error| format!("parse failed: {error}"))?;
     let manifest = build_collaboration_manifest(&document, &fingerprint)
         .map_err(|error| format!("manifest build failed: {error}"))?;
     let manifest_json = serde_json::to_vec_pretty(&manifest)
@@ -92,8 +93,17 @@ fn import_document(args: &[String]) -> Result<(), String> {
             "status": "ready",
             "sourceFingerprint": fingerprint,
             "manifestPath": manifest_path,
-            "paragraphCount": manifest.sections.iter().map(|section| section.paragraphs.len()).sum::<usize>(),
-            "cellCount": manifest.sections.iter().flat_map(|section| section.tables.iter()).map(|table| table.cells.len()).sum::<usize>(),
+            "paragraphCount": manifest
+                .sections
+                .iter()
+                .map(|section| section.paragraphs.len())
+                .sum::<usize>(),
+            "cellCount": manifest
+                .sections
+                .iter()
+                .flat_map(|section| section.tables.iter())
+                .map(|table| table.cells.len())
+                .sum::<usize>(),
         })
     );
     Ok(())
@@ -108,22 +118,27 @@ fn export_document(args: &[String]) -> Result<(), String> {
 
     let source_bytes = read_file(&source, "source document")?;
     let computed_fingerprint = source_fingerprint(&source_bytes);
-    let manifest: CollaborationManifest = serde_json::from_slice(&read_file(&manifest_path, "manifest")?)
-        .map_err(|error| format!("invalid manifest: {error}"))?;
+    let manifest: CollaborationManifest =
+        serde_json::from_slice(&read_file(&manifest_path, "manifest")?)
+            .map_err(|error| format!("invalid manifest: {error}"))?;
     if manifest.source_fingerprint != computed_fingerprint {
         return Err(format!(
             "source fingerprint mismatch: manifest={} source={computed_fingerprint}",
             manifest.source_fingerprint
         ));
     }
-    let patch_dto: CollaborationPatchDto = serde_json::from_slice(&read_file(&patch_path, "patch")?)
-        .map_err(|error| format!("invalid patch: {error}"))?;
+    let patch_dto: CollaborationPatchDto =
+        serde_json::from_slice(&read_file(&patch_path, "patch")?)
+            .map_err(|error| format!("invalid patch: {error}"))?;
     let patch: CollaborationPatch = patch_dto.into();
-    let mut document = parse_document(&source_bytes).map_err(|error| format!("parse failed: {error}"))?;
+    let mut document =
+        parse_document(&source_bytes).map_err(|error| format!("parse failed: {error}"))?;
     let report = apply_collaboration_patch(&mut document, &manifest, &patch)
         .map_err(|error| format!("patch failed: {error}"))?;
-    let exported = serialize_hwpx(&document).map_err(|error| format!("HWPX export failed: {error}"))?;
-    parse_document(&exported).map_err(|error| format!("export verification failed: {error}"))?;
+    let exported =
+        serialize_hwpx(&document).map_err(|error| format!("HWPX export failed: {error}"))?;
+    parse_document(&exported)
+        .map_err(|error| format!("export verification failed: {error}"))?;
     atomic_write(&output_path, &exported)?;
 
     println!(
@@ -205,6 +220,10 @@ fn atomic_write(path: &Path, bytes: &[u8]) -> Result<(), String> {
 }
 
 fn print_help() {
-    eprintln!("rhwp-collaboration-worker import <source.hwp|source.hwpx> --manifest <manifest.json>");
-    eprintln!("rhwp-collaboration-worker export <source.hwp|source.hwpx> --manifest <manifest.json> --patch <patch.json> --output <output.hwpx>");
+    eprintln!(
+        "rhwp-collaboration-worker import <source.hwp|source.hwpx> --manifest <manifest.json>"
+    );
+    eprintln!(
+        "rhwp-collaboration-worker export <source.hwp|source.hwpx> --manifest <manifest.json> --patch <patch.json> --output <output.hwpx>"
+    );
 }
