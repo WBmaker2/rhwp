@@ -43,7 +43,7 @@ function completeUploadDependencies(
     objects: {
       async stat() {
         return {
-          sizeBytes: 100 * mib,
+          sizeBytes: 1,
           generation: 'generation-7',
           contentType: 'application/x-hwp',
         }
@@ -63,6 +63,20 @@ function completeUploadDependencies(
     now: () => new Date('2026-07-25T02:00:00.000Z'),
     ...overrides,
   }
+}
+
+function dependenciesForSourceSize(sizeBytes: number): CompleteUploadDependencies {
+  return completeUploadDependencies({
+    objects: {
+      async stat() {
+        return {
+          sizeBytes,
+          generation: 'generation-7',
+          contentType: 'application/x-hwp',
+        }
+      },
+    },
+  })
 }
 
 test('complete-upload rejects a missing Firebase bearer token', async () => {
@@ -97,24 +111,24 @@ test('complete-upload rejects a non-JSON request body', async () => {
   assert.equal(response.status, 415)
 })
 
-test('complete-upload rejects source objects outside the 100 to 200 MiB V1 range', async () => {
-  const handler = createCompleteUploadHandler(
-    completeUploadDependencies({
-      objects: {
-        async stat() {
-          return {
-            sizeBytes: 99 * mib,
-            generation: 'generation-7',
-            contentType: 'application/x-hwp',
-          }
-        },
-      },
-    }),
-  )
+test('complete-upload accepts source objects from 1 byte through 200 MiB', async () => {
+  for (const sizeBytes of [1, 200 * mib]) {
+    const handler = createCompleteUploadHandler(dependenciesForSourceSize(sizeBytes))
 
-  const response = await handler(request())
+    const response = await handler(request())
 
-  assert.equal(response.status, 422)
+    assert.equal(response.status, 202, `expected ${sizeBytes} bytes to be accepted`)
+  }
+})
+
+test('complete-upload rejects empty or larger-than-200-MiB source objects', async () => {
+  for (const sizeBytes of [0, 200 * mib + 1]) {
+    const handler = createCompleteUploadHandler(dependenciesForSourceSize(sizeBytes))
+
+    const response = await handler(request())
+
+    assert.equal(response.status, 422, `expected ${sizeBytes} bytes to be rejected`)
+  }
 })
 
 test('duplicate upload completion does not enqueue a second parse', async () => {
