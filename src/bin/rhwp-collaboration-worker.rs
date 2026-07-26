@@ -137,8 +137,7 @@ fn export_document(args: &[String]) -> Result<(), String> {
         .map_err(|error| format!("patch failed: {error}"))?;
     let exported =
         serialize_hwpx(&document).map_err(|error| format!("HWPX export failed: {error}"))?;
-    parse_document(&exported)
-        .map_err(|error| format!("export verification failed: {error}"))?;
+    parse_document(&exported).map_err(|error| format!("export verification failed: {error}"))?;
     atomic_write(&output_path, &exported)?;
 
     println!(
