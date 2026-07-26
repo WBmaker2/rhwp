@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import copy
 import io
 import json
 import tempfile
@@ -14,7 +13,6 @@ from scripts.staging_bootstrap_approval_record import (
     packet_sha256,
 )
 from scripts.staging_bootstrap_operator import (
-    BootstrapOperatorError,
     build_pending_review_draft,
     evaluate_operator_status,
     main,
@@ -37,6 +35,16 @@ def packet_evidence() -> dict[str, Any]:
         "commitSha": COMMIT_SHA,
         "artifactName": "staging-approval-packet-bootstrap",
     }
+
+
+def readiness_for_packet(packet: dict[str, Any]) -> dict[str, Any]:
+    readiness = ready_payload()
+    approval = packet["approval"]
+    assert isinstance(approval, dict)
+    operations = readiness["values"]["operations"]
+    assert isinstance(operations, dict)
+    operations["approvalReference"] = approval["reference"]
+    return readiness
 
 
 def approved_review_for_operator(packet: dict[str, Any], raw: bytes) -> dict[str, Any]:
@@ -92,7 +100,7 @@ class OperatorLifecycleStatusTest(unittest.TestCase):
         evidence = packet_evidence()
 
         report = evaluate_operator_status(
-            ready_payload(),
+            readiness_for_packet(packet),
             packet=packet,
             packet_bytes=raw,
             packet_workflow_run_id=evidence["workflowRunId"],
@@ -124,7 +132,7 @@ class OperatorLifecycleStatusTest(unittest.TestCase):
         review = approved_review_for_operator(packet, raw)
 
         report = evaluate_operator_status(
-            ready_payload(),
+            readiness_for_packet(packet),
             packet=packet,
             packet_bytes=raw,
             packet_workflow_run_id=evidence["workflowRunId"],
@@ -145,7 +153,7 @@ class OperatorLifecycleStatusTest(unittest.TestCase):
         record = build_approval_record(packet, review, packet_sha256(raw))
 
         report = evaluate_operator_status(
-            ready_payload(),
+            readiness_for_packet(packet),
             packet=packet,
             packet_bytes=raw,
             packet_workflow_run_id=evidence["workflowRunId"],
@@ -177,9 +185,10 @@ class OperatorBlockingTest(unittest.TestCase):
     def test_packet_requires_matching_source_commit_and_positive_run(self) -> None:
         packet = bootstrap_packet()
         raw = packet_bytes(packet)
+        readiness = readiness_for_packet(packet)
 
         wrong_commit = evaluate_operator_status(
-            ready_payload(),
+            readiness,
             packet=packet,
             packet_bytes=raw,
             packet_workflow_run_id=9005,
@@ -188,7 +197,7 @@ class OperatorBlockingTest(unittest.TestCase):
         self.assert_blocked(wrong_commit, "commit")
 
         zero_run = evaluate_operator_status(
-            ready_payload(),
+            readiness,
             packet=packet,
             packet_bytes=raw,
             packet_workflow_run_id=0,
@@ -203,7 +212,7 @@ class OperatorBlockingTest(unittest.TestCase):
         review["expectedPacketSha256"] = "a" * 64
 
         report = evaluate_operator_status(
-            ready_payload(),
+            readiness_for_packet(packet),
             packet=packet,
             packet_bytes=raw,
             packet_workflow_run_id=9005,
@@ -221,7 +230,7 @@ class OperatorBlockingTest(unittest.TestCase):
         record["packetSha256"] = "b" * 64
 
         report = evaluate_operator_status(
-            ready_payload(),
+            readiness_for_packet(packet),
             packet=packet,
             packet_bytes=raw,
             packet_workflow_run_id=9005,
@@ -262,8 +271,8 @@ class OperatorRenderingAndCliTest(unittest.TestCase):
         self.assertNotIn("firebase deploy", markdown)
 
     def test_cli_writes_atomic_status_outputs_and_pending_review_draft(self) -> None:
-        readiness = ready_payload()
         packet = bootstrap_packet()
+        readiness = readiness_for_packet(packet)
         raw = packet_bytes(packet)
 
         with tempfile.TemporaryDirectory() as directory:
