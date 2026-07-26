@@ -1,0 +1,24 @@
+{
+  "schemaVersion": "rhwp.staging-bootstrap-values/v1",
+  "project": {
+    "id": "rhwp-collaboration-staging-123",
+    "billingAccount": "000000-111111-222222",
+    "forbiddenProjectIds": [
+      "rhwp-production"
+    ]
+  },
+  "firebase": {
+    "storageBucket": "rhwp-collaboration-staging-123.firebasestorage.app"
+  },
+  "budget": {
+    "amountKrw": 50000,
+    "notificationChannels": [
+      "billing-admins@example.com"
+    ]
+  },
+  "operations": {
+    "dataRetentionDays": 14,
+    "approvalReference": "approval-2026-07-26-001",
+    "internalFlushSecurityDecision": "mvp-staging-internal-token"
+  }
+}
