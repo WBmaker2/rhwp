@@ -1,7 +1,7 @@
 import { getApps, initializeApp, type App } from 'firebase-admin/app'
 import { getAuth } from 'firebase-admin/auth'
 import { getFirestore, type Firestore } from 'firebase-admin/firestore'
-import { getStorage, type Bucket } from 'firebase-admin/storage'
+import { getStorage } from 'firebase-admin/storage'
 
 import {
   createFirebaseTokenVerifier,
@@ -14,6 +14,8 @@ import type {
   SnapshotReason,
   SnapshotRecord,
 } from './persistence.js'
+
+type StorageBucket = ReturnType<ReturnType<typeof getStorage>['bucket']>
 
 export interface CollaborationServerEnvironment {
   port: number
@@ -30,7 +32,7 @@ export interface CollaborationFirebaseAdapters {
 }
 
 export class FirebaseSnapshotObjectStore implements SnapshotObjectStore {
-  constructor(private readonly bucket: Pick<Bucket, 'file'>) {}
+  constructor(private readonly bucket: Pick<StorageBucket, 'file'>) {}
 
   async write(path: string, value: Uint8Array): Promise<void> {
     await this.bucket.file(assertObjectPath(path)).save(Buffer.from(value), {
