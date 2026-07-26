@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "test": "node --test tests/*.test.ts ../npm/editor/tests/*.test.mjs",
+    "test": "node --test --import tsx tests/*.test.ts ../npm/editor/tests/*.test.mjs",
     "test:collaboration": "node --test --import tsx tests/collaboration-*.test.ts",
     "e2e": "node e2e/text-flow.test.mjs",
     "e2e:unsaved-guard": "node e2e/unsaved-changes-guard.test.mjs",
