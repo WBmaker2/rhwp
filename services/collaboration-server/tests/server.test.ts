@@ -35,16 +35,16 @@ test('authenticates, applies viewer read-only mode, and returns trusted context'
     membershipStore,
     participants: new ParticipantRegistry(),
   })
-  const connection = { readOnly: false }
+  const connectionConfig = { readOnly: false }
 
   const context = await hooks.onAuthenticate({
     documentName: 'doc-1',
     token: 'viewer',
     socketId: 'tab-viewer',
-    connection,
+    connectionConfig,
   })
 
-  assert.equal(connection.readOnly, true)
+  assert.equal(connectionConfig.readOnly, true)
   assert.deepEqual(context, {
     documentId: 'doc-1',
     userId: 'viewer',
@@ -68,7 +68,7 @@ test('releases the participant slot on disconnect', async () => {
         documentName: 'doc-1',
         token: `user-${index}`,
         socketId: `tab-${index}`,
-        connection: { readOnly: false },
+        connectionConfig: { readOnly: false },
       }),
     )
   }
@@ -78,7 +78,7 @@ test('releases the participant slot on disconnect', async () => {
       documentName: 'doc-1',
       token: 'user-11',
       socketId: 'tab-11',
-      connection: { readOnly: false },
+      connectionConfig: { readOnly: false },
     }),
     (error: unknown) => error instanceof ParticipantLimitError,
   )
@@ -93,7 +93,7 @@ test('releases the participant slot on disconnect', async () => {
     documentName: 'doc-1',
     token: 'user-11',
     socketId: 'tab-11',
-    connection: { readOnly: false },
+    connectionConfig: { readOnly: false },
   })
   assert.equal(admitted.userId, 'user-11')
 })
