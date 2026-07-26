@@ -46,7 +46,7 @@ jobs:
 
       - name: Commit generated lockfile
         run: |
-          if git diff --quiet -- services/document-worker/package-lock.json; then
+          if [ -z "$(git status --porcelain -- services/document-worker/package-lock.json)" ]; then
             echo 'services/document-worker/package-lock.json is already synchronized.'
             exit 0
           fi
