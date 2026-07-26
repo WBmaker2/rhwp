@@ -7,7 +7,6 @@ import { Server } from '@hocuspocus/server'
 import type { MembershipStore, TokenVerifier } from '../src/auth.js'
 import { ParticipantRegistry } from '../src/participants.js'
 import {
-  InternalHttpRequestHandledError,
   ParticipantLimitError,
   createCollaborationHooks,
   createCollaborationServer,
@@ -99,7 +98,7 @@ test('releases the participant slot on disconnect', async () => {
   assert.equal(admitted.userId, 'user-11')
 })
 
-test('rejects the Hocuspocus hook chain after an internal response was handled', async () => {
+test('rejects the Hocuspocus hook chain without an error after handling HTTP', async () => {
   const request = {} as IncomingMessage
   const response = {} as ServerResponse
 
@@ -109,7 +108,6 @@ test('rejects the Hocuspocus hook chain after an internal response was handled',
       assert.equal(receivedResponse, response)
       return true
     }, request, response),
-    (error: unknown) => error instanceof InternalHttpRequestHandledError,
   )
 
   await handleInternalHttpRequest(async () => false, request, response)
