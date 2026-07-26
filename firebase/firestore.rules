@@ -97,32 +97,6 @@ service cloud.firestore {
       return request.resource.data.role in ['editor', 'viewer'];
     }
 
-    function validShareLink() {
-      return request.resource.data.keys().hasOnly([
-          'documentId',
-          'role',
-          'enabled',
-          'expiresAt',
-          'createdBy',
-          'createdAt'
-        ])
-        && request.resource.data.keys().hasAll([
-          'documentId',
-          'role',
-          'enabled',
-          'expiresAt',
-          'createdBy'
-        ])
-        && request.resource.data.documentId is string
-        && request.resource.data.role in ['editor', 'viewer']
-        && request.resource.data.enabled is bool
-        && (request.resource.data.expiresAt == null
-          || request.resource.data.expiresAt is timestamp)
-        && request.resource.data.createdBy == request.auth.uid
-        && (!('createdAt' in request.resource.data)
-          || request.resource.data.createdAt is timestamp);
-    }
-
     match /documents/{documentId} {
       allow create: if validInitialDocument(documentId);
       allow get: if isMember(documentId);
@@ -183,17 +157,7 @@ service cloud.firestore {
     }
 
     match /shareLinks/{shareId} {
-      allow create: if signedIn()
-        && validShareLink()
-        && isOwner(request.resource.data.documentId);
-      allow get: if signedIn() && isOwner(resource.data.documentId);
-      allow list: if false;
-      allow update: if signedIn()
-        && isOwner(resource.data.documentId)
-        && validShareLink()
-        && request.resource.data.documentId == resource.data.documentId
-        && request.resource.data.createdBy == resource.data.createdBy;
-      allow delete: if signedIn() && isOwner(resource.data.documentId);
+      allow read, write: if false;
     }
 
     match /{document=**} {
