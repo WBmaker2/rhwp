@@ -5,10 +5,13 @@ import json
 import re
 from pathlib import Path
 
+from staging_preflight import load_manifest, validate_repository_contract
+
 ROOT = Path(__file__).resolve().parents[1]
 COLLABORATION_MANIFEST = ROOT / "deploy/cloudrun/collaboration-server.service.yaml"
 DOCUMENT_API_MANIFEST = ROOT / "deploy/cloudrun/document-api.service.yaml"
 DOCUMENT_WORKER_MANIFEST = ROOT / "deploy/cloudrun/document-worker.service.yaml"
+STAGING_MANIFEST = ROOT / "deploy/staging/staging-manifest.json"
 MANIFESTS = [
     COLLABORATION_MANIFEST,
     DOCUMENT_API_MANIFEST,
@@ -19,6 +22,7 @@ TEXT_FILES = MANIFESTS + [
     ROOT / "firebase/.firebaserc.example",
     ROOT / "firebase/staging.env.example",
     ROOT / "deploy/cloudrun/README.md",
+    STAGING_MANIFEST,
 ]
 
 
@@ -29,6 +33,8 @@ def fail(message: str) -> None:
 def main() -> None:
     json.loads((ROOT / "firebase/firebase.json").read_text())
     json.loads((ROOT / "firebase/.firebaserc.example").read_text())
+    staging_manifest = load_manifest(STAGING_MANIFEST)
+    validate_repository_contract(staging_manifest, ROOT)
 
     combined = "\n".join(path.read_text() for path in TEXT_FILES)
     forbidden = [
@@ -68,6 +74,12 @@ def main() -> None:
     if "ALLOW_EMULATOR_TASKS" not in worker_text or 'value: "false"' not in worker_text:
         fail("document worker production template must reject emulator task bypass")
 
+    document_api_text = DOCUMENT_API_MANIFEST.read_text()
+    if "name: TASK_DISPATCH_DEADLINE_SECONDS" not in document_api_text:
+        fail("document API must configure the Cloud Tasks dispatch deadline")
+    if 'value: "900"' not in document_api_text:
+        fail("document API Cloud Tasks dispatch deadline must be 900 seconds")
+
     firebaserc = (ROOT / "firebase/.firebaserc.example").read_text()
     if "${FIREBASE_STAGING_PROJECT_ID}" not in firebaserc:
         fail(".firebaserc.example must keep the staging project as a placeholder")
@@ -78,7 +90,7 @@ def main() -> None:
     if firebase_json.get("hosting", {}).get("public") != "../rhwp-studio/dist":
         fail("Hosting must serve the built rhwp-studio output")
 
-    print("staging configuration templates are valid; no deployment was performed")
+    print("staging manifest and configuration templates are valid; no deployment was performed")
 
 
 if __name__ == "__main__":
