@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { readDocumentApiEnvironment } from '../src/firebase-adapters.js'
+import { readDocumentApiRuntimeEnvironment } from '../src/runtime-environment.js'
 
 function environment(overrides: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv {
   return {
@@ -20,15 +20,15 @@ function environment(overrides: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv {
 }
 
 test('production environment requires HTTPS service URLs', () => {
-  const result = readDocumentApiEnvironment(environment())
+  const result = readDocumentApiRuntimeEnvironment(environment())
   assert.equal(result.directWorkerDispatch, false)
-  assert.throws(() => readDocumentApiEnvironment(environment({
+  assert.throws(() => readDocumentApiRuntimeEnvironment(environment({
     PARSE_WORKER_URL: 'http://127.0.0.1:8093/run/parse',
   })), /must use https/)
 })
 
 test('emulator direct dispatch accepts localhost HTTP only', () => {
-  const result = readDocumentApiEnvironment(environment({
+  const result = readDocumentApiRuntimeEnvironment(environment({
     DIRECT_WORKER_DISPATCH: 'true',
     PARSE_WORKER_URL: 'http://127.0.0.1:8093/run/parse',
     EXPORT_WORKER_URL: 'http://localhost:8093/run/export',
@@ -36,7 +36,7 @@ test('emulator direct dispatch accepts localhost HTTP only', () => {
   }))
   assert.equal(result.directWorkerDispatch, true)
   assert.equal(result.parseQueue.targetUrl, 'http://127.0.0.1:8093/run/parse')
-  assert.throws(() => readDocumentApiEnvironment(environment({
+  assert.throws(() => readDocumentApiRuntimeEnvironment(environment({
     DIRECT_WORKER_DISPATCH: 'true',
     PARSE_WORKER_URL: 'http://worker.internal/run/parse',
   })), /must use https/)
