@@ -29,6 +29,7 @@ export interface CreatedShareLink {
   shareId: string
   token: string
   role: ShareLinkRole
+  enabled: boolean
   expiresAt: string | null
   createdAt: string
 }
@@ -63,6 +64,7 @@ export class ShareLinkService {
       shareId: record.shareId,
       token,
       role: record.role,
+      enabled: record.enabled,
       expiresAt: record.expiresAt,
       createdAt: record.createdAt,
     }
