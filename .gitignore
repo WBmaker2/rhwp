@@ -57,10 +57,11 @@ Thumbs.db
 # .claude/skills/는 프로젝트 종속 Skill (rhwp 바이너리 호출, ingest_schema_v1 사용)이므로 추적
 !.claude/skills/
 
-# 환경변수 (민감 정보)
+# 환경변수와 로컬 staging 승인 입력 (민감·운영 메타데이터)
 .env
 .env.docker
 /deploy/staging/staging-bootstrap-values.local.json
+/deploy/staging/staging-bootstrap-readiness.local.json
 
 # E2E 스크린샷
 rhwp-studio/e2e/screenshots/
