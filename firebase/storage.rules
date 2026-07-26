@@ -30,7 +30,7 @@ service firebase.storage {
     function isValidSourceUpload() {
       return resource == null
         && request.resource != null
-        && request.resource.size >= 100 * 1024 * 1024
+        && request.resource.size > 0
         && request.resource.size <= 200 * 1024 * 1024
         && request.resource.contentType in [
           'application/x-hwp',
