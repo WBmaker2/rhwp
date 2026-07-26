@@ -89,6 +89,10 @@ SENSITIVE_KEY_MARKERS = (
     "refreshtoken",
     "secretvalue",
 )
+SENSITIVE_EVIDENCE_KEY_EXEMPTIONS = frozenset({
+    "cloudcredentialspresent",
+    "idtokenwrite",
+})
 
 
 class BootstrapReadinessError(RuntimeError):
@@ -484,7 +488,10 @@ def _find_sensitive_key_paths(value: Any, path: str) -> list[str]:
         for key, child in value.items():
             normalized = re.sub(r"[^a-z0-9]", "", str(key).lower())
             child_path = f"{path}.{key}"
-            if any(marker in normalized for marker in SENSITIVE_KEY_MARKERS):
+            if (
+                normalized not in SENSITIVE_EVIDENCE_KEY_EXEMPTIONS
+                and any(marker in normalized for marker in SENSITIVE_KEY_MARKERS)
+            ):
                 found.append(child_path)
             found.extend(_find_sensitive_key_paths(child, child_path))
     elif isinstance(value, list):
