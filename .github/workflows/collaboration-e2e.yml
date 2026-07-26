@@ -46,7 +46,7 @@ jobs:
         working-directory: services/e2e
         run: |
           set -o pipefail
-          npm ci --ignore-scripts --no-audit --no-fund
+          npm install --ignore-scripts --no-audit --no-fund
           npm test 2>&1 | tee collaboration-e2e.log
       - name: Verify HWPX export and readonly preservation
         run: |
