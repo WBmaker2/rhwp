@@ -4,10 +4,14 @@
 
 - 적용 환경: staging only
 - generator: `scripts/staging_approval_packet.py`
-- unit tests: `scripts/tests/test_staging_approval_packet.py`, `scripts/tests/test_staging_approval_packet_phases.py`
+- bootstrap materializer: `scripts/staging_bootstrap_materializer.py`
+- unit tests:
+  - `scripts/tests/test_staging_approval_packet.py`
+  - `scripts/tests/test_staging_approval_packet_phases.py`
+  - `scripts/tests/test_staging_bootstrap_materializer.py`
 - workflow: `.github/workflows/staging-config-validate.yml`
 - 실제 Firebase/GCP 리소스 변경: 없음
-- generator의 cloud CLI 실행: 없음
+- generator와 materializer의 cloud CLI 실행: 없음
 - packet 생성은 리소스 생성이나 배포 승인을 의미하지 않음
 
 ## 1. 목적
@@ -19,7 +23,7 @@ Staging Approval Packet Generator는 staging 수명 주기의 승인 시점을 �
 | `bootstrap` | staging 리소스 생성 전 | 없음 | 정확히 허용된 resource-derived 값만 유예 |
 | `deployment` | live preflight 후, 배포 전 | 기존 read-only preflight 결과 사용 | 모든 placeholder 금지 |
 
-두 phase 모두 다음 파일을 출력한다.
+두 phase 모두 다음 결과를 생성한다.
 
 ```text
 artifacts/staging-approval-packet.json
@@ -44,32 +48,44 @@ Generator는 manifest와 preflight JSON만 읽는다. `gcloud`, `firebase`, Dock
 
 ## 3. Bootstrap phase
 
-### 3.1 목적
+### 3.1 입력 흐름
 
-Bootstrap packet은 staging project·billing·region·원화 예산·IAM·service account·queue·보안 결정을 검토한 뒤, 아직 생성되지 않은 리소스의 준비 작업을 별도로 승인하기 위한 문서다.
+Repository manifest는 운영 값 placeholder를 유지한다. Bootstrap packet은 이 원본을 직접 사용하지 않고 materializer가 생성한 임시 manifest를 사용한다.
 
-Bootstrap은 live report를 받지 않는다. live report가 전달되면 실패한다.
+```text
+deploy/staging/staging-manifest.json
++ approved non-secret bootstrap values
+→ artifacts/staging-manifest-bootstrap.json
+→ static preflight
+→ bootstrap approval packet
+```
 
-### 3.2 Bootstrap에서 반드시 concrete여야 하는 값
+값 입력 계약과 환경 설정은 `docs/runbooks/staging-bootstrap-inputs.md`에 정의되어 있다.
+
+### 3.2 Bootstrap에서 concrete여야 하는 값
+
+Materializer 이후 다음 값은 concrete여야 한다.
 
 - staging project ID
 - forbidden production project ID 목록
 - billing account
 - `asia-northeast3` region
-- Firebase auth domain과 authorized domain
+- Firebase auth domain, authorized domain, Storage bucket과 Hosting site
 - Artifact Registry 이름과 위치
-- Cloud Run service 이름, service account, ingress, runtime
-- Cloud Tasks caller account, queue 이름, target URL, retry, rate limit, deadline
-- IAM principal, role, resource
+- Cloud Run service 이름, service account, ingress와 runtime
+- Cloud Tasks caller account, queue 이름, retry, rate limit과 deadline
+- IAM principal, role과 resource
 - Secret 이름과 version reference
-- 월간 예산 원화 금액, 50%·80%·100% threshold, 알림 채널
+- 월간 예산 원화 금액, 50%·80%·100% threshold와 알림 채널
 - data retention
 - approval reference
 - internal flush security decision
 
-### 3.3 Bootstrap에서만 허용되는 deferred path
+Bootstrap은 live report를 받지 않는다. live report가 전달되면 실패한다.
 
-다음 14개 경로만 placeholder를 유지할 수 있다.
+### 3.3 Generator의 bootstrap deferred allowlist
+
+Generic bootstrap generator는 다음 16개 경로만 placeholder로 허용한다.
 
 ```text
 manifest.project.number
@@ -83,6 +99,8 @@ manifest.cloudRun.documentApi.image
 manifest.cloudRun.documentApi.digest
 manifest.cloudRun.documentWorker.image
 manifest.cloudRun.documentWorker.digest
+manifest.tasks.parse.targetUrl
+manifest.tasks.export.targetUrl
 manifest.operations.rollbackRevisionIds[0]
 manifest.operations.rollbackRevisionIds[1]
 manifest.operations.rollbackRevisionIds[2]
@@ -93,16 +111,47 @@ manifest.operations.rollbackRevisionIds[2]
 - project number: staging project가 존재한 뒤 확정
 - Firebase 식별자: Firebase resource 생성 뒤 확정
 - image와 digest: container build와 digest 조회 뒤 확정
+- task target URL: private document worker endpoint가 존재한 뒤 확정
 - rollback revision: 최초 Cloud Run 배포 뒤 확정
 
 목록에 없는 placeholder는 bootstrap에서도 실패한다. 오류에는 값이 아니라 JSON path만 기록한다.
 
-### 3.4 실행
+### 3.4 Materializer 결과의 실제 deferred 값
+
+현재 materializer는 Storage bucket과 Hosting site를 승인 입력으로 concrete하게 만든다. 따라서 materialized manifest에는 다음 14개 값만 남는다.
+
+```text
+manifest.project.number
+manifest.firebase.webAppId
+manifest.firebase.apiKeyReference
+manifest.cloudRun.collaboration.image
+manifest.cloudRun.collaboration.digest
+manifest.cloudRun.documentApi.image
+manifest.cloudRun.documentApi.digest
+manifest.cloudRun.documentWorker.image
+manifest.cloudRun.documentWorker.digest
+manifest.tasks.parse.targetUrl
+manifest.tasks.export.targetUrl
+manifest.operations.rollbackRevisionIds[0]
+manifest.operations.rollbackRevisionIds[1]
+manifest.operations.rollbackRevisionIds[2]
+```
+
+### 3.5 로컬 실행
 
 ```bash
+python3 scripts/staging_bootstrap_materializer.py \
+  --manifest deploy/staging/staging-manifest.json \
+  --values deploy/staging/staging-bootstrap-values.local.json \
+  --output artifacts/staging-manifest-bootstrap.json
+
+python3 scripts/staging_preflight.py \
+  --manifest artifacts/staging-manifest-bootstrap.json \
+  --report artifacts/staging-preflight-static.json
+
 python3 scripts/staging_approval_packet.py \
   --phase bootstrap \
-  --manifest deploy/staging/staging-manifest.json \
+  --manifest artifacts/staging-manifest-bootstrap.json \
   --static-report artifacts/staging-preflight-static.json \
   --json-output artifacts/staging-approval-packet.json \
   --markdown-output artifacts/staging-approval-packet.md
@@ -133,7 +182,7 @@ Deployment packet은 실제 staging project 상태를 read-only로 조회한 뒤
 - live report mode는 `live`다.
 - live report status는 `pass` 또는 `review`다.
 - manifest 전체에 placeholder가 하나도 없어야 한다.
-- image digest, Firebase 식별자와 rollback 전략이 concrete여야 한다.
+- image digest, Firebase 식별자, task target URL과 rollback 전략이 concrete여야 한다.
 
 Live status가 `pass`이면 packet status는 `ready-for-deployment-approval`이다. 예상하지 못한 resource 등으로 live status가 `review`이면 packet status는 `review-required`다.
 
@@ -162,13 +211,13 @@ Deployment packet 핵심 필드:
 
 ## 5. Packet 공통 내용
 
-- project ID, number, billing account, region, forbidden project IDs
+- project ID, number, billing account, region과 forbidden project IDs
 - Firebase Web App·domain·Firestore·Storage·Hosting metadata
 - 통화 `KRW`, 월간 예산, threshold와 notification channel
 - IAM `present`, `missing`, `not-observed` 비교
 - Secret 이름, version, access principal, `valueIncluded=false`
-- Cloud Run service, digest, ingress, reachability, runtime
-- Cloud Tasks queue, retry, rate limit, 900초 deadline
+- Cloud Run service, digest, ingress, reachability와 runtime
+- Cloud Tasks queue, target URL, retry, rate limit과 900초 deadline
 - internal flush security decision
 - rollback revision과 data retention
 - 11개 staging acceptance checklist
@@ -225,10 +274,24 @@ approval_phase=bootstrap
 live_check=false
 ```
 
-- GCP 인증 없음
-- cloud CLI 설치 없음
-- static preflight와 bootstrap generator만 실행
+- protected environment: `staging-bootstrap`
+- environment secrets: 없음
+- GCP 인증과 WIF: 없음
+- `id-token: write`: 없음
+- environment `vars.*`로 materializer 실행
+- materialized manifest로 static preflight와 bootstrap generator 실행
 - artifact: `staging-approval-packet-bootstrap`
+
+Artifact 내용:
+
+```text
+staging-manifest-bootstrap.json
+staging-preflight-static.json
+staging-approval-packet.json
+staging-approval-packet.md
+```
+
+실제 `staging-bootstrap` environment 생성과 변수 입력은 운영자의 별도 승인 대상이며 이 구현에서 수행하지 않았다.
 
 ### 7.3 Deployment job
 
@@ -248,11 +311,31 @@ live_check=true
 
 Workflow에는 cloud resource 생성·수정·삭제·배포 명령이 없다.
 
-## 8. 검증
+## 8. 실제 최초 bootstrap packet
+
+실제 packet을 생성하려면 다음 9개 운영 값이 필요하다.
+
+```text
+STAGING_PROJECT_ID
+STAGING_BILLING_ACCOUNT
+STAGING_FORBIDDEN_PROJECT_IDS_JSON
+STAGING_STORAGE_BUCKET
+STAGING_MONTHLY_BUDGET_KRW
+STAGING_BUDGET_NOTIFICATION_CHANNELS_JSON
+STAGING_DATA_RETENTION_DAYS
+STAGING_APPROVAL_REFERENCE
+STAGING_INTERNAL_FLUSH_DECISION
+```
+
+현재 example 값으로 생성되는 packet은 deterministic test evidence다. 실제 project, billing, 예산, production ID와 notification channel을 추측해 실제 승인 packet으로 사용할 수 없다.
+
+## 9. 검증
 
 ```bash
 python3 -m py_compile \
+  scripts/staging_bootstrap_materializer.py \
   scripts/staging_approval_packet.py \
+  scripts/tests/test_staging_bootstrap_materializer.py \
   scripts/tests/test_staging_approval_packet.py \
   scripts/tests/test_staging_approval_packet_phases.py
 
@@ -264,4 +347,4 @@ python3 -m unittest discover \
 python3 scripts/validate_staging_config.py
 ```
 
-배포, live preflight 실행, cloud authentication, image build/push와 cloud mutation은 이 구현 검증 범위에 포함되지 않는다.
+배포, live preflight 실행, cloud authentication, image build/push, GitHub environment 변경과 cloud mutation은 이 검증 범위에 포함되지 않는다.
