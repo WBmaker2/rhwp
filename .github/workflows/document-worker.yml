@@ -37,6 +37,22 @@ jobs:
       - name: Check Rust formatting
         run: cargo fmt --all -- --check
 
+      - name: Capture rustfmt diff
+        if: failure()
+        run: |
+          cargo fmt --all
+          git diff -- src/bin/rhwp-collaboration-worker.rs tests/collaboration_worker_cli.rs > rustfmt.diff
+          test -s rustfmt.diff
+
+      - name: Upload rustfmt diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: document-worker-rustfmt-${{ github.run_id }}
+          path: rustfmt.diff
+          retention-days: 1
+          if-no-files-found: error
+
       - name: Test native collaboration worker
         run: cargo test --no-default-features --test collaboration_worker_cli
 
