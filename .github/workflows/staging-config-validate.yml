@@ -12,12 +12,14 @@ on:
       - 'docs/approvals/**'
       - 'docs/runbooks/staging-bootstrap-readiness.md'
       - 'docs/runbooks/staging-bootstrap-packet-review.md'
+      - 'docs/runbooks/staging-bootstrap-operator.md'
       - 'scripts/validate_staging_config.py'
       - 'scripts/staging_preflight.py'
       - 'scripts/staging_approval_packet.py'
       - 'scripts/staging_bootstrap_materializer.py'
       - 'scripts/staging_bootstrap_readiness.py'
       - 'scripts/staging_bootstrap_approval_record.py'
+      - 'scripts/staging_bootstrap_operator.py'
       - 'scripts/staging_infrastructure_plan.py'
       - 'scripts/tests/**'
       - '.github/workflows/staging-config-validate.yml'
@@ -245,6 +247,25 @@ jobs:
         with:
           name: staging-bootstrap-approval-review-test-evidence
           path: artifacts/bootstrap-review-test/**
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Generate deterministic staging bootstrap operator test evidence
+        run: |
+          mkdir -p artifacts/operator-test
+          python3 scripts/staging_bootstrap_operator.py \
+            --readiness-input artifacts/readiness-test/staging-bootstrap-readiness-input-test.json \
+            --packet artifacts/readiness-test/staging-approval-packet-readiness-test.json \
+            --packet-workflow-run-id 99005 \
+            --packet-commit-sha 7777777777777777777777777777777777777777 \
+            --json-output artifacts/operator-test/staging-bootstrap-operator-status-test.json \
+            --markdown-output artifacts/operator-test/staging-bootstrap-operator-status-test.md \
+            --review-draft-output artifacts/operator-test/staging-bootstrap-packet-review-draft-test.json
+      - name: Upload deterministic staging bootstrap operator test evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: staging-bootstrap-operator-test-evidence
+          path: artifacts/operator-test/**
           if-no-files-found: warn
           retention-days: 14
       - name: Generate static preflight report
