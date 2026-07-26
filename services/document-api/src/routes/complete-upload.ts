@@ -46,6 +46,7 @@ export interface CompleteUploadDependencies {
   }
   parseJobs: {
     enqueue(input: {
+      schemaVersion: 1
       documentId: string
       sourceGeneration: string
       sourcePath: string
@@ -113,6 +114,7 @@ export function createCompleteUploadHandler(
     }
 
     await dependencies.parseJobs.enqueue({
+      schemaVersion: 1,
       documentId,
       sourceGeneration: source.generation,
       sourcePath: path,
