@@ -7,9 +7,12 @@
     "node": ">=22"
   },
   "scripts": {
-    "test": "node --test --import tsx tests/*.test.ts"
+    "test": "node --test --import tsx tests/collaboration-flow.test.ts",
+    "test:emulator": "node --test --import tsx tests/emulator-multiprocess.test.ts"
   },
   "dependencies": {
+    "@hocuspocus/provider": "4.4.0",
+    "firebase-admin": "14.2.0",
     "yjs": "13.6.31"
   },
   "devDependencies": {
