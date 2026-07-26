@@ -12,7 +12,6 @@ from typing import Any, Callable
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_MANIFEST = ROOT / "deploy/staging/staging-manifest.json"
-
 Runner = Callable[..., subprocess.CompletedProcess[str]]
 
 READ_ONLY_PREFIXES: tuple[tuple[str, ...], ...] = (
@@ -34,7 +33,6 @@ READ_ONLY_PREFIXES: tuple[tuple[str, ...], ...] = (
     ("gcloud", "artifacts", "repositories", "describe"),
     ("firebase", "projects:list"),
 )
-
 MUTATING_TOKENS = {
     "add-iam-policy-binding",
     "create",
@@ -46,7 +44,6 @@ MUTATING_TOKENS = {
     "set-iam-policy",
     "update",
 }
-
 REQUIRED_APIS = {
     "artifactregistry.googleapis.com",
     "cloudtasks.googleapis.com",
@@ -124,8 +121,7 @@ def validate_manifest(manifest: dict[str, Any]) -> None:
     if _string(artifact, "location") != project["region"]:
         raise PreflightError("artifactRegistry.location must match project.region")
 
-    cloud_run = _mapping(manifest, "cloudRun")
-    expected_services = {
+    expected_services: dict[str, dict[str, Any]] = {
         "collaboration": {
             "name": "rhwp-collaboration-staging",
             "ingress": "all",
@@ -163,6 +159,7 @@ def validate_manifest(manifest: dict[str, Any]) -> None:
             },
         },
     }
+    cloud_run = _mapping(manifest, "cloudRun")
     for key, expected in expected_services.items():
         service = _mapping(cloud_run, key)
         if service.get("name") != expected["name"]:
@@ -208,16 +205,14 @@ def validate_manifest(manifest: dict[str, Any]) -> None:
         }:
             raise PreflightError(f"tasks.{key}.rateLimits does not match the design")
 
-    secrets = _mapping(manifest, "secrets")
-    internal = _mapping(secrets, "collaborationInternal")
+    internal = _mapping(_mapping(manifest, "secrets"), "collaborationInternal")
     if "value" in internal:
         raise PreflightError("secret value must never be stored in the manifest")
     if internal.get("name") != "rhwp-collaboration-internal-token-staging":
         raise PreflightError("collaboration internal secret name is invalid")
     _string(internal, "version")
 
-    iam = _mapping(manifest, "iam")
-    bindings = iam.get("bindings")
+    bindings = _mapping(manifest, "iam").get("bindings")
     if not isinstance(bindings, list) or not bindings:
         raise PreflightError("iam.bindings must be a non-empty array")
     for index, binding in enumerate(bindings):
@@ -255,13 +250,12 @@ def validate_repository_contract(manifest: dict[str, Any], root: Path = ROOT) ->
     staging_env = (root / "firebase/staging.env.example").read_text()
     worker = (root / "deploy/cloudrun/document-worker.service.yaml").read_text()
 
-    required_document_api = (
+    for marker in (
         "name: TASK_DISPATCH_DEADLINE_SECONDS",
         'value: "900"',
         "value: rhwp-parse-staging",
         "value: rhwp-export-staging",
-    )
-    for marker in required_document_api:
+    ):
         if marker not in document_api:
             raise PreflightError(f"document API template is missing: {marker}")
     if "TASK_DISPATCH_DEADLINE_SECONDS=900" not in staging_env:
@@ -269,16 +263,17 @@ def validate_repository_contract(manifest: dict[str, Any], root: Path = ROOT) ->
     if "timeoutSeconds: 900" not in worker or "containerConcurrency: 1" not in worker:
         raise PreflightError("document worker template must match the 900-second single-task contract")
 
-    service_names = [
-        _mapping(_mapping(manifest, "cloudRun"), key)["name"]
+    cloud_run = _mapping(manifest, "cloudRun")
+    names = [
+        _string(_mapping(cloud_run, key), "name")
         for key in ("collaboration", "documentApi", "documentWorker")
     ]
-    template_paths = (
+    paths = (
         root / "deploy/cloudrun/collaboration-server.service.yaml",
         root / "deploy/cloudrun/document-api.service.yaml",
         root / "deploy/cloudrun/document-worker.service.yaml",
     )
-    for service_name, path in zip(service_names, template_paths, strict=True):
+    for service_name, path in zip(names, paths, strict=True):
         if f"name: {service_name}" not in path.read_text():
             raise PreflightError(f"{path.name} does not match manifest service name {service_name}")
 
@@ -296,12 +291,17 @@ def run_read_only(
     *,
     runner: Runner = subprocess.run,
 ) -> subprocess.CompletedProcess[str]:
-    if not command or not any(tuple(command[: len(prefix)]) == prefix for prefix in READ_ONLY_PREFIXES):
+    allowed = bool(command) and any(
+        tuple(command[: len(prefix)]) == prefix for prefix in READ_ONLY_PREFIXES
+    )
+    if not allowed:
         raise PreflightError(f"command is not on the read-only allowlist: {_command_text(command)}")
-    lowered = {part.lower() for part in command}
-    if lowered & MUTATING_TOKENS:
+    if {part.lower() for part in command} & MUTATING_TOKENS:
         raise PreflightError(f"command is not read-only: {_command_text(command)}")
-    if any(any(marker in part for marker in (";", "&&", "||", "|", ">", "<")) for part in command):
+    if any(
+        any(marker in part for marker in (";", "&&", "||", "|", ">", "<"))
+        for part in command
+    ):
         raise PreflightError("shell control characters are forbidden in read-only commands")
 
     result = runner(
@@ -325,7 +325,6 @@ def build_preflight_report(
     runner: Runner = subprocess.run,
 ) -> dict[str, Any]:
     manifest = load_manifest(manifest_path)
-    repository_checks = validate_repository_contract(manifest)
     report: dict[str, Any] = {
         "schemaVersion": "rhwp.preflight-report/v1",
         "generatedAt": datetime.now(UTC).isoformat(),
@@ -334,17 +333,14 @@ def build_preflight_report(
         "manifest": str(manifest_path),
         "environment": manifest["environment"],
         "projectId": manifest["project"]["id"],
-        "repositoryChecks": repository_checks,
+        "repositoryChecks": validate_repository_contract(manifest),
         "cloudQueries": [],
         "mutationCommands": [],
         "plannedChanges": {},
         "warnings": [],
     }
-
     if live:
-        live_result = _collect_live(manifest, runner)
-        report.update(live_result)
-
+        report.update(_collect_live(manifest, runner))
     if report_path is not None:
         report_path.parent.mkdir(parents=True, exist_ok=True)
         report_path.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n")
@@ -356,7 +352,11 @@ def _collect_live(manifest: dict[str, Any], runner: Runner) -> dict[str, Any]:
     project_id = _string(project, "id")
     if is_placeholder(project_id):
         raise PreflightError("live preflight requires a concrete staging project ID, not a placeholder")
-    forbidden = {value for value in _string_list(project, "forbiddenProjectIds") if not is_placeholder(value)}
+    forbidden = {
+        value
+        for value in _string_list(project, "forbiddenProjectIds")
+        if not is_placeholder(value)
+    }
     if project_id in forbidden:
         raise PreflightError("live preflight refuses a forbidden project ID")
 
@@ -377,10 +377,10 @@ def _collect_live(manifest: dict[str, Any], runner: Runner) -> dict[str, Any]:
     ]
 
     outputs: dict[str, Any] = {}
-    query_log: list[str] = []
+    queries: list[str] = []
     for name, command in commands:
         result = run_read_only(command, runner=runner)
-        query_log.append(_command_text(command))
+        queries.append(_command_text(command))
         outputs[name] = _safe_parse_output(result.stdout)
 
     active_project = str(outputs.get("activeProject", "")).strip()
@@ -388,9 +388,8 @@ def _collect_live(manifest: dict[str, Any], runner: Runner) -> dict[str, Any]:
         raise PreflightError(
             f"active gcloud project {active_project!r} does not match manifest project {project_id!r}"
         )
-
-    project_output = outputs.get("project")
-    if isinstance(project_output, dict) and project_output.get("projectId") != project_id:
+    described = outputs.get("project")
+    if isinstance(described, dict) and described.get("projectId") != project_id:
         raise PreflightError("gcloud projects describe returned a different project ID")
 
     expected = _expected_resource_names(manifest)
@@ -402,8 +401,8 @@ def _collect_live(manifest: dict[str, Any], runner: Runner) -> dict[str, Any]:
         "artifactRegistry": _collect_resource_names(outputs.get("artifactRegistry")),
     }
     planned: dict[str, list[str]] = {}
-    unexpected: dict[str, list[str]] = {}
     existing: dict[str, list[str]] = {}
+    unexpected: dict[str, list[str]] = {}
     for category, expected_names in expected.items():
         actual_names = actual.get(category, set())
         planned[category] = sorted(expected_names - actual_names)
@@ -415,13 +414,12 @@ def _collect_live(manifest: dict[str, Any], runner: Runner) -> dict[str, Any]:
     enabled_apis = _collect_api_names(outputs.get("enabledApis"))
     planned["apis"] = sorted(REQUIRED_APIS - enabled_apis)
     existing["apis"] = sorted(REQUIRED_APIS & enabled_apis)
-
-    warnings = []
+    warnings: list[str] = []
     if any(unexpected.values()):
         warnings.append("unexpected rhwp-prefixed resources require explicit review")
 
     return {
-        "cloudQueries": query_log,
+        "cloudQueries": queries,
         "cloudState": _sanitize(outputs),
         "plannedChanges": {
             "createOrEnable": planned,
@@ -446,17 +444,13 @@ def _expected_resource_names(manifest: dict[str, Any]) -> dict[str, set[str]]:
             _string(_mapping(tasks, "parse"), "name"),
             _string(_mapping(tasks, "export"), "name"),
         },
-        "secrets": {
-            _string(_mapping(secrets, "collaborationInternal"), "name"),
-        },
+        "secrets": {_string(_mapping(secrets, "collaborationInternal"), "name")},
         "serviceAccounts": {
             _string(_mapping(cloud_run, key), "serviceAccount")
             for key in ("collaboration", "documentApi", "documentWorker")
         }
         | {_string(tasks, "callerServiceAccount")},
-        "artifactRegistry": {
-            _string(_mapping(manifest, "artifactRegistry"), "repository"),
-        },
+        "artifactRegistry": {_string(_mapping(manifest, "artifactRegistry"), "repository")},
     }
 
 
@@ -467,9 +461,17 @@ def _collect_resource_names(value: object) -> set[str]:
     for item in value:
         if not isinstance(item, dict):
             continue
-        for key in ("name", "metadata.name", "email", "repository"):
-            if key in item and isinstance(item[key], str):
-                names.add(item[key].split("/")[-1])
+        candidates: list[object] = [
+            item.get("name"),
+            item.get("email"),
+            item.get("repository"),
+        ]
+        metadata = item.get("metadata")
+        if isinstance(metadata, dict):
+            candidates.append(metadata.get("name"))
+        for candidate in candidates:
+            if isinstance(candidate, str) and candidate:
+                names.add(candidate.split("/")[-1])
     return names
 
 
@@ -500,10 +502,10 @@ def _safe_parse_output(value: str) -> Any:
 
 def _sanitize(value: Any) -> Any:
     if isinstance(value, dict):
-        sanitized: dict[str, Any] = {}
+        result: dict[str, Any] = {}
         for key, item in value.items():
-            lowered = key.lower().replace("_", "")
-            if any(marker in lowered for marker in (
+            normalized = key.lower().replace("_", "")
+            if any(marker in normalized for marker in (
                 "accesstoken",
                 "authorization",
                 "credential",
@@ -511,16 +513,14 @@ def _sanitize(value: Any) -> Any:
                 "privatekey",
                 "secretvalue",
             )):
-                sanitized[key] = "[REDACTED]"
+                result[key] = "[REDACTED]"
             else:
-                sanitized[key] = _sanitize(item)
-        return sanitized
+                result[key] = _sanitize(item)
+        return result
     if isinstance(value, list):
         return [_sanitize(item) for item in value]
-    if isinstance(value, str):
-        if "-----BEGIN PRIVATE KEY-----" in value:
-            return "[REDACTED]"
-        return value
+    if isinstance(value, str) and "-----BEGIN PRIVATE KEY-----" in value:
+        return "[REDACTED]"
     return value
 
 
@@ -567,7 +567,9 @@ def _write_failure_report(path: Path, manifest_path: Path, live: bool, error: st
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Validate rhwp staging configuration without mutation")
+    parser = argparse.ArgumentParser(
+        description="Validate rhwp staging configuration without mutation"
+    )
     parser.add_argument("--manifest", type=Path, default=DEFAULT_MANIFEST)
     parser.add_argument("--live", action="store_true")
     parser.add_argument("--report", type=Path)
