@@ -68,6 +68,30 @@ jobs:
         run: python3 -m unittest discover -s scripts/tests -p 'test_*.py' -v
       - name: Validate staging templates without deployment
         run: python3 scripts/validate_staging_config.py
+      - name: Generate deterministic bootstrap test evidence
+        run: |
+          mkdir -p artifacts/bootstrap-test
+          python3 scripts/staging_bootstrap_materializer.py \
+            --manifest deploy/staging/staging-manifest.json \
+            --values deploy/staging/staging-bootstrap-values.example.json \
+            --output artifacts/bootstrap-test/staging-manifest-bootstrap.json
+          python3 scripts/staging_preflight.py \
+            --manifest artifacts/bootstrap-test/staging-manifest-bootstrap.json \
+            --report artifacts/bootstrap-test/staging-preflight-static.json
+          python3 scripts/staging_approval_packet.py \
+            --phase bootstrap \
+            --manifest artifacts/bootstrap-test/staging-manifest-bootstrap.json \
+            --static-report artifacts/bootstrap-test/staging-preflight-static.json \
+            --json-output artifacts/bootstrap-test/staging-approval-packet.json \
+            --markdown-output artifacts/bootstrap-test/staging-approval-packet.md
+      - name: Upload deterministic bootstrap test evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: staging-bootstrap-test-evidence
+          path: artifacts/bootstrap-test/**
+          if-no-files-found: warn
+          retention-days: 14
       - name: Generate static preflight report
         env:
           MANIFEST_PATH: ${{ github.event_name == 'workflow_dispatch' && inputs.manifest_path || 'deploy/staging/staging-manifest.json' }}
