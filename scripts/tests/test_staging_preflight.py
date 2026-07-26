@@ -10,6 +10,7 @@ from pathlib import Path
 
 from scripts.staging_preflight import (
     PreflightError,
+    _collect_resource_names,
     build_preflight_report,
     load_manifest,
     run_read_only,
@@ -114,6 +115,19 @@ class ReadOnlyPreflightTest(unittest.TestCase):
             self.assertEqual(report["cloudQueries"], [])
             self.assertEqual(report["mutationCommands"], [])
             self.assertEqual(json.loads(report_path.read_text()), report)
+
+    def test_resource_name_collector_handles_nested_cloud_run_metadata(self) -> None:
+        names = _collect_resource_names([
+            {"metadata": {"name": "rhwp-document-api-staging"}},
+            {"name": "projects/demo/locations/asia-northeast3/queues/rhwp-parse-staging"},
+            {"email": "rhwp-tasks-staging@demo.iam.gserviceaccount.com"},
+        ])
+
+        self.assertEqual(names, {
+            "rhwp-document-api-staging",
+            "rhwp-parse-staging",
+            "rhwp-tasks-staging@demo.iam.gserviceaccount.com",
+        })
 
 
 class StagingWorkflowTest(unittest.TestCase):
