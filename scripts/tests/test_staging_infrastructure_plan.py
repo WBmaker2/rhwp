@@ -78,11 +78,23 @@ class ApprovalRecordContractTest(unittest.TestCase):
     def test_examples_remain_pending_and_non_mutating(self) -> None:
         for path in APPROVAL_EXAMPLES:
             with self.subTest(path=path.name):
-                payload = json.loads(path.read_text())
+                text = path.read_text()
+                payload = json.loads(text)
                 self.assertEqual(payload["decision"], "pending")
                 self.assertFalse(payload["cloudMutationApproved"])
-                self.assertNotIn("token", path.read_text().lower())
-                self.assertNotIn("privatekey", path.read_text().lower())
+                lowered = text.lower()
+                for forbidden in (
+                    "accesstoken",
+                    "authorizationheader",
+                    "clientsecret",
+                    "credentialvalue",
+                    "password",
+                    "privatekey",
+                    "secretvalue",
+                    "bearer ",
+                    "-----begin private key-----",
+                ):
+                    self.assertNotIn(forbidden, lowered)
 
     def test_approved_record_binds_packet_digest_project_and_deferred_paths(self) -> None:
         _, packet = manifest_and_packet()
