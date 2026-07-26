@@ -9,21 +9,24 @@ on:
       - 'firebase/staging.env.example'
       - 'deploy/cloudrun/**'
       - 'deploy/staging/**'
+      - 'docs/approvals/**'
       - 'scripts/validate_staging_config.py'
       - 'scripts/staging_preflight.py'
       - 'scripts/staging_approval_packet.py'
       - 'scripts/staging_bootstrap_materializer.py'
+      - 'scripts/staging_infrastructure_plan.py'
       - 'scripts/tests/**'
       - '.github/workflows/staging-config-validate.yml'
   workflow_dispatch:
     inputs:
       approval_phase:
-        description: Approval packet phase to generate
+        description: Approval packet or plan phase to generate
         required: true
         type: choice
         options:
           - none
           - bootstrap
+          - infrastructure-plan
           - deployment
         default: none
       live_check:
@@ -36,6 +39,16 @@ on:
         required: true
         type: string
         default: deploy/staging/staging-manifest.json
+      bootstrap_packet_path:
+        description: Repository-relative approved bootstrap packet JSON path
+        required: false
+        type: string
+        default: docs/approvals/records/staging-approval-packet.json
+      bootstrap_approval_record_path:
+        description: Repository-relative approved bootstrap record JSON path
+        required: false
+        type: string
+        default: docs/approvals/records/staging-bootstrap-approval-record.json
 
 permissions:
   contents: read
@@ -57,7 +70,7 @@ jobs:
           LIVE_CHECK: ${{ inputs.live_check }}
         run: |
           case "${APPROVAL_PHASE}:${LIVE_CHECK}" in
-            none:false|bootstrap:false|deployment:true)
+            none:false|bootstrap:false|infrastructure-plan:false|deployment:true)
               ;;
             *)
               echo "invalid approval phase and live_check combination" >&2
@@ -161,6 +174,48 @@ jobs:
             artifacts/staging-preflight-static.json
             artifacts/staging-approval-packet.json
             artifacts/staging-approval-packet.md
+          if-no-files-found: warn
+          retention-days: 14
+
+  infrastructure_plan:
+    name: Infrastructure bootstrap plan
+    if: github.event_name == 'workflow_dispatch' && inputs.approval_phase == 'infrastructure-plan' && !inputs.live_check
+    needs: static
+    runs-on: ubuntu-latest
+    environment: staging-infrastructure
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          show-progress: false
+      - name: Validate reviewed infrastructure planning inputs
+        env:
+          MANIFEST_PATH: ${{ inputs.manifest_path }}
+          BOOTSTRAP_PACKET_PATH: ${{ inputs.bootstrap_packet_path }}
+          BOOTSTRAP_APPROVAL_RECORD_PATH: ${{ inputs.bootstrap_approval_record_path }}
+        run: |
+          for path in "${MANIFEST_PATH}" "${BOOTSTRAP_PACKET_PATH}" "${BOOTSTRAP_APPROVAL_RECORD_PATH}"; do
+            if [ ! -f "${path}" ]; then
+              echo "required reviewed planning input does not exist: ${path}" >&2
+              exit 1
+            fi
+          done
+      - name: Generate non-mutating infrastructure bootstrap plan
+        run: |
+          mkdir -p artifacts/infrastructure-plan
+          python3 scripts/staging_infrastructure_plan.py \
+            --manifest "${{ inputs.manifest_path }}" \
+            --bootstrap-packet "${{ inputs.bootstrap_packet_path }}" \
+            --bootstrap-approval-record "${{ inputs.bootstrap_approval_record_path }}" \
+            --json-output artifacts/infrastructure-plan/staging-infrastructure-plan.json \
+            --markdown-output artifacts/infrastructure-plan/staging-infrastructure-plan.md
+      - name: Upload infrastructure bootstrap plan
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: staging-infrastructure-bootstrap-plan
+          path: artifacts/infrastructure-plan/**
           if-no-files-found: warn
           retention-days: 14
 
