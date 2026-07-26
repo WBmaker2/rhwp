@@ -29,9 +29,14 @@ jobs:
         with:
           distribution: temurin
           java-version: '21'
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@v6
         with:
-          node-version: '22'
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            firebase/package-lock.json
+            services/collaboration-server/package-lock.json
+            services/e2e/package-lock.json
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - name: Verify Firebase authorization contracts in emulators
@@ -46,7 +51,7 @@ jobs:
         working-directory: services/e2e
         run: |
           set -o pipefail
-          npm install --ignore-scripts --no-audit --no-fund
+          npm ci --ignore-scripts --no-audit --no-fund
           npm test 2>&1 | tee collaboration-e2e.log
       - name: Verify HWPX export and readonly preservation
         run: |
