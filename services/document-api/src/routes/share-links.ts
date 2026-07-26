@@ -53,7 +53,13 @@ export function createShareLinkHandlers(
         )
         return {
           status: 201,
-          body: created,
+          body: {
+            shareId: created.shareId,
+            token: created.token,
+            role: created.role,
+            expiresAt: created.expiresAt,
+            createdAt: created.createdAt,
+          },
         }
       } catch (error) {
         return response(400, validationMessage(error, 'invalid-share-link'))
