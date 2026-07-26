@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import copy
 import json
+import re
 import subprocess
 import tempfile
 import unittest
@@ -17,6 +18,7 @@ from scripts.staging_preflight import (
 
 ROOT = Path(__file__).resolve().parents[2]
 MANIFEST_PATH = ROOT / "deploy/staging/staging-manifest.json"
+WORKFLOW_PATH = ROOT / ".github/workflows/staging-config-validate.yml"
 
 
 class StagingManifestTest(unittest.TestCase):
@@ -112,6 +114,32 @@ class ReadOnlyPreflightTest(unittest.TestCase):
             self.assertEqual(report["cloudQueries"], [])
             self.assertEqual(report["mutationCommands"], [])
             self.assertEqual(json.loads(report_path.read_text()), report)
+
+
+class StagingWorkflowTest(unittest.TestCase):
+    def test_workflow_dispatch_supports_static_and_approved_live_preflight(self) -> None:
+        workflow = WORKFLOW_PATH.read_text()
+
+        for marker in (
+            "workflow_dispatch:",
+            "live_check:",
+            "manifest_path:",
+            "id-token: write",
+            "environment: staging-preflight",
+            "google-github-actions/auth@v3",
+            "python3 scripts/staging_preflight.py",
+            "actions/upload-artifact@v7",
+            "staging-preflight-report",
+        ):
+            self.assertIn(marker, workflow)
+
+    def test_workflow_contains_no_direct_gcloud_or_firebase_mutation(self) -> None:
+        workflow = WORKFLOW_PATH.read_text()
+        mutation = re.compile(
+            r"(?:gcloud|firebase)[^\n]*(?:\bcreate\b|\bdelete\b|\bdeploy\b|\benable\b|"
+            r"\bdisable\b|\bupdate\b|add-iam-policy-binding|set-iam-policy)"
+        )
+        self.assertIsNone(mutation.search(workflow))
 
 
 if __name__ == "__main__":
