@@ -24,6 +24,8 @@ BOOTSTRAP_DEFERRED_PATHS = frozenset({
     "manifest.cloudRun.documentApi.digest",
     "manifest.cloudRun.documentWorker.image",
     "manifest.cloudRun.documentWorker.digest",
+    "manifest.tasks.parse.targetUrl",
+    "manifest.tasks.export.targetUrl",
     "manifest.operations.rollbackRevisionIds[0]",
     "manifest.operations.rollbackRevisionIds[1]",
     "manifest.operations.rollbackRevisionIds[2]",
@@ -96,7 +98,6 @@ def validate_approval_inputs(
         _validate_report(live_report, mode="live", project_id=project_id)
         if live_report.get("status") not in {"pass", "review"}:
             raise ApprovalPacketError("live report status must be pass or review")
-
     return deferred_paths
 
 
@@ -113,7 +114,6 @@ def build_approval_packet(
         live_report,
         phase=phase,
     )
-
     project = _mapping(manifest, "project")
     firebase = _mapping(manifest, "firebase")
     budget = _mapping(manifest, "budget")
@@ -258,7 +258,6 @@ def render_markdown(packet: dict[str, Any]) -> str:
         f"- Generated at: `{_md(safe.get('generatedAt'))}`",
         "",
     ]
-
     deferred_values = safe.get("deferredValues", [])
     if phase == "bootstrap":
         lines.extend([
@@ -334,7 +333,9 @@ def render_markdown(packet: dict[str, Any]) -> str:
 
     lines.extend(["## Cloud Tasks", ""])
     task_section = _mapping(safe, "cloudTasks")
-    lines.append(f"- Caller service account: `{_md(task_section.get('callerServiceAccount'))}`")
+    lines.append(
+        f"- Caller service account: `{_md(task_section.get('callerServiceAccount'))}`"
+    )
     lines.append("")
     for key in ("parse", "export"):
         queue = _mapping(task_section, key)
@@ -351,6 +352,7 @@ def render_markdown(packet: dict[str, Any]) -> str:
         ])
 
     internal = _mapping(safe, "internalFlush")
+    rollback = _mapping(safe, "rollback")
     lines.extend([
         "## Internal flush security",
         "",
@@ -360,8 +362,8 @@ def render_markdown(packet: dict[str, Any]) -> str:
         "",
         "## Rollback",
         "",
-        f"- Revision IDs: {_md_list(_mapping(safe, 'rollback').get('revisionIds'))}",
-        f"- Data retention days: `{_md(_mapping(safe, 'rollback').get('dataRetentionDays'))}`",
+        f"- Revision IDs: {_md_list(rollback.get('revisionIds'))}",
+        f"- Data retention days: `{_md(rollback.get('dataRetentionDays'))}`",
         "- Automatic deletion: forbidden",
         "",
         "## Acceptance tests",
@@ -422,7 +424,6 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--json-output", type=Path, required=True)
     parser.add_argument("--markdown-output", type=Path, required=True)
     args = parser.parse_args(argv)
-
     try:
         manifest = load_json_object(args.manifest, "staging manifest")
         static_report = load_json_object(args.static_report, "static preflight report")
@@ -469,11 +470,15 @@ def main(argv: list[str] | None = None) -> int:
 
 def _validate_report(report: dict[str, Any], *, mode: str, project_id: str) -> None:
     if report.get("schemaVersion") != "rhwp.preflight-report/v1":
-        raise ApprovalPacketError(f"{mode} report schemaVersion must be rhwp.preflight-report/v1")
+        raise ApprovalPacketError(
+            f"{mode} report schemaVersion must be rhwp.preflight-report/v1"
+        )
     if report.get("mode") != mode:
         raise ApprovalPacketError(f"{mode} report mode must be {mode}")
     if report.get("projectId") != project_id:
-        raise ApprovalPacketError(f"{mode} report projectId must match manifest project.id")
+        raise ApprovalPacketError(
+            f"{mode} report projectId must match manifest project.id"
+        )
     if report.get("mutationCommands") != []:
         raise ApprovalPacketError(f"{mode} report mutationCommands must be empty")
 
@@ -512,6 +517,8 @@ def _deferred_value_entries(paths: list[str]) -> list[dict[str, str]]:
             reason = "resolved after Firebase resource creation"
         elif path.startswith("manifest.cloudRun."):
             reason = "resolved after image build and digest lookup"
+        elif path.startswith("manifest.tasks."):
+            reason = "resolved after the document worker endpoint exists"
         elif path.startswith("manifest.operations.rollbackRevisionIds"):
             reason = "resolved after the first Cloud Run deployment"
         else:
