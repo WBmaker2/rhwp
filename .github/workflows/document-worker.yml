@@ -4,6 +4,7 @@ on:
   pull_request:
     branches: [devel]
     paths:
+      - 'Cargo.toml'
       - 'src/bin/rhwp-collaboration-worker.rs'
       - 'tests/collaboration_worker_cli.rs'
       - 'services/document-worker/**'
@@ -41,7 +42,7 @@ jobs:
       - name: Test native collaboration worker
         run: |
           set -o pipefail
-          cargo test --no-default-features --test collaboration_worker_cli 2>&1 | tee native-worker.log
+          cargo test --no-default-features --features collaboration-worker --test collaboration_worker_cli 2>&1 | tee native-worker.log
 
       - name: Upload native diagnostics
         if: failure()
