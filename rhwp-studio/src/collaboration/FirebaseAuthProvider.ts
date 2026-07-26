@@ -4,6 +4,7 @@ import {
   connectAuthEmulator,
   getAuth,
   onAuthStateChanged,
+  signInWithEmailAndPassword,
   signInWithPopup,
   type Auth,
   type User,
@@ -27,6 +28,10 @@ export interface FirebaseAuthProviderOptions {
   authEmulatorUrl?: string;
   firestoreEmulatorHost?: string;
   firestoreEmulatorPort?: number;
+  emulatorTestUser?: {
+    email: string;
+    password: string;
+  };
   app?: FirebaseApp;
   auth?: Auth;
   firestore?: Firestore;
@@ -36,12 +41,17 @@ export class FirebaseAuthProvider implements CollaborationAuthPort {
   readonly app: FirebaseApp;
   readonly auth: Auth;
   readonly firestore: Firestore;
+  private readonly emulatorTestUser: FirebaseAuthProviderOptions['emulatorTestUser'];
 
   constructor(options: FirebaseAuthProviderOptions) {
     this.app = options.app ?? initializeApp(options.firebase);
     this.auth = options.auth ?? getAuth(this.app);
     this.firestore = options.firestore ?? getFirestore(this.app);
+    this.emulatorTestUser = options.emulatorTestUser;
 
+    if (this.emulatorTestUser && !options.authEmulatorUrl) {
+      throw new Error('Emulator test user requires Auth Emulator');
+    }
     if (options.authEmulatorUrl) {
       connectAuthEmulator(this.auth, options.authEmulatorUrl, {
         disableWarnings: true,
@@ -77,6 +87,14 @@ export class FirebaseAuthProvider implements CollaborationAuthPort {
   }
 
   async signIn(): Promise<User> {
+    if (this.emulatorTestUser) {
+      const result = await signInWithEmailAndPassword(
+        this.auth,
+        this.emulatorTestUser.email,
+        this.emulatorTestUser.password,
+      );
+      return result.user;
+    }
     const result = await signInWithPopup(this.auth, new GoogleAuthProvider());
     return result.user;
   }
