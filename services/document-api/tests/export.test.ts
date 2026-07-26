@@ -6,8 +6,9 @@ import {
   type ExportHwpxDependencies,
 } from '../src/routes/export-hwpx.js'
 
-test('flushes collaboration state before queuing an HWPX export', async () => {
+test('flushes collaboration state before queuing a versioned HWPX export task', async () => {
   const events: string[] = []
+  const payloads: unknown[] = []
   const dependencies: ExportHwpxDependencies = {
     auth: {
       async verifyIdToken() {
@@ -30,9 +31,11 @@ test('flushes collaboration state before queuing an HWPX export', async () => {
     exportJobs: {
       async enqueue(input) {
         events.push(`enqueue:${input.snapshotPath}`)
-        return { jobId: 'export-7' }
+        payloads.push(input)
+        return { jobId: 'projects/p/locations/l/queues/q/tasks/task-7' }
       },
     },
+    createExportId: () => 'export-7',
   }
   const handler = createExportHwpxHandler(dependencies)
 
@@ -50,9 +53,16 @@ test('flushes collaboration state before queuing an HWPX export', async () => {
     'flush:doc-1',
     'enqueue:documents/doc-1/collaboration/snapshots/1-checksum.bin',
   ])
+  assert.deepEqual(payloads, [{
+    schemaVersion: 1,
+    documentId: 'doc-1',
+    exportId: 'export-7',
+    snapshotPath: 'documents/doc-1/collaboration/snapshots/1-checksum.bin',
+  }])
   assert.deepEqual(response.body, {
     status: 'queued',
-    jobId: 'export-7',
+    jobId: 'projects/p/locations/l/queues/q/tasks/task-7',
+    exportId: 'export-7',
     outputPath: 'documents/doc-1/exports/export-7.hwpx',
   })
 })
