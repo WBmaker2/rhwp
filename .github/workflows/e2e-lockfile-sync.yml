@@ -10,7 +10,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   generate-and-verify:
@@ -19,6 +19,8 @@ jobs:
     steps:
       - uses: actions/checkout@v5
         with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
           show-progress: false
 
       - uses: actions/setup-node@v6
@@ -34,6 +36,18 @@ jobs:
       - name: Verify reproducible install
         working-directory: services/e2e
         run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Commit regenerated lockfile
+        run: |
+          if git diff --quiet -- services/e2e/package-lock.json; then
+            echo 'package-lock.json is already synchronized.'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add services/e2e/package-lock.json
+          git commit -m 'chore(e2e): sync npm lockfile'
+          git push origin "HEAD:${{ github.head_ref }}"
 
       - name: Upload regenerated lockfile
         uses: actions/upload-artifact@v7
