@@ -24,14 +24,15 @@ export function createCollaborationInternalRequestHandler(
     const match = /^\/internal\/documents\/([A-Za-z0-9_-]{1,128})\/flush$/.exec(
       url.pathname,
     )
-    if (!match || request.method !== 'POST') return false
+    const documentId = match?.[1]
+    if (!documentId || request.method !== 'POST') return false
     const token = headerValue(request.headers['x-rhwp-internal-token'])
     if (!secureEqual(token, expectedToken)) {
       writeJson(response, 401, { error: 'unauthorized' })
       return true
     }
 
-    const snapshot = await dependencies.flushForExport(match[1])
+    const snapshot = await dependencies.flushForExport(documentId)
     if (!snapshot) {
       writeJson(response, 409, { error: 'collaboration-state-unavailable' })
       return true
