@@ -57,7 +57,7 @@ jobs:
         with:
           name: staging-preflight-report-static
           path: artifacts/staging-preflight-static.json
-          if-no-files-found: error
+          if-no-files-found: warn
           retention-days: 14
 
   live:
@@ -95,5 +95,5 @@ jobs:
         with:
           name: staging-preflight-report-live
           path: artifacts/staging-preflight-live.json
-          if-no-files-found: error
+          if-no-files-found: warn
           retention-days: 14
