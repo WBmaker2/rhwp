@@ -24,6 +24,7 @@ export class RemoteCursorLayer {
   ) {
     this.element = document.createElement('div');
     this.element.id = 'collaboration-remote-cursors';
+    this.element.dataset.testid = 'collaboration-remote-cursors';
     Object.assign(this.element.style, {
       position: 'absolute',
       inset: '0',
@@ -40,6 +41,8 @@ export class RemoteCursorLayer {
       const rect = this.resolve(participant);
       if (!rect) continue;
       const cursor = document.createElement('div');
+      cursor.dataset.testid = 'collaboration-remote-cursor';
+      cursor.dataset.userId = participant.state.userId;
       const color = PALETTE[participant.state.colorIndex];
       Object.assign(cursor.style, {
         position: 'absolute',
@@ -50,6 +53,7 @@ export class RemoteCursorLayer {
         background: color,
       });
       const label = document.createElement('span');
+      label.dataset.testid = 'collaboration-remote-cursor-label';
       label.textContent = participant.state.displayName || participant.state.userId;
       Object.assign(label.style, {
         position: 'absolute',
