@@ -8,12 +8,11 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "start": "node dist/main.js",
+    "start": "node dist/src/main.js",
     "test": "node --test --import tsx tests/*.test.ts",
     "check": "npm test && npm run build"
   },
   "dependencies": {
-    "@hocuspocus/server": "4.4.0",
     "firebase-admin": "14.2.0",
     "yjs": "13.6.31"
   },
