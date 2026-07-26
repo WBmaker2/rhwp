@@ -21,6 +21,14 @@ export interface TaskQueueConfiguration {
   queue: string
   targetUrl: string
   serviceAccountEmail: string
+  dispatchDeadlineSeconds: number
+}
+
+type TaskQueueConstructorConfiguration = Omit<
+  TaskQueueConfiguration,
+  'dispatchDeadlineSeconds'
+> & {
+  dispatchDeadlineSeconds?: number
 }
 
 export interface DocumentApiEnvironment {
@@ -202,10 +210,17 @@ export class FirestoreShareLinkStore implements ShareLinkStore {
 }
 
 export class CloudTasksJobQueue {
+  private readonly configuration: TaskQueueConfiguration
+
   constructor(
     private readonly client: Pick<CloudTasksClient, 'queuePath' | 'createTask'>,
-    private readonly configuration: TaskQueueConfiguration,
-  ) {}
+    configuration: TaskQueueConstructorConfiguration,
+  ) {
+    this.configuration = {
+      ...configuration,
+      dispatchDeadlineSeconds: configuration.dispatchDeadlineSeconds ?? 900,
+    }
+  }
 
   async enqueue(input: Record<string, unknown>): Promise<{ jobId: string }> {
     const parent = this.client.queuePath(
@@ -217,6 +232,7 @@ export class CloudTasksJobQueue {
     const [task] = await this.client.createTask({
       parent,
       task: {
+        dispatchDeadline: { seconds: this.configuration.dispatchDeadlineSeconds },
         httpRequest: {
           httpMethod: 'POST',
           url: this.configuration.targetUrl,
@@ -240,6 +256,9 @@ export function readDocumentApiEnvironment(
   const projectId = required(environment, 'GCP_PROJECT_ID')
   const location = required(environment, 'GCP_LOCATION')
   const serviceAccountEmail = required(environment, 'TASKS_SERVICE_ACCOUNT_EMAIL')
+  const dispatchDeadlineSeconds = parseDispatchDeadline(
+    environment.TASK_DISPATCH_DEADLINE_SECONDS ?? '900',
+  )
   const queue = (
     queueName: 'PARSE_QUEUE' | 'EXPORT_QUEUE',
     workerUrl: 'PARSE_WORKER_URL' | 'EXPORT_WORKER_URL',
@@ -249,6 +268,7 @@ export function readDocumentApiEnvironment(
     queue: required(environment, queueName),
     targetUrl: assertHttpsUrl(required(environment, workerUrl), workerUrl),
     serviceAccountEmail,
+    dispatchDeadlineSeconds,
   })
   return {
     port,
@@ -294,6 +314,14 @@ function parsePort(value: string): number {
     throw new Error('PORT must be an integer from 1 to 65535')
   }
   return port
+}
+
+function parseDispatchDeadline(value: string): number {
+  const seconds = Number(value)
+  if (!Number.isSafeInteger(seconds) || seconds < 15 || seconds > 1800) {
+    throw new Error('TASK_DISPATCH_DEADLINE_SECONDS must be an integer from 15 to 1800')
+  }
+  return seconds
 }
 
 function assertHttpsUrl(value: string, name: string): string {
