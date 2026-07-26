@@ -141,15 +141,15 @@ npm ci --ignore-scripts --no-audit --no-fund
 
 ## Final Verification
 
-Final verified head: `e03880fc870e397f178bfe3e289eff687efc8d8c`.
+Final verified head: `07a7243cdc68349efe333c3fd240258f689f0b64`.
 
-- [x] `CI` run `30189762972`: success
-- [x] `CodeQL` run `30189762963`: success
-- [x] `Collaboration recovery E2E` run `30189762984`: success
-- [x] `Collaboration Emulator E2E` run `30189762957`: success
-- [x] `Document worker` run `30189762967`: success
-- [x] `Collaboration browser visual` run `30189762979`: success
-- [x] `Render Diff` run `30189762973`: success
+- [x] `CI` run `30190262464`: success
+- [x] `CodeQL` run `30190262429`: success
+- [x] `Collaboration recovery E2E` run `30190262444`: success
+- [x] `Collaboration Emulator E2E` run `30190262455`: success
+- [x] `Document worker` run `30190262428`: success
+- [x] `Collaboration browser visual` run `30190262486`: success
+- [x] `Render Diff` run `30190262427`: success
 - [x] All remaining workflows associated with the head completed successfully.
 
 ## Resulting Permanent Files
