@@ -10,6 +10,8 @@ import { createDocumentApiHttpServer } from './http-server.js'
 import { ParseLease } from './parse-lease.js'
 import { createCompleteUploadHandler } from './routes/complete-upload.js'
 import { createExportHwpxHandler } from './routes/export-hwpx.js'
+import { createShareLinkHandlers } from './routes/share-links.js'
+import { ShareLinkService } from './share-links.js'
 
 export interface DocumentApiRuntime {
   listen(): Promise<void>
@@ -47,7 +49,12 @@ export function createDocumentApiRuntime(
       enqueue: (input) => adapters.exportQueue.enqueue(input),
     },
   })
-  const server = createDocumentApiHttpServer({ completeUpload, exportHwpx })
+  const shareLinks = createShareLinkHandlers({
+    auth: adapters.auth,
+    members: adapters.members,
+    shareLinks: new ShareLinkService(adapters.shareLinks),
+  })
+  const server = createDocumentApiHttpServer({ completeUpload, exportHwpx, shareLinks })
   let listening = false
 
   return {
