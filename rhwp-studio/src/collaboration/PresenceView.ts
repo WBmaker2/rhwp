@@ -10,6 +10,9 @@ export class PresenceView {
   readonly element: HTMLDivElement;
   private readonly status: HTMLSpanElement;
   private readonly participants: HTMLDivElement;
+  private readonly shareButton: HTMLButtonElement;
+  private shareAction: (() => void) | null = null;
+  private role: CollaborationConnectionState['role'] | null = null;
 
   constructor(parent: HTMLElement = document.body) {
     this.element = document.createElement('div');
@@ -32,7 +35,20 @@ export class PresenceView {
     this.participants = document.createElement('div');
     this.participants.setAttribute('aria-label', '공동 편집 접속자');
     Object.assign(this.participants.style, { display: 'flex', gap: '4px' });
-    this.element.append(this.status, this.participants);
+    this.shareButton = document.createElement('button');
+    this.shareButton.type = 'button';
+    this.shareButton.textContent = '공유';
+    this.shareButton.setAttribute('aria-label', '공유 링크 관리');
+    Object.assign(this.shareButton.style, {
+      display: 'none',
+      padding: '3px 7px',
+      border: '1px solid #dadce0',
+      borderRadius: '5px',
+      background: '#fff',
+      cursor: 'pointer',
+    });
+    this.shareButton.addEventListener('click', () => this.shareAction?.());
+    this.element.append(this.status, this.participants, this.shareButton);
     parent.append(this.element);
     this.setPending();
   }
@@ -45,10 +61,17 @@ export class PresenceView {
     this.status.textContent = `공동 편집 오류: ${error instanceof Error ? error.message : String(error)}`;
   }
 
+  setShareAction(action: (() => void) | null): void {
+    this.shareAction = action;
+    this.updateShareButton();
+  }
+
   setConnected(state: CollaborationConnectionState): void {
+    this.role = state.role;
     const roleLabel = state.role === 'owner' ? '소유자' : state.role === 'editor' ? '편집자' : '열람자';
     this.status.textContent = `${state.identity.displayName || state.identity.userId} · ${roleLabel}`;
     this.renderParticipants(state.participants);
+    this.updateShareButton();
   }
 
   renderParticipants(participants: RemoteParticipant[]): void {
@@ -68,6 +91,11 @@ export class PresenceView {
   }
 
   destroy(): void {
+    this.shareAction = null;
     this.element.remove();
+  }
+
+  private updateShareButton(): void {
+    this.shareButton.style.display = this.role === 'owner' && this.shareAction ? 'inline-block' : 'none';
   }
 }
