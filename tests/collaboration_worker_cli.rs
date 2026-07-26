@@ -1,5 +1,5 @@
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -30,7 +30,11 @@ fn worker_imports_manifest_and_exports_reparseable_hwpx() {
         "--manifest",
         manifest_path.to_str().expect("manifest path"),
     ]);
-    assert!(import.status.success(), "{}", String::from_utf8_lossy(&import.stderr));
+    assert!(
+        import.status.success(),
+        "{}",
+        String::from_utf8_lossy(&import.stderr)
+    );
     let import_report: Value = serde_json::from_slice(&import.stdout).expect("import report");
     assert_eq!(import_report["status"], "ready");
     let manifest: Value = serde_json::from_slice(&fs::read(&manifest_path).expect("manifest"))
@@ -61,12 +65,19 @@ fn worker_imports_manifest_and_exports_reparseable_hwpx() {
         "--output",
         output_path.to_str().expect("output path"),
     ]);
-    assert!(export.status.success(), "{}", String::from_utf8_lossy(&export.stderr));
+    assert!(
+        export.status.success(),
+        "{}",
+        String::from_utf8_lossy(&export.stderr)
+    );
     let export_report: Value = serde_json::from_slice(&export.stdout).expect("export report");
     assert_eq!(export_report["updatedParagraphs"], 1);
-    let exported = parse_document(&fs::read(&output_path).expect("export bytes"))
-        .expect("reparse export");
-    assert_eq!(exported.sections[0].paragraphs[0].text, "공동 편집 worker 결과");
+    let exported =
+        parse_document(&fs::read(&output_path).expect("export bytes")).expect("reparse export");
+    assert_eq!(
+        exported.sections[0].paragraphs[0].text,
+        "공동 편집 worker 결과"
+    );
 
     fs::remove_dir_all(directory).expect("remove temporary directory");
 }
@@ -131,7 +142,10 @@ fn temporary_directory() -> PathBuf {
         .duration_since(UNIX_EPOCH)
         .expect("time")
         .as_nanos();
-    std::env::temp_dir().join(format!("rhwp-collaboration-worker-{}-{nonce}", std::process::id()))
+    std::env::temp_dir().join(format!(
+        "rhwp-collaboration-worker-{}-{nonce}",
+        std::process::id()
+    ))
 }
 
 fn source_document() -> Document {
@@ -175,9 +189,4 @@ fn serializable_doc_info() -> DocInfo {
         }],
         ..DocInfo::default()
     }
-}
-
-#[allow(dead_code)]
-fn assert_path_exists(path: &Path) {
-    assert!(path.exists(), "{} must exist", path.display());
 }
