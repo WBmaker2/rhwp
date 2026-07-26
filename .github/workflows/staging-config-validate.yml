@@ -11,6 +11,7 @@ on:
       - 'deploy/staging/**'
       - 'scripts/validate_staging_config.py'
       - 'scripts/staging_preflight.py'
+      - 'scripts/staging_approval_packet.py'
       - 'scripts/tests/**'
       - '.github/workflows/staging-config-validate.yml'
   workflow_dispatch:
@@ -82,18 +83,43 @@ jobs:
         uses: google-github-actions/setup-gcloud@v3
       - name: Install Firebase CLI
         run: npm install --global firebase-tools
-      - name: Run live read-only preflight
+      - name: Generate static preflight report for approval packet
         run: |
           mkdir -p artifacts
           python3 scripts/staging_preflight.py \
             --manifest "${{ inputs.manifest_path }}" \
+            --report artifacts/staging-preflight-static.json
+      - name: Run live read-only preflight
+        run: |
+          python3 scripts/staging_preflight.py \
+            --manifest "${{ inputs.manifest_path }}" \
             --live \
             --report artifacts/staging-preflight-live.json
+      - name: Generate staging approval packet
+        run: |
+          python3 scripts/staging_approval_packet.py \
+            --manifest "${{ inputs.manifest_path }}" \
+            --static-report artifacts/staging-preflight-static.json \
+            --live-report artifacts/staging-preflight-live.json \
+            --json-output artifacts/staging-approval-packet.json \
+            --markdown-output artifacts/staging-approval-packet.md
       - name: Upload live preflight report
         if: always()
         uses: actions/upload-artifact@v7
         with:
           name: staging-preflight-report-live
           path: artifacts/staging-preflight-live.json
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Upload staging approval packet
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: staging-approval-packet
+          path: |
+            artifacts/staging-preflight-static.json
+            artifacts/staging-preflight-live.json
+            artifacts/staging-approval-packet.json
+            artifacts/staging-approval-packet.md
           if-no-files-found: warn
           retention-days: 14
