@@ -24,29 +24,42 @@ export class MetadataIdentityTokenProvider implements IdentityTokenProvider {
 }
 
 export class HttpCollaborationFlushClient {
+  private readonly audience: string
+  private readonly localHttp: boolean
+
   constructor(
-    private readonly baseUrl: string,
+    baseUrl: string,
     private readonly internalToken: string,
     private readonly identityTokens: IdentityTokenProvider = new MetadataIdentityTokenProvider(),
     private readonly fetcher: typeof fetch = fetch,
+    allowLocalHttp = false,
   ) {
-    if (!baseUrl.startsWith('https://')) throw new Error('collaboration URL must use https')
+    const url = new URL(baseUrl)
+    const localHttp = url.protocol === 'http:'
+      && (url.hostname === '127.0.0.1' || url.hostname === 'localhost')
+    if (url.protocol !== 'https:' && !(allowLocalHttp && localHttp)) {
+      throw new Error('collaboration URL must use https')
+    }
     if (!internalToken.trim()) throw new Error('internal collaboration token is required')
+    this.audience = url.toString().replace(/\/$/, '')
+    this.localHttp = localHttp
   }
 
   async flushForExport(documentId: string): Promise<{ path: string } | null> {
     if (!/^[A-Za-z0-9_-]{1,128}$/.test(documentId)) throw new Error('invalid documentId')
-    const audience = this.baseUrl.replace(/\/$/, '')
-    const idToken = await this.identityTokens.getIdentityToken(audience)
+    const headers: Record<string, string> = {
+      'x-rhwp-internal-token': this.internalToken,
+      'content-type': 'application/json',
+    }
+    if (!this.localHttp) {
+      const idToken = await this.identityTokens.getIdentityToken(this.audience)
+      headers.authorization = `Bearer ${idToken}`
+    }
     const response = await this.fetcher(
-      `${audience}/internal/documents/${documentId}/flush`,
+      `${this.audience}/internal/documents/${documentId}/flush`,
       {
         method: 'POST',
-        headers: {
-          authorization: `Bearer ${idToken}`,
-          'x-rhwp-internal-token': this.internalToken,
-          'content-type': 'application/json',
-        },
+        headers,
         body: '{}',
       },
     )
