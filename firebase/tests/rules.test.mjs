@@ -327,22 +327,22 @@ test('user image validation rejects spoofed uploader, bad type, oversize, and ov
   )
 })
 
-test('only owner can upload the canonical 100 to 200 MiB HWP source', async () => {
+test('only owner can upload a canonical non-empty HWP source up to 200 MiB', async () => {
   await seedDocument()
   const path = 'documents/doc-1/source/original.hwp'
 
   await assertFails(
-    uploadBytes(ref(storageFor('editor-1'), path), new Uint8Array(100 * mib), {
+    uploadBytes(ref(storageFor('editor-1'), path), Uint8Array.of(1), {
       contentType: 'application/x-hwp',
     }),
   )
   await assertFails(
-    uploadBytes(ref(storageFor('owner-1'), path), Uint8Array.of(1), {
+    uploadBytes(ref(storageFor('owner-1'), path), new Uint8Array(0), {
       contentType: 'application/x-hwp',
     }),
   )
   await assertSucceeds(
-    uploadBytes(ref(storageFor('owner-1'), path), new Uint8Array(100 * mib), {
+    uploadBytes(ref(storageFor('owner-1'), path), Uint8Array.of(1), {
       contentType: 'application/x-hwp',
     }),
   )
