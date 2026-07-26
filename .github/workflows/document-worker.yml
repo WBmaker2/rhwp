@@ -18,7 +18,8 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  check:
+  native:
+    name: Native worker
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -37,24 +38,27 @@ jobs:
       - name: Check Rust formatting
         run: cargo fmt --all -- --check
 
-      - name: Capture rustfmt diff
-        if: failure()
+      - name: Test native collaboration worker
         run: |
-          cargo fmt --all
-          git diff -- src/bin/rhwp-collaboration-worker.rs tests/collaboration_worker_cli.rs > rustfmt.diff
-          test -s rustfmt.diff
+          set -o pipefail
+          cargo test --no-default-features --test collaboration_worker_cli 2>&1 | tee native-worker.log
 
-      - name: Upload rustfmt diagnostics
+      - name: Upload native diagnostics
         if: failure()
         uses: actions/upload-artifact@v7
         with:
-          name: document-worker-rustfmt-${{ github.run_id }}
-          path: rustfmt.diff
+          name: document-worker-native-${{ github.run_id }}
+          path: native-worker.log
           retention-days: 1
           if-no-files-found: error
 
-      - name: Test native collaboration worker
-        run: cargo test --no-default-features --test collaboration_worker_cli
+  node:
+    name: Node worker
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          show-progress: false
 
       - uses: actions/setup-node@v6
         with:
@@ -68,4 +72,17 @@ jobs:
 
       - name: Test and build Node worker
         working-directory: services/document-worker
-        run: npm run check
+        run: |
+          set -o pipefail
+          npm run check 2>&1 | tee document-worker.log
+
+      - name: Upload Node diagnostics and generated lockfile
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: document-worker-node-${{ github.run_id }}
+          path: |
+            services/document-worker/document-worker.log
+            services/document-worker/package-lock.json
+          retention-days: 1
+          if-no-files-found: error
