@@ -57,8 +57,7 @@ export class FirebaseAuthProvider implements CollaborationAuthPort {
   }
 
   async requireSession(documentId: string): Promise<CollaborationSession> {
-    const user = this.auth.currentUser ?? await this.waitForInitialUser();
-    const authenticated = user ?? await this.signIn();
+    const authenticated = await this.requireUser();
     const role = await this.loadRole(documentId, authenticated.uid);
     if (!role) throw new Error('이 문서의 공동 편집 멤버가 아닙니다.');
 
@@ -73,9 +72,18 @@ export class FirebaseAuthProvider implements CollaborationAuthPort {
     };
   }
 
+  async getIdToken(): Promise<string> {
+    return (await this.requireUser()).getIdToken();
+  }
+
   async signIn(): Promise<User> {
     const result = await signInWithPopup(this.auth, new GoogleAuthProvider());
     return result.user;
+  }
+
+  private async requireUser(): Promise<User> {
+    const user = this.auth.currentUser ?? await this.waitForInitialUser();
+    return user ?? this.signIn();
   }
 
   private async loadRole(
