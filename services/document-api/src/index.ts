@@ -20,3 +20,20 @@ export {
   createExportHwpxHandler,
   type ExportHwpxDependencies,
 } from './routes/export-hwpx.js'
+export {
+  createShareLinkHandlers,
+  type ShareLinkHandlerDependencies,
+  type ShareLinkHandlers,
+  type ShareLinkManagementRequest,
+  type ShareLinkRequest,
+} from './routes/share-links.js'
+export {
+  createShareToken,
+  hashShareToken,
+  ShareLinkService,
+  type CreatedShareLink,
+  type ShareLinkRecord,
+  type ShareLinkRedemption,
+  type ShareLinkRole,
+  type ShareLinkStore,
+} from './share-links.js'
