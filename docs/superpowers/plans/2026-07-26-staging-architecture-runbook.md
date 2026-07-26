@@ -61,20 +61,13 @@ Render Diff
 Staging configuration
 ```
 
-- [ ] **Step 3: PR body의 오래된 head와 실행 중 문구를 교체한다**
+- [x] **Step 3: PR body의 오래된 head와 실행 중 문구를 교체한다**
 
-PR body에는 다음을 기록한다.
+PR body에 기준 head, 전체 workflow 성공, npm `ci` 전환 완료, 이번 staging 문서화 범위와 cloud mutation 금지를 기록했다.
 
-```text
-- 기준 head SHA와 전체 workflow 성공
-- services/e2e와 services/document-worker의 npm ci 전환 완료
-- 이번 구현 단위: staging architecture 설계와 deployment runbook
-- 실제 클라우드 변경은 명시적 승인 전 금지
-```
+- [x] **Step 4: PR 상태를 다시 확인한다**
 
-- [ ] **Step 4: PR 상태를 다시 확인한다**
-
-Expected:
+확인 결과:
 
 ```text
 draft = true
