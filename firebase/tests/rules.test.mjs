@@ -213,30 +213,24 @@ test('members may read export metadata but all client export writes are denied',
   )
 })
 
-test('only owner may manage share links for their document', async () => {
+test('share links are server-managed and inaccessible through client SDKs', async () => {
   await seedDocument()
-  const ownerLink = doc(firestoreFor('owner-1'), 'shareLinks/link-1')
+  const data = {
+    documentId: 'doc-1',
+    role: 'viewer',
+    enabled: true,
+    expiresAt: null,
+    createdBy: 'owner-1',
+    createdAt: Timestamp.fromMillis(4_000),
+  }
 
-  await assertSucceeds(
-    setDoc(ownerLink, {
-      documentId: 'doc-1',
-      role: 'viewer',
-      enabled: true,
-      expiresAt: null,
-      createdBy: 'owner-1',
-    }),
-  )
-  await assertSucceeds(getDoc(ownerLink))
-  await assertFails(getDoc(doc(firestoreFor('editor-1'), 'shareLinks/link-1')))
-  await assertFails(
-    setDoc(doc(firestoreFor('editor-1'), 'shareLinks/editor-link'), {
-      documentId: 'doc-1',
-      role: 'viewer',
-      enabled: true,
-      expiresAt: null,
-      createdBy: 'editor-1',
-    }),
-  )
+  for (const uid of ['owner-1', 'editor-1', 'viewer-1', null]) {
+    const link = doc(firestoreFor(uid), 'shareLinks/link-1')
+    await assertFails(setDoc(link, data))
+    await assertFails(getDoc(link))
+    await assertFails(updateDoc(link, { enabled: false }))
+    await assertFails(deleteDoc(link))
+  }
 })
 
 test('members can read derived and user assets while outsiders cannot', async () => {
