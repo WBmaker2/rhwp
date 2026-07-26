@@ -116,13 +116,14 @@ jobs:
 
           source = Path('deploy/staging/staging-bootstrap-readiness.example.json')
           payload = json.loads(source.read_text())
+          # Synthetic values intentionally do not reference real GitHub runs.
           commit = '7' * 40
           payload['repository']['commitSha'] = commit
           run_numbers = {
-              'CI': 403,
-              'CodeQL': 402,
-              'Render Diff': 285,
-              'Staging configuration': 228,
+              'CI': 9001,
+              'CodeQL': 9002,
+              'Render Diff': 9003,
+              'Staging configuration': 9004,
           }
           payload['workflows'] = [
               {
