@@ -13,13 +13,28 @@ on:
       - 'scripts/staging_preflight.py'
       - 'scripts/tests/**'
       - '.github/workflows/staging-config-validate.yml'
+  workflow_dispatch:
+    inputs:
+      live_check:
+        description: Run live read-only GCP and Firebase queries
+        required: true
+        type: boolean
+        default: false
+      manifest_path:
+        description: Repository-relative staging manifest path
+        required: true
+        type: string
+        default: deploy/staging/staging-manifest.json
 
 permissions:
   contents: read
 
 jobs:
-  validate:
+  static:
+    name: Static preflight
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v5
         with:
@@ -28,3 +43,57 @@ jobs:
         run: python3 -m unittest discover -s scripts/tests -p 'test_*.py' -v
       - name: Validate staging templates without deployment
         run: python3 scripts/validate_staging_config.py
+      - name: Generate static preflight report
+        env:
+          MANIFEST_PATH: ${{ github.event_name == 'workflow_dispatch' && inputs.manifest_path || 'deploy/staging/staging-manifest.json' }}
+        run: |
+          mkdir -p artifacts
+          python3 scripts/staging_preflight.py \
+            --manifest "${MANIFEST_PATH}" \
+            --report artifacts/staging-preflight-static.json
+      - name: Upload static preflight report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: staging-preflight-report-static
+          path: artifacts/staging-preflight-static.json
+          if-no-files-found: error
+          retention-days: 14
+
+  live:
+    name: Live read-only preflight
+    if: github.event_name == 'workflow_dispatch' && inputs.live_check
+    needs: static
+    runs-on: ubuntu-latest
+    environment: staging-preflight
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          show-progress: false
+      - name: Authenticate with Workload Identity Federation
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_PREFLIGHT_SERVICE_ACCOUNT }}
+      - name: Set up Google Cloud CLI
+        uses: google-github-actions/setup-gcloud@v3
+      - name: Install Firebase CLI
+        run: npm install --global firebase-tools
+      - name: Run live read-only preflight
+        run: |
+          mkdir -p artifacts
+          python3 scripts/staging_preflight.py \
+            --manifest "${{ inputs.manifest_path }}" \
+            --live \
+            --report artifacts/staging-preflight-live.json
+      - name: Upload live preflight report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: staging-preflight-report-live
+          path: artifacts/staging-preflight-live.json
+          if-no-files-found: error
+          retention-days: 14
