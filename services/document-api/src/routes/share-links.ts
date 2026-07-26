@@ -57,6 +57,7 @@ export function createShareLinkHandlers(
             shareId: created.shareId,
             token: created.token,
             role: created.role,
+            enabled: created.enabled,
             expiresAt: created.expiresAt,
             createdAt: created.createdAt,
           },
