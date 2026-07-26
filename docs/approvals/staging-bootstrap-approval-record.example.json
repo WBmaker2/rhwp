@@ -1,0 +1,17 @@
+{
+  "schemaVersion": "rhwp.staging-bootstrap-approval/v1",
+  "decision": "pending",
+  "approvedAt": null,
+  "approvedBy": [],
+  "commitSha": "0000000000000000000000000000000000000000",
+  "workflowRunId": 0,
+  "packetSha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "projectId": "rhwp-collaboration-staging-123",
+  "billingAccount": "000000-111111-222222",
+  "acceptedDeferredPaths": [],
+  "securityExceptions": [
+    "mvp-staging-internal-token"
+  ],
+  "deploymentApproved": false,
+  "cloudMutationApproved": false
+}
