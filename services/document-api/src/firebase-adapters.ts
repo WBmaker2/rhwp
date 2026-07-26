@@ -6,6 +6,12 @@ import { CloudTasksClient } from '@google-cloud/tasks'
 
 import type { ParseLeaseState, ParseLeaseStore } from './parse-lease.js'
 import type { DocumentRole } from './routes/complete-upload.js'
+import type {
+  ShareLinkRecord,
+  ShareLinkRedemption,
+  ShareLinkRole,
+  ShareLinkStore,
+} from './share-links.js'
 
 type StorageBucket = ReturnType<ReturnType<typeof getStorage>['bucket']>
 
@@ -31,6 +37,7 @@ export interface DocumentApiFirebaseAdapters {
   members: FirestoreMemberStore
   objects: FirebaseObjectMetadataStore
   leaseStore: FirestoreParseLeaseStore
+  shareLinks: FirestoreShareLinkStore
   parseQueue: CloudTasksJobQueue
   exportQueue: CloudTasksJobQueue
 }
@@ -100,6 +107,96 @@ export class FirestoreParseLeaseStore implements ParseLeaseStore {
       const next = operation(current)
       transaction.set(reference, { parseLease: next.state }, { merge: true })
       return next.result
+    })
+  }
+}
+
+export class FirestoreShareLinkStore implements ShareLinkStore {
+  constructor(
+    private readonly firestore: Pick<Firestore, 'collection' | 'doc' | 'runTransaction'>,
+  ) {}
+
+  async create(record: ShareLinkRecord): Promise<void> {
+    await this.firestore.doc(`shareLinks/${record.shareId}`).create({
+      documentId: record.documentId,
+      role: record.role,
+      enabled: record.enabled,
+      expiresAt: record.expiresAt === null ? null : new Date(record.expiresAt),
+      createdBy: record.createdBy,
+      createdAt: new Date(record.createdAt),
+    })
+  }
+
+  async list(documentId: string, createdBy: string): Promise<ShareLinkRecord[]> {
+    const snapshot = await this.firestore
+      .collection('shareLinks')
+      .where('documentId', '==', assertId(documentId))
+      .get()
+    return snapshot.docs
+      .map((document) => parseShareLinkRecord(document.id, document.data()))
+      .filter((record): record is ShareLinkRecord => (
+        record !== null && record.createdBy === createdBy
+      ))
+  }
+
+  async disable(documentId: string, createdBy: string, shareId: string): Promise<boolean> {
+    const reference = this.firestore.doc(`shareLinks/${assertShareId(shareId)}`)
+    return this.firestore.runTransaction(async (transaction) => {
+      const snapshot = await transaction.get(reference)
+      if (!snapshot.exists) return false
+      const record = parseShareLinkRecord(snapshot.id, snapshot.data())
+      if (
+        record === null
+        || record.documentId !== documentId
+        || record.createdBy !== createdBy
+      ) {
+        return false
+      }
+      if (record.enabled) transaction.update(reference, { enabled: false })
+      return true
+    })
+  }
+
+  async redeem(shareId: string, uid: string, now: Date): Promise<ShareLinkRedemption> {
+    const linkReference = this.firestore.doc(`shareLinks/${assertShareId(shareId)}`)
+    return this.firestore.runTransaction(async (transaction) => {
+      const linkSnapshot = await transaction.get(linkReference)
+      if (!linkSnapshot.exists) return { status: 'not-found' }
+      const record = parseShareLinkRecord(linkSnapshot.id, linkSnapshot.data())
+      if (record === null) return { status: 'not-found' }
+      if (!record.enabled) return { status: 'disabled' }
+      if (record.expiresAt !== null && new Date(record.expiresAt).getTime() <= now.getTime()) {
+        return { status: 'expired' }
+      }
+
+      const documentReference = this.firestore.doc(`documents/${assertId(record.documentId)}`)
+      const memberReference = this.firestore.doc(
+        `documents/${assertId(record.documentId)}/members/${assertId(uid)}`,
+      )
+      const documentSnapshot = await transaction.get(documentReference)
+      if (!documentSnapshot.exists) return { status: 'not-found' }
+      const memberSnapshot = await transaction.get(memberReference)
+      const ownerId = documentSnapshot.get('ownerId')
+      if (ownerId === uid) {
+        return { status: 'accepted', documentId: record.documentId, role: 'owner' }
+      }
+
+      const currentRole = memberSnapshot.exists ? memberSnapshot.get('role') : null
+      const effectiveRole = strongerRole(currentRole, record.role)
+      if (!memberSnapshot.exists) {
+        transaction.create(memberReference, {
+          role: effectiveRole,
+          invitedBy: record.createdBy,
+          createdAt: now,
+        })
+      } else if (currentRole !== effectiveRole) {
+        transaction.update(memberReference, { role: effectiveRole })
+      }
+      return {
+        status: 'accepted',
+        documentId: record.documentId,
+        role: effectiveRole,
+      }
     })
   }
 }
@@ -179,6 +276,7 @@ export function createDocumentApiFirebaseAdapters(
     members: new FirestoreMemberStore(firestore),
     objects: new FirebaseObjectMetadataStore(bucket),
     leaseStore: new FirestoreParseLeaseStore(firestore),
+    shareLinks: new FirestoreShareLinkStore(firestore),
     parseQueue: new CloudTasksJobQueue(tasks, configuration.parseQueue),
     exportQueue: new CloudTasksJobQueue(tasks, configuration.exportQueue),
   }
@@ -210,12 +308,71 @@ function assertId(value: string): string {
   return normalized
 }
 
+function assertShareId(value: string): string {
+  const normalized = value.trim().toLowerCase()
+  if (!/^[a-f0-9]{64}$/.test(normalized)) throw new Error('invalid share ID')
+  return normalized
+}
+
 function assertObjectPath(value: string): string {
   const normalized = value.trim()
   if (!normalized.startsWith('documents/') || normalized.includes('..')) {
     throw new Error('invalid object path')
   }
   return normalized
+}
+
+function parseShareLinkRecord(
+  shareId: string,
+  value: Record<string, unknown> | undefined,
+): ShareLinkRecord | null {
+  if (!value) return null
+  const role = value.role
+  const documentId = value.documentId
+  const createdBy = value.createdBy
+  const enabled = value.enabled
+  const createdAt = timestampToIso(value.createdAt)
+  const expiresAt = value.expiresAt === null ? null : timestampToIso(value.expiresAt)
+  if (
+    (role !== 'editor' && role !== 'viewer')
+    || typeof documentId !== 'string'
+    || typeof createdBy !== 'string'
+    || typeof enabled !== 'boolean'
+    || createdAt === null
+    || (value.expiresAt !== null && expiresAt === null)
+  ) {
+    return null
+  }
+  return {
+    shareId: assertShareId(shareId),
+    documentId,
+    role,
+    enabled,
+    expiresAt,
+    createdBy,
+    createdAt,
+  }
+}
+
+function timestampToIso(value: unknown): string | null {
+  if (value instanceof Date && Number.isFinite(value.getTime())) return value.toISOString()
+  if (value && typeof value === 'object') {
+    const toDate = (value as { toDate?: unknown }).toDate
+    if (typeof toDate === 'function') {
+      const date = toDate.call(value) as unknown
+      if (date instanceof Date && Number.isFinite(date.getTime())) return date.toISOString()
+    }
+  }
+  if (typeof value === 'string') {
+    const date = new Date(value)
+    if (Number.isFinite(date.getTime())) return date.toISOString()
+  }
+  return null
+}
+
+function strongerRole(current: unknown, invited: ShareLinkRole): ShareLinkRole {
+  if (current === 'editor') return 'editor'
+  return invited
 }
 
 function isDocumentRole(value: unknown): value is DocumentRole {
