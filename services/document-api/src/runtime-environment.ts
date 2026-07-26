@@ -19,6 +19,9 @@ export function readDocumentApiRuntimeEnvironment(
   const projectId = required(environment, 'GCP_PROJECT_ID')
   const location = required(environment, 'GCP_LOCATION')
   const serviceAccountEmail = required(environment, 'TASKS_SERVICE_ACCOUNT_EMAIL')
+  const dispatchDeadlineSeconds = parseDispatchDeadline(
+    environment.TASK_DISPATCH_DEADLINE_SECONDS ?? '900',
+  )
   const queue = (
     queueName: 'PARSE_QUEUE' | 'EXPORT_QUEUE',
     workerUrl: 'PARSE_WORKER_URL' | 'EXPORT_WORKER_URL',
@@ -32,6 +35,7 @@ export function readDocumentApiRuntimeEnvironment(
       directWorkerDispatch,
     ),
     serviceAccountEmail,
+    dispatchDeadlineSeconds,
   })
 
   return {
@@ -60,6 +64,14 @@ function parsePort(value: string): number {
     throw new Error('PORT must be an integer from 1 to 65535')
   }
   return port
+}
+
+function parseDispatchDeadline(value: string): number {
+  const seconds = Number(value)
+  if (!Number.isSafeInteger(seconds) || seconds < 15 || seconds > 1800) {
+    throw new Error('TASK_DISPATCH_DEADLINE_SECONDS must be an integer from 15 to 1800')
+  }
+  return seconds
 }
 
 function parseBooleanFlag(value: string | undefined, name: string): boolean {
