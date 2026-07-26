@@ -3,7 +3,7 @@ import type { WasmBridge } from '@/core/wasm-bridge';
 import type { InputHandler } from '@/engine/input-handler';
 import { CursorState } from '@/engine/cursor';
 
-import { CollaborationController } from './CollaborationController';
+import { CollaborationController, type DocumentRole } from './CollaborationController';
 import { FirebaseAuthProvider } from './FirebaseAuthProvider';
 import { PresenceView } from './PresenceView';
 import { RemoteCursorLayer } from './RemoteCursorLayer';
@@ -47,6 +47,25 @@ export interface CollaborationEnvironment {
   authEmulatorUrl?: string;
   firestoreEmulatorHost?: string;
   firestoreEmulatorPort?: number;
+  emulatorTestUser?: {
+    email: string;
+    password: string;
+  };
+}
+
+export interface CollaborationDebugApi {
+  role(): DocumentRole | null;
+  participants(): Array<{ userId: string; displayName: string }>;
+  manifest(): ReturnType<RhwpCollaborationWasmAdapter['getManifest']>;
+  firstParagraphText(): string;
+  applyLocalFirstParagraphText(text: string): void;
+  publishCursor(snapshot: StudioCursorSnapshot | null): void;
+}
+
+declare global {
+  interface Window {
+    __rhwpCollaborationDebug?: CollaborationDebugApi;
+  }
 }
 
 export async function bootstrapStudioCollaboration(
@@ -70,6 +89,7 @@ export async function bootstrapStudioCollaboration(
     authEmulatorUrl: environment.authEmulatorUrl,
     firestoreEmulatorHost: environment.firestoreEmulatorHost,
     firestoreEmulatorPort: environment.firestoreEmulatorPort,
+    emulatorTestUser: environment.emulatorTestUser,
   });
   const controller = new CollaborationController({
     documentId: environment.documentId,
@@ -121,12 +141,23 @@ export async function bootstrapStudioCollaboration(
   const rerender = (): void => layer.render(controller.getRemoteParticipants());
   const unsubscribeZoom = runtime.eventBus.on('zoom-changed', rerender);
   const unsubscribeView = runtime.eventBus.on('document-view-changed', rerender);
+  let connectedRole: DocumentRole | null = null;
 
   try {
     const state = await controller.connect();
+    connectedRole = state.role;
     view.setConnected(state);
     if (state.role === 'owner' && shareDialog) {
       view.setShareAction(() => void shareDialog.open());
+    }
+    if (import.meta.env.DEV) {
+      window.__rhwpCollaborationDebug = createDebugApi(
+        bridge,
+        runtime.eventBus,
+        cursorSource,
+        controller,
+        () => connectedRole,
+      );
     }
   } catch (error) {
     view.setError(error);
@@ -149,6 +180,7 @@ export async function bootstrapStudioCollaboration(
     shareDialog?.destroy();
     view.destroy();
     controller.destroy();
+    if (window.__rhwpCollaborationDebug) delete window.__rhwpCollaborationDebug;
   };
 }
 
@@ -167,17 +199,57 @@ export function collaborationEnvironmentFromWindow(): CollaborationEnvironment |
   if (!documentId || !collaborationUrl || Object.values(firebase).some((value) => !value)) {
     return null;
   }
+  const authEmulatorUrl = import.meta.env.VITE_AUTH_EMULATOR_URL || undefined;
   const firestorePort = Number(import.meta.env.VITE_FIRESTORE_EMULATOR_PORT ?? '');
+  const emulatorEmail = params.get('collabE2EEmail')?.trim() ?? '';
+  const emulatorPassword = params.get('collabE2EPassword') ?? '';
+  const localHost = window.location.hostname === '127.0.0.1' || window.location.hostname === 'localhost';
+  const emulatorTestUser = authEmulatorUrl && localHost && emulatorEmail && emulatorPassword
+    ? { email: emulatorEmail, password: emulatorPassword }
+    : undefined;
   return {
     documentId,
     collaborationUrl,
     documentApiUrl,
     firebase,
-    authEmulatorUrl: import.meta.env.VITE_AUTH_EMULATOR_URL || undefined,
+    authEmulatorUrl,
     firestoreEmulatorHost: import.meta.env.VITE_FIRESTORE_EMULATOR_HOST || undefined,
     firestoreEmulatorPort: Number.isInteger(firestorePort) && firestorePort > 0
       ? firestorePort
       : undefined,
+    emulatorTestUser,
+  };
+}
+
+function createDebugApi(
+  bridge: RhwpCollaborationWasmAdapter,
+  eventBus: EventBus,
+  cursorSource: StudioCursorSource,
+  controller: CollaborationController,
+  role: () => DocumentRole | null,
+): CollaborationDebugApi {
+  return {
+    role,
+    participants: () => controller.getRemoteParticipants().map(({ state }) => ({
+      userId: state.userId,
+      displayName: state.displayName,
+    })),
+    manifest: () => bridge.getManifest(),
+    firstParagraphText() {
+      return bridge.getManifest().sections[0]?.paragraphs[0]?.text ?? '';
+    },
+    applyLocalFirstParagraphText(text) {
+      const current = bridge.getManifest();
+      const paragraph = current.sections[0]?.paragraphs[0];
+      if (!paragraph) throw new Error('첫 문단을 찾지 못했습니다.');
+      bridge.applyPatch(current, {
+        paragraphs: [{ target_id: paragraph.id, text }],
+        cells: [],
+        inserted_images: [],
+      });
+      eventBus.emit('document-changed');
+    },
+    publishCursor: (snapshot) => cursorSource.publish(snapshot),
   };
 }
 
