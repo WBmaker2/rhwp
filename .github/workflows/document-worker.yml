@@ -1,0 +1,55 @@
+name: Document worker
+
+on:
+  pull_request:
+    branches: [devel]
+    paths:
+      - 'src/bin/rhwp-collaboration-worker.rs'
+      - 'tests/collaboration_worker_cli.rs'
+      - 'services/document-worker/**'
+      - '.github/workflows/document-worker.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: document-worker-${{ github.head_ref || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          show-progress: false
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.93.1
+          components: rustfmt
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: document-worker
+
+      - name: Check Rust formatting
+        run: cargo fmt --all -- --check
+
+      - name: Test native collaboration worker
+        run: cargo test --no-default-features --test collaboration_worker_cli
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: services/collaboration-server/package-lock.json
+
+      - name: Install worker dependencies
+        working-directory: services/document-worker
+        run: npm install --ignore-scripts --no-audit --no-fund
+
+      - name: Test and build Node worker
+        working-directory: services/document-worker
+        run: npm run check
