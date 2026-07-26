@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto'
+
 import type { ApiRequest, ApiResponse, DocumentRole } from './complete-upload.js'
 import { exportPath } from '../storage-paths.js'
 
@@ -13,10 +15,13 @@ export interface ExportHwpxDependencies {
   }
   exportJobs: {
     enqueue(input: {
+      schemaVersion: 1
       documentId: string
+      exportId: string
       snapshotPath: string
     }): Promise<{ jobId: string }>
   }
+  createExportId?: () => string
 }
 
 export function createExportHwpxHandler(
@@ -50,8 +55,11 @@ export function createExportHwpxHandler(
       return response(409, 'collaboration-state-unavailable')
     }
 
+    const exportId = assertExportId((dependencies.createExportId ?? randomUUID)())
     const job = await dependencies.exportJobs.enqueue({
+      schemaVersion: 1,
       documentId,
+      exportId,
       snapshotPath: snapshot.path,
     })
 
@@ -60,10 +68,19 @@ export function createExportHwpxHandler(
       body: {
         status: 'queued',
         jobId: job.jobId,
-        outputPath: exportPath(documentId, job.jobId),
+        exportId,
+        outputPath: exportPath(documentId, exportId),
       },
     }
   }
+}
+
+function assertExportId(value: string): string {
+  const normalized = value.trim()
+  if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(normalized)) {
+    throw new Error('generated export ID is invalid')
+  }
+  return normalized
 }
 
 function normalizeContentType(value: string | undefined): string {
