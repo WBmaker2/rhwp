@@ -57,6 +57,7 @@ jobs:
             firebase/package-lock.json
             rhwp-studio/package-lock.json
             services/collaboration-server/package-lock.json
+            services/e2e/package-lock.json
 
       - name: Verify Chrome availability
         run: |
@@ -77,7 +78,7 @@ jobs:
 
       - name: Install browser E2E dependencies
         working-directory: services/e2e
-        run: npm install --ignore-scripts --no-audit --no-fund
+        run: npm ci --ignore-scripts --no-audit --no-fund
 
       - name: Build real WebAssembly package
         run: wasm-pack build --target web --out-dir pkg
