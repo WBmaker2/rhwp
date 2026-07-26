@@ -11,7 +11,10 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
-from scripts.staging_preflight import validate_manifest
+if __package__:
+    from scripts.staging_preflight import validate_manifest
+else:
+    from staging_preflight import validate_manifest
 
 VALUES_SCHEMA_VERSION = "rhwp.staging-bootstrap-values/v1"
 PROJECT_ID_PATTERN = re.compile(r"^[a-z][a-z0-9-]{4,28}[a-z0-9]$")
