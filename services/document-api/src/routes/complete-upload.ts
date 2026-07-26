@@ -2,7 +2,7 @@ import type { LeaseResult } from '../parse-lease.js'
 import { sourcePath } from '../storage-paths.js'
 
 const MIB = 1024 * 1024
-const MIN_SOURCE_BYTES = 100 * MIB
+const MIN_SOURCE_BYTES = 1
 const MAX_SOURCE_BYTES = 200 * MIB
 const HWP_CONTENT_TYPES = new Set([
   'application/x-hwp',
