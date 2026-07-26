@@ -6,10 +6,15 @@ import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+COLLABORATION_MANIFEST = ROOT / "deploy/cloudrun/collaboration-server.service.yaml"
+DOCUMENT_API_MANIFEST = ROOT / "deploy/cloudrun/document-api.service.yaml"
+DOCUMENT_WORKER_MANIFEST = ROOT / "deploy/cloudrun/document-worker.service.yaml"
 MANIFESTS = [
-    ROOT / "deploy/cloudrun/collaboration-server.service.yaml",
-    ROOT / "deploy/cloudrun/document-api.service.yaml",
+    COLLABORATION_MANIFEST,
+    DOCUMENT_API_MANIFEST,
+    DOCUMENT_WORKER_MANIFEST,
 ]
+SECRET_MANIFESTS = [COLLABORATION_MANIFEST, DOCUMENT_API_MANIFEST]
 TEXT_FILES = MANIFESTS + [
     ROOT / "firebase/.firebaserc.example",
     ROOT / "firebase/staging.env.example",
@@ -44,10 +49,24 @@ def main() -> None:
             fail(f"{manifest.name} contains a mutable latest image tag")
         if "serviceAccountName: ${" not in text:
             fail(f"{manifest.name} must use a dedicated service-account placeholder")
-        if "secretKeyRef:" not in text:
-            fail(f"{manifest.name} must reference Secret Manager for internal tokens")
         if re.search(r"name:\s+(?:INTERNAL_API_TOKEN|COLLABORATION_INTERNAL_TOKEN)\s*\n\s+value:", text):
             fail(f"{manifest.name} contains an inline internal token")
+
+    for manifest in SECRET_MANIFESTS:
+        if "secretKeyRef:" not in manifest.read_text():
+            fail(f"{manifest.name} must reference Secret Manager for internal tokens")
+
+    worker_text = DOCUMENT_WORKER_MANIFEST.read_text()
+    if "run.googleapis.com/ingress: internal" not in worker_text:
+        fail("document worker must use internal ingress")
+    if "containerConcurrency: 1" not in worker_text:
+        fail("document worker must use concurrency 1 for 200 MiB processing")
+    if "timeoutSeconds: 900" not in worker_text:
+        fail("document worker must allow the bounded 900-second task timeout")
+    if "memory: 2Gi" not in worker_text:
+        fail("document worker must reserve 2Gi memory")
+    if "ALLOW_EMULATOR_TASKS" not in worker_text or 'value: "false"' not in worker_text:
+        fail("document worker production template must reject emulator task bypass")
 
     firebaserc = (ROOT / "firebase/.firebaserc.example").read_text()
     if "${FIREBASE_STAGING_PROJECT_ID}" not in firebaserc:
