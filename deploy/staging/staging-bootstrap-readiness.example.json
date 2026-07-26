@@ -11,8 +11,8 @@
       "name": "CI",
       "runNumber": 403,
       "commitSha": "7358871e65da712ebdd8c932b1076e6ae72200b9",
-      "status": "in_progress",
-      "conclusion": null
+      "status": "completed",
+      "conclusion": "cancelled"
     },
     {
       "name": "CodeQL",
