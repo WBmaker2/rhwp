@@ -7,6 +7,8 @@ import { CollaborationController } from './CollaborationController';
 import { FirebaseAuthProvider } from './FirebaseAuthProvider';
 import { PresenceView } from './PresenceView';
 import { RemoteCursorLayer } from './RemoteCursorLayer';
+import { ShareDialog } from './ShareDialog';
+import { ShareLinkClient } from './ShareLinkClient';
 import {
   StudioCursorSource,
   createRemoteCursorResolver,
@@ -34,6 +36,7 @@ export interface StudioCollaborationRuntime {
 export interface CollaborationEnvironment {
   documentId: string;
   collaborationUrl: string;
+  documentApiUrl?: string;
   firebase: {
     apiKey: string;
     authDomain: string;
@@ -80,6 +83,15 @@ export async function bootstrapStudioCollaboration(
     cursor: cursorSource,
   });
   const view = new PresenceView();
+  const shareDialog = environment.documentApiUrl
+    ? new ShareDialog({
+        documentId: environment.documentId,
+        client: new ShareLinkClient({
+          apiBaseUrl: environment.documentApiUrl,
+          getIdToken: () => auth.getIdToken(),
+        }),
+      })
+    : null;
   const geometryCursor = new CursorState(runtime.wasm);
   const layer = new RemoteCursorLayer(
     runtime.scrollContent,
@@ -111,7 +123,11 @@ export async function bootstrapStudioCollaboration(
   const unsubscribeView = runtime.eventBus.on('document-view-changed', rerender);
 
   try {
-    view.setConnected(await controller.connect());
+    const state = await controller.connect();
+    view.setConnected(state);
+    if (state.role === 'owner' && shareDialog) {
+      view.setShareAction(() => void shareDialog.open());
+    }
   } catch (error) {
     view.setError(error);
     window.clearInterval(cursorTimer);
@@ -119,6 +135,7 @@ export async function bootstrapStudioCollaboration(
     unsubscribeZoom();
     unsubscribeView();
     layer.destroy();
+    shareDialog?.destroy();
     controller.destroy();
     throw error;
   }
@@ -129,6 +146,7 @@ export async function bootstrapStudioCollaboration(
     unsubscribeZoom();
     unsubscribeView();
     layer.destroy();
+    shareDialog?.destroy();
     view.destroy();
     controller.destroy();
   };
@@ -138,6 +156,7 @@ export function collaborationEnvironmentFromWindow(): CollaborationEnvironment |
   const params = new URLSearchParams(window.location.search);
   const documentId = params.get('collabDocument')?.trim() ?? '';
   const collaborationUrl = import.meta.env.VITE_COLLABORATION_URL?.trim() ?? '';
+  const documentApiUrl = import.meta.env.VITE_DOCUMENT_API_URL?.trim() || undefined;
   const firebase = {
     apiKey: import.meta.env.VITE_FIREBASE_API_KEY?.trim() ?? '',
     authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN?.trim() ?? '',
@@ -152,6 +171,7 @@ export function collaborationEnvironmentFromWindow(): CollaborationEnvironment |
   return {
     documentId,
     collaborationUrl,
+    documentApiUrl,
     firebase,
     authEmulatorUrl: import.meta.env.VITE_AUTH_EMULATOR_URL || undefined,
     firestoreEmulatorHost: import.meta.env.VITE_FIRESTORE_EMULATOR_HOST || undefined,
