@@ -40,6 +40,8 @@ spec:
               value: ${EXPORT_WORKER_URL}
             - name: TASKS_SERVICE_ACCOUNT_EMAIL
               value: ${TASKS_SERVICE_ACCOUNT_EMAIL}
+            - name: TASK_DISPATCH_DEADLINE_SECONDS
+              value: "900"
             - name: COLLABORATION_FLUSH_URL
               value: ${COLLABORATION_FLUSH_URL}
             - name: COLLABORATION_INTERNAL_TOKEN
