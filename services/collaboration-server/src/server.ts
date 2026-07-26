@@ -23,6 +23,13 @@ export class ParticipantLimitError extends Error {
   }
 }
 
+export class InternalHttpRequestHandledError extends Error {
+  constructor() {
+    super('internal HTTP request handled')
+    this.name = 'InternalHttpRequestHandledError'
+  }
+}
+
 export interface CollaborationServerDependencies {
   port?: number
   tokenVerifier: TokenVerifier
@@ -141,6 +148,16 @@ export function createCollaborationHooks(
   }
 }
 
+export async function handleInternalHttpRequest(
+  handler: NonNullable<CollaborationServerDependencies['internalRequestHandler']>,
+  request: IncomingMessage,
+  response: ServerResponse,
+): Promise<void> {
+  if (await handler(request, response)) {
+    throw new InternalHttpRequestHandledError()
+  }
+}
+
 export function createCollaborationServer(
   dependencies: CollaborationServerDependencies,
 ): Server<AuthorizedConnection> {
@@ -159,7 +176,11 @@ export function createCollaborationServer(
         request: IncomingMessage
         response: ServerResponse
       }
-      await dependencies.internalRequestHandler(request, response)
+      await handleInternalHttpRequest(
+        dependencies.internalRequestHandler,
+        request,
+        response,
+      )
     },
 
     async onAuthenticate(payload) {
