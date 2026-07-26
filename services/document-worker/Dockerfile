@@ -2,7 +2,7 @@ FROM rust:1.93-bookworm AS rust-build
 WORKDIR /src
 COPY Cargo.toml Cargo.lock rust-toolchain.toml ./
 COPY src ./src
-RUN cargo build --release --no-default-features --bin rhwp-collaboration-worker
+RUN cargo build --release --no-default-features --features collaboration-worker --bin rhwp-collaboration-worker
 
 FROM node:22-bookworm-slim AS node-build
 WORKDIR /app
@@ -27,4 +27,4 @@ COPY --from=node-build /app/dist ./dist
 RUN chown -R node:node /app /usr/local/bin/rhwp-collaboration-worker
 USER node
 EXPOSE 8080
-CMD ["node", "dist/main.js"]
+CMD ["node", "dist/src/main.js"]
