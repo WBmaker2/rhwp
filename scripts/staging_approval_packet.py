@@ -6,9 +6,28 @@ import json
 import re
 import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
+
+ApprovalPhase = Literal["bootstrap", "deployment"]
 
 PLACEHOLDER_PATTERN = re.compile(r"\$\{[A-Z0-9_]+\}")
+APPROVAL_PHASES: tuple[ApprovalPhase, ...] = ("bootstrap", "deployment")
+BOOTSTRAP_DEFERRED_PATHS = frozenset({
+    "manifest.project.number",
+    "manifest.firebase.webAppId",
+    "manifest.firebase.apiKeyReference",
+    "manifest.firebase.storageBucket",
+    "manifest.firebase.hostingSite",
+    "manifest.cloudRun.collaboration.image",
+    "manifest.cloudRun.collaboration.digest",
+    "manifest.cloudRun.documentApi.image",
+    "manifest.cloudRun.documentApi.digest",
+    "manifest.cloudRun.documentWorker.image",
+    "manifest.cloudRun.documentWorker.digest",
+    "manifest.operations.rollbackRevisionIds[0]",
+    "manifest.operations.rollbackRevisionIds[1]",
+    "manifest.operations.rollbackRevisionIds[2]",
+})
 SENSITIVE_KEY_MARKERS = (
     "accesstoken",
     "authorization",
@@ -42,7 +61,11 @@ def validate_approval_inputs(
     manifest: dict[str, Any],
     static_report: dict[str, Any],
     live_report: dict[str, Any] | None = None,
-) -> None:
+    *,
+    phase: ApprovalPhase = "deployment",
+) -> list[str]:
+    if phase not in APPROVAL_PHASES:
+        raise ApprovalPacketError("phase must be bootstrap or deployment")
     if manifest.get("schemaVersion") != "rhwp.staging/v1":
         raise ApprovalPacketError("manifest schemaVersion must be rhwp.staging/v1")
     if manifest.get("environment") != "staging":
@@ -51,12 +74,6 @@ def validate_approval_inputs(
     if operations.get("cloudMutationApproved") is not False:
         raise ApprovalPacketError("operations.cloudMutationApproved must remain false")
 
-    placeholder_paths = _find_placeholder_paths(manifest)
-    if placeholder_paths:
-        raise ApprovalPacketError(
-            "unresolved placeholder at " + ", ".join(placeholder_paths)
-        )
-
     project_id = _string(_mapping(manifest, "project"), "id")
     _validate_report(static_report, mode="static", project_id=project_id)
     if static_report.get("status") != "pass":
@@ -64,18 +81,38 @@ def validate_approval_inputs(
     if static_report.get("cloudQueries") != []:
         raise ApprovalPacketError("static report cloudQueries must be empty")
 
-    if live_report is not None:
+    deferred_paths, blocking_paths = _classify_placeholders(manifest, phase)
+    if blocking_paths:
+        raise ApprovalPacketError(
+            "unresolved placeholder at " + ", ".join(blocking_paths)
+        )
+
+    if phase == "bootstrap":
+        if live_report is not None:
+            raise ApprovalPacketError("bootstrap phase must not include a live report")
+    else:
+        if live_report is None:
+            raise ApprovalPacketError("deployment phase requires a live report")
         _validate_report(live_report, mode="live", project_id=project_id)
         if live_report.get("status") not in {"pass", "review"}:
             raise ApprovalPacketError("live report status must be pass or review")
+
+    return deferred_paths
 
 
 def build_approval_packet(
     manifest: dict[str, Any],
     static_report: dict[str, Any],
     live_report: dict[str, Any] | None = None,
+    *,
+    phase: ApprovalPhase = "deployment",
 ) -> dict[str, Any]:
-    validate_approval_inputs(manifest, static_report, live_report)
+    deferred_paths = validate_approval_inputs(
+        manifest,
+        static_report,
+        live_report,
+        phase=phase,
+    )
 
     project = _mapping(manifest, "project")
     firebase = _mapping(manifest, "firebase")
@@ -86,18 +123,24 @@ def build_approval_packet(
     secrets = _mapping(manifest, "secrets")
     iam = _mapping(manifest, "iam")
 
+    if phase == "bootstrap":
+        status = "ready-for-bootstrap-approval"
+        generated_at = static_report.get("generatedAt")
+    else:
+        assert live_report is not None
+        status = (
+            "ready-for-deployment-approval"
+            if live_report.get("status") == "pass"
+            else "review-required"
+        )
+        generated_at = live_report.get("generatedAt")
+
     packet: dict[str, Any] = {
         "schemaVersion": "rhwp.staging-approval-packet/v1",
-        "generatedAt": (
-            live_report.get("generatedAt")
-            if live_report is not None
-            else static_report.get("generatedAt")
-        ),
-        "status": (
-            "ready-for-approval"
-            if live_report is not None and live_report.get("status") == "pass"
-            else "review-required"
-        ),
+        "phase": phase,
+        "generatedAt": generated_at,
+        "status": status,
+        "deferredValues": _deferred_value_entries(deferred_paths),
         "approval": {
             "reference": operations.get("approvalReference"),
             "cloudMutationApproved": False,
@@ -149,7 +192,7 @@ def build_approval_packet(
         },
         "acceptanceTests": _acceptance_tests(),
         "preflight": {
-            "comparisonMode": "live" if live_report is not None else "static-only",
+            "comparisonMode": "static-only" if phase == "bootstrap" else "live",
             "static": {
                 "status": static_report.get("status"),
                 "generatedAt": static_report.get("generatedAt"),
@@ -198,17 +241,43 @@ def redact_sensitive(value: Any) -> Any:
 
 def render_markdown(packet: dict[str, Any]) -> str:
     safe = redact_sensitive(packet)
+    phase = safe.get("phase")
+    if phase not in APPROVAL_PHASES:
+        raise ApprovalPacketError("packet phase must be bootstrap or deployment")
+    phase_title = "Bootstrap" if phase == "bootstrap" else "Deployment"
     project = _mapping(safe, "project")
     budget = _mapping(safe, "budget")
     lines = [
-        "# rhwp Staging Approval Packet",
+        f"# rhwp Staging {phase_title} Approval Packet",
         "",
         "> This packet contains no cloud mutation commands and does not itself approve deployment.",
         "",
+        f"- Phase: `{_md(phase)}`",
         f"- Status: `{_md(safe.get('status'))}`",
         f"- Approval reference: `{_md(_mapping(safe, 'approval').get('reference'))}`",
         f"- Generated at: `{_md(safe.get('generatedAt'))}`",
         "",
+    ]
+
+    deferred_values = safe.get("deferredValues", [])
+    if phase == "bootstrap":
+        lines.extend([
+            "## Deferred values",
+            "",
+            "Only the resource-derived values below may remain unresolved during bootstrap approval.",
+            "",
+            "| Path | Reason |",
+            "|---|---|",
+        ])
+        if isinstance(deferred_values, list):
+            for item in deferred_values:
+                if isinstance(item, dict):
+                    lines.append(
+                        f"| `{_md(item.get('path'))}` | {_md(item.get('reason'))} |"
+                    )
+        lines.append("")
+
+    lines.extend([
         "## Project",
         "",
         "| Field | Value |",
@@ -229,7 +298,7 @@ def render_markdown(packet: dict[str, Any]) -> str:
         "",
         "| Principal | Role | Resource | State | Planned action |",
         "|---|---|---|---|---|",
-    ]
+    ])
     for entry in safe.get("iamDiff", []):
         lines.append(
             "| " + " | ".join(
@@ -299,7 +368,9 @@ def render_markdown(packet: dict[str, Any]) -> str:
         "",
     ])
     for item in safe.get("acceptanceTests", []):
-        lines.append(f"- [ ] **{_md(item.get('id'))}** — {_md(item.get('name'))}: {_md(item.get('expected'))}")
+        lines.append(
+            f"- [ ] **{_md(item.get('id'))}** — {_md(item.get('name'))}: {_md(item.get('expected'))}"
+        )
 
     preflight = _mapping(safe, "preflight")
     static = _mapping(preflight, "static")
@@ -336,6 +407,15 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description="Generate read-only rhwp staging approval packet artifacts"
     )
+    parser.add_argument(
+        "--phase",
+        choices=APPROVAL_PHASES,
+        default="deployment",
+        help=(
+            "bootstrap permits only approved deferred resource values; "
+            "deployment requires live evidence and concrete values"
+        ),
+    )
     parser.add_argument("--manifest", type=Path, required=True)
     parser.add_argument("--static-report", type=Path, required=True)
     parser.add_argument("--live-report", type=Path)
@@ -351,16 +431,34 @@ def main(argv: list[str] | None = None) -> int:
             if args.live_report is not None
             else None
         )
-        packet = build_approval_packet(manifest, static_report, live_report)
+        packet = build_approval_packet(
+            manifest,
+            static_report,
+            live_report,
+            phase=args.phase,
+        )
         markdown = render_markdown(packet)
-        _atomic_write(args.json_output, json.dumps(packet, ensure_ascii=False, indent=2) + "\n")
+        _atomic_write(
+            args.json_output,
+            json.dumps(packet, ensure_ascii=False, indent=2) + "\n",
+        )
         _atomic_write(args.markdown_output, markdown)
     except (ApprovalPacketError, OSError) as error:
         print(f"staging approval packet failed: {error}", file=sys.stderr)
         return 1
 
+    legacy_status = (
+        "ready-for-approval"
+        if packet["status"] in {
+            "ready-for-bootstrap-approval",
+            "ready-for-deployment-approval",
+        }
+        else packet["status"]
+    )
     print(json.dumps({
-        "status": packet["status"],
+        "status": legacy_status,
+        "packetStatus": packet["status"],
+        "phase": packet["phase"],
         "projectId": packet["project"]["id"],
         "jsonOutput": str(args.json_output),
         "markdownOutput": str(args.markdown_output),
@@ -391,6 +489,35 @@ def _find_placeholder_paths(value: Any, path: str = "manifest") -> list[str]:
     elif isinstance(value, str) and PLACEHOLDER_PATTERN.search(value):
         paths.append(path)
     return paths
+
+
+def _classify_placeholders(
+    manifest: dict[str, Any],
+    phase: ApprovalPhase,
+) -> tuple[list[str], list[str]]:
+    paths = sorted(_find_placeholder_paths(manifest))
+    if phase == "bootstrap":
+        deferred = [path for path in paths if path in BOOTSTRAP_DEFERRED_PATHS]
+        blocking = [path for path in paths if path not in BOOTSTRAP_DEFERRED_PATHS]
+        return deferred, blocking
+    return [], paths
+
+
+def _deferred_value_entries(paths: list[str]) -> list[dict[str, str]]:
+    entries: list[dict[str, str]] = []
+    for path in paths:
+        if path == "manifest.project.number":
+            reason = "resolved when the staging project exists"
+        elif path.startswith("manifest.firebase."):
+            reason = "resolved after Firebase resource creation"
+        elif path.startswith("manifest.cloudRun."):
+            reason = "resolved after image build and digest lookup"
+        elif path.startswith("manifest.operations.rollbackRevisionIds"):
+            reason = "resolved after the first Cloud Run deployment"
+        else:
+            reason = "resolved before deployment approval"
+        entries.append({"path": path, "reason": reason})
+    return entries
 
 
 def _build_iam_diff(
