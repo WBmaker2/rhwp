@@ -57,6 +57,7 @@ function dependencies(role: 'owner' | 'editor' | 'viewer' | null = 'owner') {
           shareId: 'a'.repeat(64),
           token: 'raw-token-returned-once',
           role: 'viewer',
+          enabled: true,
           expiresAt: null,
           createdAt: '2026-07-26T01:00:00.000Z',
         }
@@ -91,6 +92,7 @@ test('owner creates a viewer link and receives the raw token once', async () => 
 
   assert.equal(result.status, 201)
   assert.equal(result.body.token, 'raw-token-returned-once')
+  assert.equal(result.body.enabled, true)
   assert.deepEqual(fixture.calls.create, [['doc-1', 'owner-1', 'viewer', null]])
 })
 
