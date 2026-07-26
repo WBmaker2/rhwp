@@ -33,9 +33,9 @@
 - Consumes: 최신 branch head SHA와 해당 SHA의 GitHub Actions 결론
 - Produces: 현재 구현 상태와 다음 staging 문서화 범위를 정확히 설명하는 PR body
 
-- [ ] **Step 1: 최신 PR 상태를 확인한다**
+- [x] **Step 1: 최신 PR 상태를 확인한다**
 
-확인 항목:
+확인 결과:
 
 ```text
 state = open
@@ -46,9 +46,9 @@ head = feat/firebase-collaboration-mvp-v1
 base = devel
 ```
 
-- [ ] **Step 2: 최신 head의 전체 workflow 결과를 확인한다**
+- [x] **Step 2: 문서 작업 직전 기준 head의 전체 workflow 결과를 확인한다**
 
-필수 성공 항목:
+기준 head `f9f1e8e09efcf8cb0fad955ce66eca02728a3f2d`에서 다음 항목을 포함한 모든 workflow가 성공했다.
 
 ```text
 CI
@@ -66,8 +66,7 @@ Staging configuration
 PR body에는 다음을 기록한다.
 
 ```text
-- 최신 head SHA
-- 전체 workflow 성공
+- 기준 head SHA와 전체 workflow 성공
 - services/e2e와 services/document-worker의 npm ci 전환 완료
 - 이번 구현 단위: staging architecture 설계와 deployment runbook
 - 실제 클라우드 변경은 명시적 승인 전 금지
