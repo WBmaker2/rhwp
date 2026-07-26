@@ -129,7 +129,7 @@ test('disable validates identifiers and delegates ownership checks to the store'
   assert.equal(await fixture.service.disable('doc-1', 'owner-1', shareId), true)
   assert.deepEqual(fixture.store.disabled, [{ documentId: 'doc-1', createdBy: 'owner-1', shareId }])
   await assert.rejects(
-    fixture.service.disable('doc-1', 'owner-1', '../bad'),
+    async () => fixture.service.disable('doc-1', 'owner-1', '../bad'),
     /shareId is invalid/,
   )
 })
