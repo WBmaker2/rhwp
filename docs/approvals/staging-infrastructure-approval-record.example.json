@@ -1,0 +1,15 @@
+{
+  "schemaVersion": "rhwp.staging-infrastructure-approval/v1",
+  "decision": "pending",
+  "approvedAt": null,
+  "approvedBy": [],
+  "commitSha": "0000000000000000000000000000000000000000",
+  "planSha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "projectId": "rhwp-collaboration-staging-123",
+  "billingAccount": "000000-111111-222222",
+  "approvedStageIds": [],
+  "maximumMonthlyBudgetKrw": 50000,
+  "cloudMutationApproved": false,
+  "deploymentApproved": false,
+  "rollbackReviewed": false
+}
