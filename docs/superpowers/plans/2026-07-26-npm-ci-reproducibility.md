@@ -90,14 +90,6 @@ cache-dependency-path: |
 npm ci --ignore-scripts --no-audit --no-fund
 ```
 
-- [x] Verified the recovery E2E workflow on code head `41a25ec163548d1092e2cb911b53b04bda334683`.
-  - Workflow run: `30188907035`
-  - Conclusion: `success`
-  - Firebase authorization rules: success
-  - Collaboration server install: success
-  - Process-level recovery flow: success
-  - Three Rust collaboration/export tests: success
-
 ---
 
 ## Task 3: Convert Emulator E2E document-worker installation to npm ci
@@ -111,46 +103,28 @@ npm ci --ignore-scripts --no-audit --no-fund
 npm ci --ignore-scripts --no-audit --no-fund
 ```
 
-- [x] Verified the Emulator E2E workflow on code head `41a25ec163548d1092e2cb911b53b04bda334683`.
-  - Workflow run: `30188907012`
-  - Conclusion: `success`
-  - Firebase, collaboration server, Document API, document worker, and E2E installs: success
-  - Rust formatting and native worker build: success
-  - Deterministic HWPX fixture generation: success
-  - Real Firebase Emulator multi-process flow: success
-
 ---
 
-## Task 4: Verify document-worker package gates
-
-- [x] Verified the `Document worker` workflow on code head `41a25ec163548d1092e2cb911b53b04bda334683`.
-  - Workflow run: `30188907056`
-  - Node worker job: success
-  - Native worker job: success
-
----
-
-## Task 5: Final cleanup
+## Task 4: Final cleanup
 
 - [x] Deleted `.github/workflows/document-worker-lockfile-sync.yml` after the lockfile was committed.
 - [x] Confirmed `.github/workflows/collaboration-e2e.yml` installs `services/e2e` with `npm ci`.
 - [x] Confirmed `.github/workflows/collaboration-emulator-e2e.yml` installs `services/document-worker` with `npm ci`.
 - [x] Confirmed the document-worker lockfile participates in npm cache calculation.
 - [x] Preserved Draft PR status and avoided merge, deployment, and GCP/Firebase resource changes.
-- [x] Recorded the final documentation-head workflow state in Draft PR #1.
 
-## Final Verification
+## Verification Record
 
-Final verified head: `07a7243cdc68349efe333c3fd240258f689f0b64`.
+The permanent implementation was verified repeatedly on successive documentation-only heads. The latest full branch verification completed successfully on head `d93430a5b12d135c7de323d99bd9fd512732f137`:
 
-- [x] `CI` run `30190262464`: success
-- [x] `CodeQL` run `30190262429`: success
-- [x] `Collaboration recovery E2E` run `30190262444`: success
-- [x] `Collaboration Emulator E2E` run `30190262455`: success
-- [x] `Document worker` run `30190262428`: success
-- [x] `Collaboration browser visual` run `30190262486`: success
-- [x] `Render Diff` run `30190262427`: success
-- [x] All remaining workflows associated with the head completed successfully.
+- [x] `CI` run `30190813294`: success
+- [x] `CodeQL` run `30190813352`: success
+- [x] `Collaboration recovery E2E` run `30190813305`: success
+- [x] `Collaboration Emulator E2E` run `30190813376`: success
+- [x] `Document worker` run `30190813288`: success
+- [x] `Collaboration browser visual` run `30190813316`: success
+- [x] `Render Diff` run `30190813329`: success
+- [x] All remaining workflows associated with that head completed successfully.
 
 ## Resulting Permanent Files
 
