@@ -23,13 +23,6 @@ export class ParticipantLimitError extends Error {
   }
 }
 
-export class InternalHttpRequestHandledError extends Error {
-  constructor() {
-    super('internal HTTP request handled')
-    this.name = 'InternalHttpRequestHandledError'
-  }
-}
-
 export interface CollaborationServerDependencies {
   port?: number
   tokenVerifier: TokenVerifier
@@ -154,7 +147,7 @@ export async function handleInternalHttpRequest(
   response: ServerResponse,
 ): Promise<void> {
   if (await handler(request, response)) {
-    throw new InternalHttpRequestHandledError()
+    return Promise.reject()
   }
 }
 
