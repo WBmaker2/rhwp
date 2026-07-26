@@ -39,7 +39,7 @@ export interface AuthenticateHookInput {
   documentName: string
   token: string
   socketId: string
-  connection: {
+  connectionConfig: {
     readOnly: boolean
   }
 }
@@ -98,7 +98,7 @@ export function createCollaborationHooks(
         throw new ParticipantLimitError(joinResult.uniqueUsers)
       }
 
-      input.connection.readOnly = authorized.role === 'viewer'
+      input.connectionConfig.readOnly = authorized.role === 'viewer'
       return authorized
     },
 
@@ -177,16 +177,13 @@ export function createCollaborationServer(
     },
 
     async onAuthenticate(payload) {
-      const { documentName, token, socketId } = payload
-      const { connection } = payload as typeof payload & {
-        connection: { readOnly: boolean }
-      }
+      const { documentName, token, socketId, connectionConfig } = payload
 
       return hooks.onAuthenticate({
         documentName,
         token,
         socketId,
-        connection,
+        connectionConfig,
       })
     },
 
