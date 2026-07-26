@@ -131,13 +131,13 @@ test('forces a snapshot only after the last unique user disconnects', async () =
     documentName: 'doc-1',
     token: 'user-1',
     socketId: 'tab-a',
-    connection: { readOnly: false },
+    connectionConfig: { readOnly: false },
   })
   const second = await hooks.onAuthenticate({
     documentName: 'doc-1',
     token: 'user-1',
     socketId: 'tab-b',
-    connection: { readOnly: false },
+    connectionConfig: { readOnly: false },
   })
 
   await hooks.onDisconnect({
