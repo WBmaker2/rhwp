@@ -1,11 +1,13 @@
 import { getApps, initializeApp, type App } from 'firebase-admin/app'
 import { getAuth, type Auth } from 'firebase-admin/auth'
 import { getFirestore, type Firestore } from 'firebase-admin/firestore'
-import { getStorage, type Bucket } from 'firebase-admin/storage'
+import { getStorage } from 'firebase-admin/storage'
 import { CloudTasksClient } from '@google-cloud/tasks'
 
 import type { ParseLeaseState, ParseLeaseStore } from './parse-lease.js'
 import type { DocumentRole } from './routes/complete-upload.js'
+
+type StorageBucket = ReturnType<ReturnType<typeof getStorage>['bucket']>
 
 export interface TaskQueueConfiguration {
   projectId: string
@@ -55,7 +57,7 @@ export class FirestoreMemberStore {
 }
 
 export class FirebaseObjectMetadataStore {
-  constructor(private readonly bucket: Pick<Bucket, 'file'>) {}
+  constructor(private readonly bucket: Pick<StorageBucket, 'file'>) {}
   async stat(path: string): Promise<{
     sizeBytes: number
     generation: string
