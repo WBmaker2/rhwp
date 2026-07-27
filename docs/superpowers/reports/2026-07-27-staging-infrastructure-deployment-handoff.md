@@ -2,7 +2,7 @@
 
 **기록일:** 2026-07-27  
 **중단 사유:** 사용자가 현재 흐름의 안전한 중단점에서 멈추고 다음 작업에서 재개하도록 요청함  
-**현재 단계:** SDD Task 3 fix round 1 구현 완료, 독립 scoped re-review 진행 중  
+**현재 단계:** SDD Task 3 fix round 1 재리뷰 완료, fix round 2 대기
 **실제 배포 상태:** 미실행
 
 ## 1. Git 상태
@@ -110,28 +110,52 @@ Task 3은 실제 외부 실행 없이 apply executor와 protected workflow를 �
 - 지원되는 artifact action의 immutable SHA를 사용하도록 수정했다.
 - focused 18개, 전체 172개 테스트, staging validator, `py_compile`, diff check를 통과했다.
 
-Fix round 1 scoped re-review는 이 문서 작성 시점에 아직 진행 중이다. 리뷰 결과를 받기 전에는
-Task 3을 완료로 처리하거나 PR 브랜치에 통합하지 않는다.
+### Fix round 1 scoped re-review 결과
+
+- 판정: `Spec FAIL / Quality CHANGES_REQUESTED`
+- Critical: 없음
+- 기존 Important 2개 해결:
+  - cross-run artifact 운반과 metadata 바인딩
+  - 폐기된 `upload-artifact` v3 교체
+- 아직 해결되지 않은 기존 Important:
+  1. `sourceEvidence.sourceCommitSha`가 실제 checked-out Git object 또는 승인 artifact source commit과
+     독립 결합되지 않고 package 값의 자기 비교로 남아 있다.
+  2. live observer가 모든 `gcloud` exit code 1을 `missing`으로 해석한다. 권한 거부·API 장애도 create
+     대상으로 오인할 수 있고, repository format 등 exact desired state를 비교하지 않는다.
+  3. write 뒤 postcondition 관찰 실패 시 sanitized failure post-evidence가 남지 않는다.
+  4. package 전역에서 `secrets`·`idToken` 등의 키가 과도하게 허용되며 일부 중첩 구조 검증이 부족하다.
+  5. v2 package가 `requiredApprovalRecordSchema`를 v1로 광고하지만 executor validator는 v2만 받는다.
+  6. runbook, 생성 package, example approval record, 일부 테스트의 v1/v2 계약이 서로 일치하지 않는다.
+- 추가 보완 사항:
+  - 미래 `approvedAt` 차단과 승인 유효기간 상한
+  - pinned action 주석과 실제 release 버전 일치
+  - 오래된 non-release `setup-gcloud` pin 교체 또는 공식 지원 근거
+
+따라서 Task 3은 완료되지 않았으며 PR 브랜치에 통합하지 않는다. 다음 작업은 fix round 2로 재개한다.
 
 ## 4. 남은 구조적 검토 사항
 
 다음 작업에서 scoped re-review 결과와 함께 아래 항목을 우선 확인한다.
 
-1. v2 package builder가 최종 executor commit을 실제로 결합하여 재생성 가능한가.
-2. `github.repository_id`, `github.repository_owner_id`, `github.workflow_sha`,
+1. `sourceEvidence.sourceCommitSha`가 실제 checked-out Git object 및 승인 artifact source commit과
+   독립적으로 결합되는가.
+2. v2 package builder가 최종 executor commit을 실제로 결합하여 재생성 가능한가.
+3. `github.repository_id`, `github.repository_owner_id`, `github.workflow_sha`,
    `github.workflow_ref`가 실제 GitHub context에서 공급되고 expected 값과 독립 비교되는가.
-3. GitHub Actions artifact metadata의 digest 필드와 선택한 pinned action의 입력 계약이 실제 지원되는가.
-4. package/approval record를 source artifact로 게시하는 안전한 actual publication workflow가 있는가.
-5. 승인 record가 apply `run_id`와 `run_attempt`에 결합되는 현재 계약에서 다음 순서가 실제로 가능한가.
+4. `gcloud` 관찰 명령이 not-found와 permission/API/transient failure를 확실히 구분하는가.
+5. Artifact Registry format 등 exact desired state와 postcondition을 검증하는가.
+6. write/postcondition 실패 때 partial failure evidence가 원자적으로 남는가.
+7. package/approval record를 source artifact로 게시하는 안전한 actual publication workflow가 있는가.
+8. 승인 record가 apply `run_id`와 `run_attempt`에 결합되는 현재 계약에서 다음 순서가 실제로 가능한가.
    - apply run 생성
    - run ID 확인
    - 사람 승인 record 작성
    - 승인된 artifact 게시
    - protected environment 승인 후 같은 run에서 다운로드·검증
-6. 동일 승인을 재사용해도 두 번째 실행에서 mutation write가 0회인지 실제 stateful test가 보장하는가.
-7. API, service account, Artifact Registry, Secret metadata의 observed state가 단순 존재 여부뿐 아니라
+9. 동일 승인을 재사용해도 두 번째 실행에서 mutation write가 0회인지 실제 stateful test가 보장하는가.
+10. API, service account, Artifact Registry, Secret metadata의 observed state가 단순 존재 여부뿐 아니라
    승인된 desired state와 정확히 일치하는지 검증하는가.
-8. 실패·postcondition mismatch 시 partial evidence가 원자적으로 남고 다음 action이 실행되지 않는가.
+11. v2 package, v2 approval example, validator, runbook과 테스트가 같은 schema를 선언하는가.
 
 4번과 5번을 만족하는 actual evidence publication 단계가 없다면 Task 4로 넘어가지 말고 별도 구현
 Task를 추가한다.
@@ -139,8 +163,8 @@ Task를 추가한다.
 ## 5. 다음 작업의 정확한 재개 순서
 
 1. 격리 worktree와 SDD ledger를 확인한다.
-2. 진행 중인 Task 3 scoped re-review 결과를 수집한다.
-3. `NOT ADDRESSED` 또는 새 Critical/Important finding이 있으면 fix round 2로 같은 구현자를 재개한다.
+2. Task 3 fix round 1 재리뷰 결과의 미해결 Important 항목을 구현자에게 전달한다.
+3. fix round 2로 같은 구현자를 재개한다.
 4. 각 수정 뒤 scoped re-review를 반복한다. 최대 5회 breaker를 유지한다.
 5. Task 3이 PASS / APPROVED가 되면 전체 브랜치 final review를 수행한다.
 6. 검증된 Task 3 순 변경만 PR 브랜치에 통합한다.
