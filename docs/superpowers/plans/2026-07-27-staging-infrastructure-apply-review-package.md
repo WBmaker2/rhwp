@@ -5,6 +5,10 @@
 **상태:** 구현 승인됨, 실제 cloud mutation 미승인  
 **선행 계획:** `docs/superpowers/plans/2026-07-27-staging-infrastructure-execution-gates.md`
 
+> **Security review amendment (2026-07-27):** 이 문서는 canonical 계획입니다. caller-declared executor
+> commit, Environment bypass 지원, WIF immutable claim, artifact transport은 실제 값·지원 증거가 승인되기
+> 전까지 apply 근거나 provenance가 아닙니다.
+
 ## 1. 목표
 
 기존 infrastructure plan review 결과를 실제 apply로 바로 연결하지 않고, 다음 7개 독립 게이트를
@@ -46,7 +50,7 @@ actual plan bytes
 apply review package builder (인증 없음, mutation 없음)
         |
         +-- exact input digests
-        +-- immutable executor commit
+        +-- caller-declared, unverified executor commit
         +-- canonical eligible action subset
         +-- protected-environment specification
         +-- WIF/IAM proposed diff
@@ -60,14 +64,15 @@ future executor (이번 구현 범위 밖)
 ```
 
 builder는 기존 plan/action/approval 검증기를 다시 사용하며 caller가 넣은 `approved=true`만 신뢰하지 않는다.
-plan raw bytes, plan object digest, approval result, action manifest를 다시 결합하고 현재 checkout의 immutable
-40자리 commit SHA를 review package에 기록한다.
+plan raw bytes, plan object digest, approval result, action manifest를 다시 결합하고 caller-declared 40자리
+commit SHA를 기록한다. 미래 executor는 인증 전에 branch membership, commit object/tree, apply workflow content를
+독립 검증해야 하며 이 입력을 immutable provenance로 취급하지 않는다.
 
 ## 4. Actual evidence transport
 
-검토 package는 GitHub Actions artifact `staging-infrastructure-apply-review`로만 전달하도록 설계한다.
+검토 package는 GitHub Actions artifact `staging-infrastructure-apply-review`에 합성 증거만 기록한다.
 
-- source workflow run ID, source commit SHA, artifact name을 package에 기록한다.
+- actual run provenance나 source-run identity를 package에 기록하거나 신뢰하지 않는다.
 - upload 전 `staging-infrastructure-apply-review-package.json`의 exact-byte SHA-256을 계산한다.
 - artifact 안에는 package JSON/Markdown과 digest declaration만 포함한다.
 - actual plan/approval/manifest는 저장소에 commit하지 않는다.
@@ -103,8 +108,10 @@ plan raw bytes, plan object digest, approval result, action manifest를 다시 �
 + Environment: staging-infrastructure-apply
 + Required reviewers: >= 1
 + Prevent self-review: true
-+ Branch policy: protected branches only
-+ Allowed branch/ref: feat/firebase-collaboration-mvp-v1
++ Can admins bypass: false (지원 여부는 실제 apply 전 검증)
++ Deployment branch policy: protected_branches=false, custom_branch_policies=true
++ Branch policies: [{name: feat/firebase-collaboration-mvp-v1, type: branch}]
++ Tag policies: []
 + Secrets: none
 + Long-lived cloud credentials: none
 + permissions.contents: read
@@ -116,29 +123,38 @@ plan raw bytes, plan object digest, approval result, action manifest를 다시 �
 +   STAGING_PROJECT_ID
 ```
 
-세 변수의 실제 값은 자동 결정하지 않는다. review package에는 변수 이름과 expected format만 기록한다.
+세 변수와 admin-bypass setting의 실제 지원 여부는 자동 결정하지 않는다. `supportVerificationStatus`
+가 `required-before-apply`인 동안에는 unsupported 또는 unverified 상태가 approval/apply를 fail-closed로 막는다.
 
 ## 7. WIF identity와 최소권한 IAM diff
 
-proposed diff는 identifier와 role/resource scope만 포함하고 credential은 포함하지 않는다.
+proposed diff는 credential 없이 claim template과 최소 permission을 포함한다. actual immutable IDs/SHA가
+unresolved이면 `applicable=false`이고 final condition이 아니다.
 
 ```diff
-+ GitHub OIDC subject condition:
-+   repository == WBmaker2/rhwp
-+   ref == refs/heads/feat/firebase-collaboration-mvp-v1
-+   workflow == .github/workflows/staging-infrastructure-apply-review.yml
++ Attribute mapping:
++   google.subject=assertion.sub
++   attribute.repository=assertion.repository
++   attribute.ref=assertion.ref
++   attribute.workflow_ref=assertion.workflow_ref
++   attribute.repository_id=assertion.repository_id
++   attribute.repository_owner_id=assertion.repository_owner_id
++   attribute.workflow_sha=assertion.workflow_sha
++ Final condition requires approved repository_id, repository_owner_id, reviewed workflow_sha,
++   ref=refs/heads/feat/firebase-collaboration-mvp-v1,
++   workflow_ref=WBmaker2/rhwp/.github/workflows/staging-infrastructure-apply.yml@refs/heads/feat/firebase-collaboration-mvp-v1
++ Current template: applicable=false; review workflow explicitly excluded
 + WIF principal -> deployer service account:
 +   roles/iam.workloadIdentityUser (service-account scope)
 + Deployer service account candidate roles:
-+   roles/serviceusage.serviceUsageAdmin (project scope)
-+   roles/iam.serviceAccountAdmin (project scope)
-+   roles/artifactregistry.admin (target repository/project scope)
-+   roles/secretmanager.admin (approved secret metadata resources/project scope)
++   custom API enable-only, service-account create-only, Artifact Registry create/read,
++   Secret Manager metadata create/read/list permission sets (all project scope)
 ```
 
-`roles/owner`, `roles/editor`, service-account key, billing IAM, project creator/deleter, Firebase Admin,
-Cloud Run Admin, Cloud Tasks Admin은 금지한다. 위 candidate role도 actual live IAM before-state와 exact
-resource-level scope가 확보되기 전에는 승인 가능한 최종 diff가 아니라 검토 초안이다.
+`roles/owner`, `roles/editor`, broad admin role, service-account key, billing IAM, project creator/deleter,
+Firebase Admin, Cloud Run Admin, Cloud Tasks Admin은 금지한다. create/enable permission은 project scope가
+필요하므로 IAM scope만으로 identifier를 제한한다고 주장하지 않는다. actual live project-scope before/after
+diff와 executor의 exact action ID/resource/precondition allowlist가 별도 승인·강제되기 전에는 최종 diff가 아니다.
 
 ## 8. Cloud mutation approval record
 
@@ -146,7 +162,7 @@ resource-level scope가 확보되기 전에는 승인 가능한 최종 diff가 �
 
 - exact review package SHA-256
 - plan SHA-256과 plan object SHA-256
-- immutable executor commit SHA
+- caller-declared, unverified executor commit SHA
 - project ID
 - canonical action IDs와 ordered stage IDs
 - environment/WIF/IAM diff acknowledgement
@@ -176,7 +192,11 @@ tracked example은 `decision=pending`, `cloudMutationApproved=false`, 승인자�
 | 파일 | 변경 |
 | --- | --- |
 | `scripts/staging_infrastructure_apply_review.py` | exact provenance 검증과 review package 생성 |
+| `scripts/staging_infrastructure_apply_review_paths.py` | input/output/marker/temp alias·symlink·special-file fail-closed 검증 |
+| `scripts/staging_infrastructure_apply_review_policy.py` | non-applied Environment, WIF immutable claim, least-privilege IAM policy specification |
+| `scripts/staging_infrastructure_synthetic_fixture.py` | workflow가 test 모듈 없이 사용하는 tracked non-secret synthetic evidence fixture |
 | `scripts/tests/test_staging_infrastructure_apply_review.py` | TDD 계약·공격 입력·workflow 안전성 |
+| `scripts/tests/test_staging_infrastructure_apply_review_policy.py` | Environment/WIF immutable-input 계약과 hardlink·direct/ancestor symlink subprocess 회귀 |
 | `docs/approvals/staging-infrastructure-mutation-approval-record.example.json` | pending 합성 예시 |
 | `.github/workflows/staging-infrastructure-apply-review.yml` | non-mutating review artifact workflow |
 | `docs/runbooks/staging-infrastructure-bootstrap.md` | review-package 단계와 남은 실제 apply 승인 경계 |

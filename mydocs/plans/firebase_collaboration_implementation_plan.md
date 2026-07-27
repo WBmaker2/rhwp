@@ -6,6 +6,24 @@
 - 대상: rhwp 기반 문서 공유 링크 및 동시 편집 MVP
 - 범위: 구현 계획 문서. 이 문서 작성 과정에서는 코드와 설정을 변경하지 않는다.
 
+## 0.1 2026-07-27 Staging infrastructure apply-review 하드닝
+
+이 하위 계획은 staging cloud mutation을 실행하지 않고, 향후 apply를 위한 검토 증거 계약만 보강합니다.
+
+- 대상: `scripts/staging_infrastructure_apply_review.py`, 그 계약 테스트, bootstrap runbook
+- executor commit: 입력 SHA를 caller-declared/unverified로 표시하고, 미래 별도 executor가 승인 브랜치
+  포함성 및 commit tree/workflow 내용을 독립 검증하도록 요구합니다.
+- IAM: broad predefined admin role 후보를 API enable-only, service-account create-only, Artifact Registry
+  repository create/read, Secret Manager metadata create/read/list custom role의 exact permission set으로
+  대체합니다. disable/delete/key/version/access 권한은 제외합니다.
+- WIF: 미구현 상태의 `.github/workflows/staging-infrastructure-apply.yml`만 subject 후보로 삼고,
+  현재 review workflow는 명시적으로 제외합니다. `roles/iam.workloadIdentityUser`는 deployer service
+  account에만 scope합니다.
+- Environment: custom branch policy가 `feat/firebase-collaboration-mvp-v1`만 허용하도록 통일합니다.
+- 불변 안전 경계: `cloudMutationApproved=false`, `deploymentApproved=false`, `mutationCommands=[]`를 유지하고,
+  인증, id-token, cloud/GitHub mutation, secret 기록을 추가하지 않습니다.
+- 검증: focused Python unit test와 syntax check를 실행하고, 실제 apply workflow·cloud command는 만들지 않습니다.
+
 ## 1. 목표
 
 rhwp에서 HWP/HWPX/HWP3 문서를 연 사용자가 **공유 링크를 생성**하고, 링크를 받은 사용자가 브라우저에서 같은 문서에 접속하여 **문단 텍스트와 표 셀 텍스트를 실시간으로 공동 편집**할 수 있는 1차 버전을 구현한다.
@@ -345,6 +363,16 @@ shareLinks/{shareId}
 | P2 | presence와 원격 cursor | 협업 인지성 개선 |
 | P2 | 댓글, 제안 모드, 변경 추적 | MVP 이후 확장 |
 
+### Security-review amendment: staging infrastructure apply-review
+
+이 amendment는 이미 승인된 seven-item staging infrastructure design의 보안 검토 보완이며, cloud mutation을
+승인하거나 실행하지 않습니다. future executor는 입력·출력·marker·temporary path의 alias/symlink/special-file을
+publish 전에 거부하고, caller-declared executor commit을 독립 검증합니다. WIF는 `assertion.sub`, repository,
+ref, workflow_ref의 exact claim mapping/condition만 사용하며 review workflow에는 결코 바인딩하지 않습니다.
+IAM custom role은 project scope create/enable의 최소 permission만 제안하므로 exact action ID/resource/precondition
+allowlist와 live project-scope IAM before/after diff를 별도로 강제합니다. Environment는 custom branch policy의
+단일 branch와 빈 tag policy를 fail-closed로 검증합니다.
+
 ## 7. 테스트 전략
 
 ### Rust unit/integration
@@ -380,6 +408,10 @@ shareLinks/{shareId}
 
 - 기존 HWP/HWPX/HWP3 parsing, rendering, saving 테스트를 유지한다.
 - collaboration feature가 비활성화된 기본 Studio 경로는 Firebase를 요구하지 않아야 한다.
+- staging infrastructure apply-review는 subprocess CLI에서 plan/approval/execution 입력이 output, marker,
+  temporary path 또는 parent/child alias로 덮어써지지 않고, 실패 시 partial output/marker가 남지 않음을 검증한다.
+- WIF mapping/condition, Environment branch/tag policy, project-scope IAM truth와 independent executor allowlist를
+  contract test로 고정한다.
 
 ## 8. 주요 위험과 대응
 

@@ -1,0 +1,99 @@
+name: Staging infrastructure apply review
+
+on:
+  pull_request:
+    branches: [devel]
+    paths:
+      - '.github/workflows/staging-infrastructure-apply-review.yml'
+      - 'docs/approvals/staging-infrastructure-mutation-approval-record.example.json'
+      - 'docs/runbooks/staging-infrastructure-bootstrap.md'
+      - 'scripts/staging_infrastructure_apply_review.py'
+      - 'scripts/staging_infrastructure_apply_review_paths.py'
+      - 'scripts/staging_infrastructure_apply_review_policy.py'
+      - 'scripts/staging_infrastructure_synthetic_fixture.py'
+      - 'scripts/staging_infrastructure_action_io.py'
+      - 'scripts/staging_approval_packet.py'
+      - 'scripts/staging_bootstrap_materializer.py'
+      - 'scripts/staging_infrastructure_plan.py'
+      - 'scripts/staging_infrastructure_actions.py'
+      - 'scripts/staging_infrastructure_approval.py'
+      - 'scripts/staging_infrastructure_validation.py'
+      - 'scripts/tests/test_staging_infrastructure_apply_review.py'
+      - 'scripts/tests/test_staging_infrastructure_apply_review_policy.py'
+      - 'deploy/staging/staging-manifest.json'
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: Non-mutating evidence operation
+        required: true
+        type: choice
+        options:
+          - review-package
+        default: review-package
+
+permissions:
+  contents: read
+
+jobs:
+  review:
+    name: Build synthetic apply review package
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          show-progress: false
+      - name: Reject unsupported dispatch modes
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          REVIEW_MODE: ${{ inputs.mode }}
+        run: |
+          test "${REVIEW_MODE}" = "review-package"
+      - name: Run apply review contract tests
+        run: python3 -m unittest scripts.tests.test_staging_infrastructure_apply_review scripts.tests.test_staging_infrastructure_apply_review_policy -v
+      - name: Prepare synthetic reviewed evidence
+        run: |
+          mkdir -p artifacts/apply-review
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          from scripts.staging_infrastructure_actions import build_execution_manifest
+          from scripts.staging_infrastructure_synthetic_fixture import (
+              canonical_plan_and_approval,
+          )
+
+          root = Path("artifacts/apply-review")
+          plan, approval, raw = canonical_plan_and_approval()
+          execution = build_execution_manifest(plan, approval, plan_bytes=raw)
+          root.joinpath("staging-infrastructure-plan.json").write_bytes(raw)
+          root.joinpath("infrastructure-approval-result.json").write_text(
+              json.dumps(approval, ensure_ascii=False, indent=2) + "\n"
+          )
+          root.joinpath("staging-infrastructure-execution-manifest.json").write_text(
+              json.dumps(execution, ensure_ascii=False, indent=2) + "\n"
+          )
+          PY
+      - name: Build non-mutating synthetic review package
+        run: |
+          python3 scripts/staging_infrastructure_apply_review.py \
+            --plan artifacts/apply-review/staging-infrastructure-plan.json \
+            --approval-result artifacts/apply-review/infrastructure-approval-result.json \
+            --execution-manifest artifacts/apply-review/staging-infrastructure-execution-manifest.json \
+            --executor-commit-sha "${GITHUB_SHA}" \
+            --json-output artifacts/apply-review/staging-infrastructure-apply-review-package.json \
+            --markdown-output artifacts/apply-review/staging-infrastructure-apply-review-package.md
+          shasum -a 256 \
+            artifacts/apply-review/staging-infrastructure-apply-review-package.json \
+            > artifacts/apply-review/staging-infrastructure-apply-review-package.sha256
+      - name: Upload synthetic review evidence
+        uses: actions/upload-artifact@v7
+        with:
+          name: staging-infrastructure-apply-review
+          path: |
+            artifacts/apply-review/staging-infrastructure-apply-review-package.json
+            artifacts/apply-review/staging-infrastructure-apply-review-package.md
+            artifacts/apply-review/staging-infrastructure-apply-review-package.sha256
+          if-no-files-found: error
+          retention-days: 14
