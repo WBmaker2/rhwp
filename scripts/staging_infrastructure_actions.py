@@ -80,6 +80,7 @@ def build_execution_manifest(
         "sourceEvidence": {
             "commitSha": source["commitSha"],
             "planSha256": approval_result["planSha256"],
+            "planObjectSha256": approval_result["planObjectSha256"],
             "approvalResultSchema": approval_result["schemaVersion"],
         },
         "actions": actions,

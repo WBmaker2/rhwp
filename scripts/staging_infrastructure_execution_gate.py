@@ -126,15 +126,16 @@ def _validate(manifest: dict[str, Any], approval: dict[str, Any]) -> None:
     _staging_project(_string(manifest, "projectId", "manifest"))
     _string(manifest, "billingAccount", "manifest")
     source = manifest["sourceEvidence"]
-    _exact_keys(source, {"commitSha", "planSha256", "approvalResultSchema"}, "manifest sourceEvidence")
+    _exact_keys(source, {"commitSha", "planSha256", "planObjectSha256", "approvalResultSchema"}, "manifest sourceEvidence")
     if source["approvalResultSchema"] != APPROVAL_SCHEMA:
         raise GateError("manifest approval result provenance is invalid")
     _sha(source["commitSha"], 40, "manifest commitSha")
     _sha(source["planSha256"], 64, "manifest planSha256")
+    _sha(source["planObjectSha256"], 64, "manifest planObjectSha256")
     _sha(approval["commitSha"], 40, "approval result commitSha")
     _sha(approval["planSha256"], 64, "approval result planSha256")
     _sha(approval["planObjectSha256"], 64, "approval result planObjectSha256")
-    if source["commitSha"] != approval["commitSha"] or source["planSha256"] != approval["planSha256"]:
+    if source["commitSha"] != approval["commitSha"] or source["planSha256"] != approval["planSha256"] or source["planObjectSha256"] != approval["planObjectSha256"]:
         raise GateError("manifest source evidence does not match approval result")
     if manifest["projectId"] != approval["projectId"] or manifest["billingAccount"] != approval["billingAccount"]:
         raise GateError("manifest project or billing does not match approval result")

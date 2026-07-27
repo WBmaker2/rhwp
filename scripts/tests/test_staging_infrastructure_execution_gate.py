@@ -11,6 +11,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from scripts.staging_infrastructure_actions import build_execution_manifest
+from scripts.staging_infrastructure_approval import validate_infrastructure_approval
 from scripts.staging_infrastructure_execution_gate import (  # type: ignore[import-not-found]
     evaluate_execution_readiness,
     main,
@@ -55,6 +56,7 @@ class ExecutionReadinessGateTest(unittest.TestCase):
         cases = (
             ("commit", lambda manifest, approval: manifest["sourceEvidence"].__setitem__("commitSha", "2" * 40)),
             ("plan", lambda manifest, approval: manifest["sourceEvidence"].__setitem__("planSha256", "2" * 64)),
+            ("plan object", lambda manifest, approval: manifest["sourceEvidence"].__setitem__("planObjectSha256", "2" * 64)),
             ("project", lambda manifest, approval: manifest.__setitem__("projectId", "other-staging-project")),
             ("billing", lambda manifest, approval: manifest.__setitem__("billingAccount", "AAAAAA-BBBBBB-CCCCCC")),
             ("stages", lambda manifest, approval: approval.__setitem__("approvedStageIds", list(reversed(approval["approvedStageIds"]))),),
@@ -101,6 +103,25 @@ class ExecutionReadinessGateTest(unittest.TestCase):
         markdown = render_markdown(result)
         self.assertIn("review-required-approvals", markdown)
         self.assertNotIn("must-not-leak", markdown)
+
+    def test_compact_plan_bytes_bind_task1_task2_and_task3_object_evidence(self) -> None:
+        raw = json.dumps(self.plan, ensure_ascii=False, separators=(",", ":")).encode()
+        record = copy.deepcopy(self.approval)
+        record["planSha256"] = hashlib.sha256(raw).hexdigest()
+        task1 = validate_infrastructure_approval(self.plan, raw, {
+            "schemaVersion": "rhwp.staging-infrastructure-approval/v1",
+            "decision": "approved", "approvedAt": "2026-07-27T00:00:00Z",
+            "approvedBy": ["repository-owner"], "commitSha": self.plan["sourceEvidence"]["commitSha"],
+            "planSha256": record["planSha256"], "projectId": self.plan["projectId"],
+            "billingAccount": self.plan["billingAccount"], "approvedStageIds": record["approvedStageIds"],
+            "maximumMonthlyBudgetKrw": record["maximumMonthlyBudgetKrw"], "cloudMutationApproved": False,
+            "deploymentApproved": False, "rollbackReviewed": True,
+        }, require_cloud_mutation=False)
+        manifest = build_execution_manifest(self.plan, task1, plan_bytes=raw)
+        self.assertEqual(manifest["sourceEvidence"]["planObjectSha256"], task1["planObjectSha256"])
+        self.assertEqual(evaluate_execution_readiness(manifest, task1)["status"], "awaiting-cloud-mutation-approval")
+        manifest["sourceEvidence"]["planObjectSha256"] = "0" * 64
+        self.assertEqual(evaluate_execution_readiness(manifest, task1)["status"], "blocked")
 
     def test_cli_is_atomic_marks_completion_and_strictly_exits_for_blocked_result(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
