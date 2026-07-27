@@ -85,7 +85,7 @@ approval validator, action manifest, readiness gate 세 CLI가 성공적으로 �
 
 ### Bounded JSON과 digest 의미
 
-세 CLI 입력은 read 전에 file size를 확인하며 `MAX_JSON_BYTES=1,000,000`을 초과하면 거부합니다. 이후 strict UTF-8/JSON parsing과 duplicate-key, non-finite number, 최대 depth 64, 최대 node 10,000, 문자열 16,384 UTF-8 bytes의 JSON-domain 제한을 적용합니다.
+세 CLI의 file 입력은 하나의 열린 file descriptor에서 `fstat`로 regular file 여부를 확인하고 `MAX_JSON_BYTES + 1` bytes만 읽습니다. `MAX_JSON_BYTES=1,000,000`을 초과하면 거부하며, stat/read 사이에 다른 경로를 다시 여는 방식은 사용하지 않습니다. 이후 strict UTF-8/JSON parsing과 duplicate-key, non-finite number, 최대 depth 64, 최대 node 10,000, 문자열 16,384 UTF-8 bytes의 JSON-domain 제한을 적용합니다. Public API에 직접 전달되는 raw bytes도 동일한 `MAX_JSON_BYTES` 제한을 받습니다.
 
 `planSha256`은 입력 파일의 exact raw bytes digest이므로 공백·key 순서·마지막 newline 변경도 감지합니다. `planObjectSha256`은 JSON domain 검증 후 key를 정렬한 canonical serialization digest입니다. action generator와 readiness gate API에는 `plan_bytes`가 필수이며, parsed dict만 받는 two-argument 호출은 provenance를 충족하지 않습니다.
 
