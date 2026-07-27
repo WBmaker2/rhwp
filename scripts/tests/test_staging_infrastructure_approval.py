@@ -125,6 +125,16 @@ class InfrastructureApprovalValidationTest(unittest.TestCase):
                         self.plan, self.raw, candidate, require_cloud_mutation=False
                     )
 
+    def test_rejects_approvers_with_surrounding_whitespace(self) -> None:
+        for approvers in (["owner", " owner"], ["owner", "owner "]):
+            with self.subTest(approvers=approvers):
+                candidate = copy.deepcopy(self.approval)
+                candidate["approvedBy"] = approvers
+                with self.assertRaisesRegex(InfrastructureApprovalError, "approvedBy"):
+                    validate_infrastructure_approval(
+                        self.plan, self.raw, candidate, require_cloud_mutation=False
+                    )
+
     def test_markdown_replaces_line_breaking_control_characters(self) -> None:
         result = validate_infrastructure_approval(
             self.plan, self.raw, self.approval, require_cloud_mutation=False

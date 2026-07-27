@@ -84,9 +84,7 @@ def validate_infrastructure_approval(
         raise InfrastructureApprovalError(
             "approval record approvedAt must be a real UTC timestamp"
         ) from error
-    approvers = _string_list(approval, "approvedBy", "approval record")
-    if len(approvers) != len(set(approvers)):
-        raise InfrastructureApprovalError("approval record approvedBy must not contain duplicates")
+    _approver_list(approval)
 
     commit_sha = _required_string(approval, "commitSha", "approval record")
     if not COMMIT_SHA_PATTERN.fullmatch(commit_sha):
@@ -333,6 +331,17 @@ def _string_list(value: dict[str, Any], key: str, label: str) -> list[str]:
     if not isinstance(item, list) or not item or not all(isinstance(entry, str) and entry.strip() for entry in item):
         raise InfrastructureApprovalError(f"{label}.{key} must be a non-empty array of strings")
     return list(item)
+
+
+def _approver_list(approval: dict[str, Any]) -> list[str]:
+    approvers = _string_list(approval, "approvedBy", "approval record")
+    if any(approver != approver.strip() for approver in approvers):
+        raise InfrastructureApprovalError(
+            "approval record approvedBy must not contain surrounding whitespace"
+        )
+    if len(approvers) != len(set(approvers)):
+        raise InfrastructureApprovalError("approval record approvedBy must not contain duplicates")
+    return approvers
 
 
 def _reject_sensitive_keys(value: Any, path: str) -> None:
