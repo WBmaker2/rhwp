@@ -4,6 +4,8 @@ import copy
 import hashlib
 import io
 import json
+import subprocess
+import sys
 import tempfile
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
@@ -24,6 +26,8 @@ from scripts.staging_infrastructure_actions import (  # type: ignore[import-not-
     main,
     render_markdown,
 )
+
+ROOT = Path(__file__).resolve().parents[2]
 
 
 def canonical_plan_and_approval() -> tuple[dict[str, object], dict[str, object]]:
@@ -323,3 +327,12 @@ class InfrastructureActionsTest(unittest.TestCase):
         actions = {item["id"]: item for item in self.build(self.plan, self.approval_result)["actions"]}
         self.assertIn("callerServiceAccount", actions["cloud-tasks-prerequisites.record-parse"]["resource"])
         self.assertEqual(set(actions["post-bootstrap-evidence.collect-01"]["resource"]), {"path", "resolutionPhase", "reason"})
+
+    def test_direct_script_cli_help_and_success(self) -> None:
+        script = ROOT / "scripts/staging_infrastructure_actions.py"
+        self.assertEqual(subprocess.run([sys.executable, str(script), "--help"], cwd=ROOT, capture_output=True, text=True).returncode, 0)
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory); plan, approval = root / "plan.json", root / "approval.json"
+            plan.write_bytes(plan_bytes(self.plan)); approval.write_text(json.dumps(self.approval_result))
+            result = subprocess.run([sys.executable, str(script), "--plan", str(plan), "--approval", str(approval), "--json-output", str(root / "out.json"), "--markdown-output", str(root / "out.md")], cwd=ROOT, capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stderr)

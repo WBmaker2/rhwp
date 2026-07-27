@@ -9,15 +9,16 @@ import re
 import sys
 from pathlib import Path
 from typing import Any
-from scripts.staging_infrastructure_action_io import ActionIoError, publish
 
 try:
+    from scripts.staging_infrastructure_action_io import ActionIoError, publish
     from scripts.staging_infrastructure_approval import (
         InfrastructureApprovalError,
         load_json_with_bytes,
         validate_infrastructure_approval,
     )
 except ImportError:  # pragma: no cover - direct script execution
+    from staging_infrastructure_action_io import ActionIoError, publish
     from staging_infrastructure_approval import (  # type: ignore[no-redef]
         InfrastructureApprovalError, load_json_with_bytes, validate_infrastructure_approval,
     )
