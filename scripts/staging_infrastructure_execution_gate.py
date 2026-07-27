@@ -13,10 +13,12 @@ from typing import Any
 try:
     from scripts.staging_infrastructure_action_io import ActionIoError, publish
     from scripts.staging_infrastructure_actions import InfrastructureActionsError, build_execution_manifest
+    from scripts.staging_infrastructure_validation import StrictJsonError, canonical_json_bytes, validate_json_domain
     from scripts.staging_infrastructure_approval import InfrastructureApprovalError, load_json_with_bytes
 except ImportError:  # pragma: no cover - direct script execution
     from staging_infrastructure_action_io import ActionIoError, publish
     from staging_infrastructure_actions import InfrastructureActionsError, build_execution_manifest
+    from staging_infrastructure_validation import StrictJsonError, canonical_json_bytes, validate_json_domain
     from staging_infrastructure_approval import InfrastructureApprovalError, load_json_with_bytes
 
 EXECUTION_SCHEMA = "rhwp.staging-infrastructure-execution/v1"
@@ -52,7 +54,7 @@ def evaluate_execution_readiness(manifest: dict[str, Any], approval_result: dict
     reasons: list[str] = []
     try:
         _validate(manifest, approval_result)
-    except (GateError, InfrastructureActionsError, TypeError, AttributeError, KeyError, IndexError, ValueError):
+    except (GateError, InfrastructureActionsError, StrictJsonError, TypeError, AttributeError, KeyError, IndexError, ValueError, RecursionError):
         reasons.append("malformed-input")
     requested = _approval_requested_state(approval_result)
     if reasons:
@@ -64,11 +66,11 @@ def evaluate_execution_readiness(manifest: dict[str, Any], approval_result: dict
     return {
         "schemaVersion": GATE_SCHEMA,
         "status": status,
-        "projectId": _safe_string(_field(manifest, "projectId")),
+        "projectId": _safe_string(_field(manifest, "projectId")) if not reasons else None,
         "blockedReasons": reasons,
         "requiredApprovals": list(REQUIRED_APPROVALS),
         "nextAction": "review-required-approvals",
-        "approvalRecord": {"recordedStatus": _safe_string(_field(approval_result, "status")), "cloudMutationApprovedRequested": requested},
+        "approvalRecord": {"recordedStatus": _safe_string(_field(approval_result, "status")) if not reasons else "unavailable", "cloudMutationApprovedRequested": requested if not reasons else False},
         "cloudMutationApproved": False,
         "deploymentApproved": False,
         "mutationCommands": [],
@@ -103,7 +105,7 @@ def main(argv: list[str] | None = None) -> int:
         manifest, _ = load_json_with_bytes(args.execution_manifest, "execution manifest")
         approval, _ = load_json_with_bytes(args.approval_result, "approval result")
         result = evaluate_execution_readiness(manifest, approval)
-        marker = publish(args.json_output, args.markdown_output, json.dumps(result, ensure_ascii=False, indent=2) + "\n", render_markdown(result))
+        marker = publish(args.json_output, args.markdown_output, json.dumps(result, ensure_ascii=False, indent=2, allow_nan=False) + "\n", render_markdown(result))
     except (GateError, InfrastructureApprovalError, ActionIoError, OSError) as error:
         print(f"staging execution readiness failed: {error}", file=sys.stderr)
         return 1
@@ -116,6 +118,7 @@ class GateError(RuntimeError):
 
 
 def _validate(manifest: dict[str, Any], approval: dict[str, Any]) -> None:
+    validate_json_domain(manifest); validate_json_domain(approval)
     _reject_unsafe(manifest, "manifest")
     _reject_unsafe(approval, "approval result")
     _exact_keys(manifest, MANIFEST_KEYS, "manifest")
@@ -383,7 +386,7 @@ def _production_like(value: str) -> bool:
 
 
 def _canonical(value: Any) -> str:
-    return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return canonical_json_bytes(value).rstrip(b"\n").decode("utf-8")
 
 
 def _action_set_sha256(actions: Any) -> str:
@@ -393,7 +396,7 @@ def _action_set_sha256(actions: Any) -> str:
 
 
 def _plan_object_sha256(plan: dict[str, Any]) -> str:
-    encoded = (json.dumps(plan, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
+    encoded = canonical_json_bytes(plan, indent=2)
     return hashlib.sha256(encoded).hexdigest()
 
 

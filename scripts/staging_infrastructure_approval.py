@@ -9,6 +9,10 @@ import re
 import sys
 from pathlib import Path
 from typing import Any
+try:
+    from scripts.staging_infrastructure_validation import MAX_JSON_BYTES, StrictJsonError, canonical_json_bytes, validate_json_domain
+except ImportError:  # pragma: no cover - direct script execution
+    from staging_infrastructure_validation import MAX_JSON_BYTES, StrictJsonError, canonical_json_bytes, validate_json_domain
 
 INFRASTRUCTURE_APPROVAL_SCHEMA = "rhwp.staging-infrastructure-approval/v1"
 INFRASTRUCTURE_APPROVAL_RESULT_SCHEMA = "rhwp.staging-infrastructure-approval-result/v1"
@@ -41,6 +45,8 @@ def load_json_with_bytes(path: Path, label: str) -> tuple[dict[str, Any], bytes]
         raw = path.read_bytes()
     except FileNotFoundError as error:
         raise InfrastructureApprovalError(f"{label} not found: {path}") from error
+    if len(raw) > MAX_JSON_BYTES:
+        raise InfrastructureApprovalError(f"{label} exceeds JSON size limit")
     return _parse_json_object(raw, label), raw
 
 
@@ -51,6 +57,10 @@ def validate_infrastructure_approval(
     *,
     require_cloud_mutation: bool,
 ) -> dict[str, Any]:
+    try:
+        validate_json_domain(plan); validate_json_domain(approval)
+    except StrictJsonError as error:
+        raise InfrastructureApprovalError(str(error)) from error
     parsed_plan = _parse_json_object(plan_bytes, "plan bytes")
     if not _same_json_structure(plan, parsed_plan):
         raise InfrastructureApprovalError("plan object does not match exact plan bytes")
@@ -205,7 +215,7 @@ def main(argv: list[str] | None = None) -> int:
             path: path.read_bytes() if path.exists() else None
             for path in (args.json_output, args.markdown_output)
         }
-        json_temp.write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\n")
+        json_temp.write_text(json.dumps(result, ensure_ascii=False, indent=2, allow_nan=False) + "\n")
         markdown_temp.write_text(markdown)
         json_temp.replace(args.json_output)
         published_paths.append(args.json_output)
@@ -299,7 +309,7 @@ def _parse_json_object(raw: bytes, label: str) -> dict[str, Any]:
         )
     except UnicodeDecodeError as error:
         raise InfrastructureApprovalError(f"{label} must be UTF-8 JSON") from error
-    except (json.JSONDecodeError, ValueError) as error:
+    except (json.JSONDecodeError, ValueError, RecursionError) as error:
         raise InfrastructureApprovalError(f"{label} is not valid JSON: {error}") from error
     if not isinstance(value, dict):
         raise InfrastructureApprovalError(f"{label} root must be an object")
@@ -322,7 +332,7 @@ def _same_json_structure(left: Any, right: Any) -> bool:
 
 
 def _canonical_plan_bytes(plan: dict[str, Any]) -> bytes:
-    return (json.dumps(plan, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
+    return canonical_json_bytes(plan, indent=2)
 
 
 def _reject_json_constant(_: str) -> None:

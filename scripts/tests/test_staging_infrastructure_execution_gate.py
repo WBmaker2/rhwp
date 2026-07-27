@@ -147,6 +147,19 @@ class ExecutionReadinessGateTest(unittest.TestCase):
                 self.assertEqual(result["status"], "blocked")
                 self.assertEqual(result["blockedReasons"], ["malformed-input"])
 
+    def test_deep_or_nonfinite_untrusted_values_are_blocked_without_echo(self) -> None:
+        deep: dict[str, object] = {}
+        cursor = deep
+        for _ in range(1200):
+            child: dict[str, object] = {}
+            cursor["next"] = child
+            cursor = child
+        for manifest in (deep, {"projectId": "AKIA-opaque-value", "value": float("nan")}):
+            result = evaluate_execution_readiness(manifest, self.approval)
+            self.assertEqual(result["status"], "blocked")
+            self.assertIsNone(result["projectId"])
+            self.assertNotIn("AKIA-opaque-value", json.dumps(result))
+
     def test_task1_task2_task3_integration_and_safe_markdown(self) -> None:
         result = self.evaluate()
         markdown = render_markdown(result)

@@ -135,6 +135,12 @@ class InfrastructureActionsTest(unittest.TestCase):
                 with self.assertRaisesRegex(InfrastructureActionsError, pattern):
                     self.build(plan, approval)
 
+    def test_rejects_nonfinite_nested_plan_values(self) -> None:
+        plan = copy.deepcopy(self.plan)
+        plan["stages"][8]["resources"]["collaboration"]["runtime"]["timeoutSeconds"] = float("inf")  # type: ignore[index]
+        with self.assertRaisesRegex(InfrastructureActionsError, "non-finite"):
+            self.build(plan, self.approval_result)
+
     def test_dependencies_must_only_reference_prior_actions(self) -> None:
         plan = copy.deepcopy(self.plan)
         plan["stages"][1]["dependsOn"] = ["post-bootstrap-evidence"]  # type: ignore[index]

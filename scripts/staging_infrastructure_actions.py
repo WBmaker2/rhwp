@@ -17,11 +17,13 @@ try:
         load_json_with_bytes,
         validate_infrastructure_approval,
     )
+    from scripts.staging_infrastructure_validation import StrictJsonError, canonical_json_bytes, validate_json_domain
 except ImportError:  # pragma: no cover - direct script execution
     from staging_infrastructure_action_io import ActionIoError, publish
     from staging_infrastructure_approval import (  # type: ignore[no-redef]
         InfrastructureApprovalError, load_json_with_bytes, validate_infrastructure_approval,
     )
+    from staging_infrastructure_validation import StrictJsonError, canonical_json_bytes, validate_json_domain
 
 PLAN_SCHEMA = "rhwp.staging-infrastructure-plan/v1"
 EXECUTION_SCHEMA = "rhwp.staging-infrastructure-execution/v1"
@@ -49,6 +51,10 @@ def build_execution_manifest(
     plan: dict[str, Any], approval_result: dict[str, Any], *, plan_bytes: bytes | None = None
 ) -> dict[str, Any]:
     """Translate only the canonical plan structure into safe structured actions."""
+    try:
+        validate_json_domain(plan); validate_json_domain(approval_result)
+    except StrictJsonError as error:
+        raise InfrastructureActionsError(str(error)) from error
     digest = _require_exact_plan_bytes(plan, plan_bytes) if plan_bytes is not None else None
     _reject_unsafe(plan, "plan")
     _reject_unsafe(approval_result, "approval")
@@ -97,7 +103,7 @@ def build_execution_manifest(
 
 
 def _action_set_sha256(actions: list[dict[str, Any]]) -> str:
-    encoded = json.dumps(actions, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    encoded = canonical_json_bytes(actions).rstrip(b"\n")
     return hashlib.sha256(encoded).hexdigest()
 
 
@@ -319,7 +325,7 @@ def main(argv: list[str] | None = None) -> int:
         if approval.get("schemaVersion") == "rhwp.staging-infrastructure-approval/v1":
             approval = validate_infrastructure_approval(plan, plan_bytes, approval, require_cloud_mutation=False)
         execution = build_execution_manifest(plan, approval, plan_bytes=plan_bytes); markdown = render_markdown(execution)
-        marker = publish(args.json_output, args.markdown_output, json.dumps(execution, ensure_ascii=False, indent=2) + "\n", markdown)
+        marker = publish(args.json_output, args.markdown_output, json.dumps(execution, ensure_ascii=False, indent=2, allow_nan=False) + "\n", markdown)
     except (InfrastructureActionsError, InfrastructureApprovalError, ActionIoError, OSError) as error:
         print(f"staging infrastructure actions failed: {error}", file=sys.stderr); return 1
     print(json.dumps({"status": execution["status"], "projectId": execution["projectId"], "jsonOutput": str(args.json_output), "markdownOutput": str(args.markdown_output), "completionMarker": str(marker), "mutationCommands": []})); return 0
@@ -391,7 +397,7 @@ def _production_resource_like(value: str) -> bool:
 
 def _canonical_plan_digest(plan: dict[str, Any]) -> str:
     return hashlib.sha256(
-        (json.dumps(plan, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
+        (json.dumps(plan, ensure_ascii=False, indent=2, allow_nan=False) + "\n").encode("utf-8")
     ).hexdigest()
 
 
