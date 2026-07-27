@@ -4,6 +4,9 @@ import copy
 import hashlib
 import io
 import json
+import os
+import subprocess
+import sys
 import tempfile
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
@@ -287,6 +290,30 @@ class InfrastructureApprovalValidationTest(unittest.TestCase):
 
 
 class InfrastructureApprovalCliTest(unittest.TestCase):
+    def test_cli_rejects_fifo_promptly_without_partial_outputs(self) -> None:
+        plan = plan_fixture()
+        raw = plan_bytes(plan)
+        approval = approval_fixture(plan, raw)
+        script = Path(__file__).resolve().parents[1] / "staging_infrastructure_approval.py"
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            fifo, approval_path = root / "plan.fifo", root / "approval.json"
+            output, markdown = root / "result.json", root / "result.md"
+            os.mkfifo(fifo)
+            approval_path.write_text(json.dumps(approval))
+            completed = subprocess.run(
+                [
+                    sys.executable, str(script), "--plan", str(fifo),
+                    "--approval", str(approval_path), "--json-output", str(output),
+                    "--markdown-output", str(markdown),
+                ],
+                capture_output=True, text=True, timeout=2,
+            )
+            self.assertEqual(completed.returncode, 1)
+            self.assertFalse(output.exists())
+            self.assertFalse(markdown.exists())
+            self.assertFalse((root / "result.json.complete").exists())
+
     def test_cli_writes_atomic_sanitized_json_and_markdown(self) -> None:
         plan = plan_fixture()
         raw = plan_bytes(plan)

@@ -30,13 +30,21 @@ def parse_strict_json_bytes(raw: bytes, label: str = "JSON") -> Any:
 
 
 def read_bounded_json_file(path: Path, label: str) -> tuple[Any, bytes]:
+    flags = os.O_RDONLY | getattr(os, "O_NONBLOCK", 0) | getattr(os, "O_CLOEXEC", 0)
+    descriptor = -1
     try:
-        with path.open("rb") as stream:
-            if not stat.S_ISREG(os.fstat(stream.fileno()).st_mode):
-                raise StrictJsonError(f"{label} must be a regular file")
+        descriptor = os.open(path, flags)
+        if not stat.S_ISREG(os.fstat(descriptor).st_mode):
+            raise StrictJsonError(f"{label} must be a regular file")
+        with os.fdopen(descriptor, "rb") as stream:
+            descriptor = -1
             raw = stream.read(MAX_JSON_BYTES + 1)
     except OSError as error:
         raise StrictJsonError(f"{label} could not be read") from error
+    finally:
+        if descriptor >= 0:
+            try: os.close(descriptor)
+            except OSError: pass
     return parse_strict_json_bytes(raw, label), raw
 
 
