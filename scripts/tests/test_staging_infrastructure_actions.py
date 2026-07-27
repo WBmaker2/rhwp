@@ -18,7 +18,6 @@ from scripts.tests.test_staging_infrastructure_plan import (
     packet_text_and_digest,
 )
 
-# RED: this import intentionally precedes the executor implementation.
 from scripts.staging_infrastructure_actions import (  # type: ignore[import-not-found]
     InfrastructureActionsError,
     build_execution_manifest,
