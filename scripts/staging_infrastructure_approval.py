@@ -137,6 +137,7 @@ def validate_infrastructure_approval(
         "schemaVersion": INFRASTRUCTURE_APPROVAL_RESULT_SCHEMA,
         "status": "cloud-mutation-approved" if cloud_mutation_approved else "awaiting-cloud-mutation-approval",
         "planSha256": plan_sha256,
+        "planObjectSha256": hashlib.sha256(_canonical_plan_bytes(plan)).hexdigest(),
         "commitSha": commit_sha,
         "projectId": project_id,
         "billingAccount": billing_account,
@@ -318,6 +319,10 @@ def _same_json_structure(left: Any, right: Any) -> bool:
             for index, value in enumerate(left)
         )
     return left == right
+
+
+def _canonical_plan_bytes(plan: dict[str, Any]) -> bytes:
+    return (json.dumps(plan, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
 
 
 def _reject_json_constant(_: str) -> None:

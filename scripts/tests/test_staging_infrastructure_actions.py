@@ -147,6 +147,9 @@ class InfrastructureActionsTest(unittest.TestCase):
                 self.assertEqual(main(["--plan", str(plan_path), "--approval", str(approval_path), "--json-output", str(json_output), "--markdown-output", str(markdown_output)]), 0)
             self.assertTrue(json_output.exists())
             self.assertTrue(markdown_output.exists())
+            marker = json.loads((root / "execution.json.complete").read_text())
+            self.assertEqual(marker["jsonSha256"], hashlib.sha256(json_output.read_bytes()).hexdigest())
+            self.assertEqual(marker["markdownSha256"], hashlib.sha256(markdown_output.read_bytes()).hexdigest())
             original = plan_path.read_bytes()
             alias = root / "plan-alias.json"
             alias.symlink_to(plan_path)
@@ -195,6 +198,7 @@ class InfrastructureActionsTest(unittest.TestCase):
             self.assertEqual(result, 1)
             self.assertFalse(json_output.exists())
             self.assertFalse(markdown_output.exists())
+            self.assertFalse((root / "execution.json.complete").exists())
 
     def test_rejects_cross_binding_and_nested_contract_tampering(self) -> None:
         cases = (
@@ -232,6 +236,10 @@ class InfrastructureActionsTest(unittest.TestCase):
         forged["planSha256"] = "f" * 64
         with self.assertRaisesRegex(InfrastructureActionsError, "digest"):
             build_execution_manifest(self.plan, forged)
+        forged["planSha256"] = self.approval_result["planSha256"]
+        forged["planObjectSha256"] = "f" * 64
+        with self.assertRaisesRegex(InfrastructureActionsError, "provenance"):
+            build_execution_manifest(self.plan, forged)
         plan = copy.deepcopy(self.plan)
         plan["stages"][0]["mutationApprovalRequired"] = False
         with self.assertRaisesRegex(InfrastructureActionsError, "mutationApprovalRequired"):
@@ -264,6 +272,9 @@ class InfrastructureActionsTest(unittest.TestCase):
             ("authorization header", lambda plan: plan["stages"][0].__setitem__("rollbackBoundary", "Authorization: Bearer should-not-leak"), "sensitive value"),
             ("authorization spacing", lambda plan: plan["stages"][0].__setitem__("rollbackBoundary", " AUTHORIZATION = should-not-leak"), "sensitive value"),
             ("private key label", lambda plan: plan["stages"][0].__setitem__("rollbackBoundary", "privateKey=should-not-leak"), "sensitive value"),
+            ("jwt", lambda plan: plan["stages"][0].__setitem__("rollbackBoundary", "eyJhbGciOiJIUzI1NiJ9.payload.signature"), "sensitive value"),
+            ("oauth", lambda plan: plan["stages"][0].__setitem__("rollbackBoundary", "ya29.test-token"), "sensitive value"),
+            ("github", lambda plan: plan["stages"][0].__setitem__("rollbackBoundary", "ghp_abcdefghijklmno"), "sensitive value"),
             ("command variant", lambda plan: plan["stages"][0]["resources"].__setitem__("commandString", "not-run"), "executable"),
             ("shell variant", lambda plan: plan["stages"][0]["resources"].__setitem__("shell_command", "not-run"), "executable"),
         )
