@@ -153,6 +153,8 @@ def validate_infrastructure_approval(
 def build_execution_manifest(
     plan: dict[str, Any],
     approval_result: dict[str, Any],
+    *,
+    plan_bytes: bytes,
 ) -> dict[str, Any]:
     ...
 ```
@@ -187,9 +189,13 @@ def build_execution_manifest(
 def evaluate_execution_readiness(
     manifest: dict[str, Any],
     approval_result: dict[str, Any],
+    *,
+    plan_bytes: bytes,
 ) -> dict[str, Any]:
     ...
 ```
+
+두 API 모두 exact raw plan bytes가 필수다. dict만 전달하는 two-argument 호출은 유효한 provenance 검증이 아니며 허용하지 않는다. exact raw-byte SHA-256과 key-sorted canonical object SHA-256은 서로 다른 증거로 함께 검증한다.
 
 - [x] **Step 1: Write failing readiness and fail-closed tests.**
   A valid reviewed plan with `cloudMutationApproved=false` must return `awaiting-cloud-mutation-approval`. Evidence mismatch, production-like IDs, deployment approval, unknown actions, or missing rollback review must return `blocked`.
@@ -200,7 +206,7 @@ def evaluate_execution_readiness(
 - [x] **Step 4: Add failing no-execution tests.**
   Assert the module source has no `subprocess`, `os.system`, shell string, `gcloud`, Firebase CLI invocation, authentication step, credential field, or workflow mutation.
 - [x] **Step 5: Implement atomic JSON/Markdown CLI output.**
-  CLI inputs: `--execution-manifest`, `--approval-result`, `--json-output`, `--markdown-output`.
+  CLI inputs: `--plan`, `--execution-manifest`, `--approval-result`, `--json-output`, `--markdown-output`.
 - [x] **Step 6: Verify GREEN and commit.**
   Commit message: `feat: report staging execution readiness`.
 

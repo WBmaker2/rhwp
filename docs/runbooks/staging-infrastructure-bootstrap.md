@@ -67,6 +67,7 @@ python3 scripts/staging_infrastructure_actions.py \
 
 ```bash
 python3 scripts/staging_infrastructure_execution_gate.py \
+  --plan artifacts/actual-infrastructure-review/staging-infrastructure-plan.json \
   --execution-manifest artifacts/actual-infrastructure-review/staging-infrastructure-execution-manifest.json \
   --approval-result artifacts/actual-infrastructure-review/infrastructure-approval-result.json \
   --json-output artifacts/actual-infrastructure-review/staging-infrastructure-readiness.json \
@@ -78,9 +79,15 @@ gate는 canonical manifest와 approval-result의 digest·commit·plan object pro
 
 ### Completion marker와 strict blocked exit
 
-action manifest와 readiness gate가 성공적으로 두 출력 파일을 모두 publish하면 JSON output 옆에 `.complete` completion marker를 만듭니다. 예를 들어 `artifacts/actual-infrastructure-review/staging-infrastructure-readiness.json.complete`입니다. marker는 두 산출물이 동일 실행에서 완성되었다는 로컬 publish 증거일 뿐, 승인·인증·apply 완료·배포 완료를 뜻하지 않습니다.
+approval validator, action manifest, readiness gate 세 CLI가 성공적으로 두 출력 파일을 모두 publish하면 JSON output 옆에 `.complete` completion marker를 만듭니다. 예를 들어 `artifacts/actual-infrastructure-review/staging-infrastructure-readiness.json.complete`입니다. marker는 두 산출물이 동일 실행에서 완성되었다는 로컬 publish 증거일 뿐, 승인·인증·apply 완료·배포 완료를 뜻하지 않습니다.
 
 `--strict-blocked-exit`은 readiness status가 `blocked`일 때 exit code `2`를 반환합니다. 정상적인 `awaiting-cloud-mutation-approval` 또는 `awaiting-executor-design-approval`은 blocked가 아니므로 exit code `0`입니다. 입력/출력 계약 오류는 exit code `1`입니다.
+
+### Bounded JSON과 digest 의미
+
+세 CLI 입력은 read 전에 file size를 확인하며 `MAX_JSON_BYTES=1,000,000`을 초과하면 거부합니다. 이후 strict UTF-8/JSON parsing과 duplicate-key, non-finite number, 최대 depth 64, 최대 node 10,000, 문자열 16,384 UTF-8 bytes의 JSON-domain 제한을 적용합니다.
+
+`planSha256`은 입력 파일의 exact raw bytes digest이므로 공백·key 순서·마지막 newline 변경도 감지합니다. `planObjectSha256`은 JSON domain 검증 후 key를 정렬한 canonical serialization digest입니다. action generator와 readiness gate API에는 `plan_bytes`가 필수이며, parsed dict만 받는 two-argument 호출은 provenance를 충족하지 않습니다.
 
 ## Canonical stage 분류와 실행 경계
 
