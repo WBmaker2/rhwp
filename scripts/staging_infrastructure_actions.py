@@ -17,13 +17,13 @@ try:
         load_json_with_bytes,
         validate_infrastructure_approval,
     )
-    from scripts.staging_infrastructure_validation import StrictJsonError, canonical_json_bytes, validate_json_domain
+    from scripts.staging_infrastructure_validation import StrictJsonError, canonical_json_bytes, parse_strict_json_bytes, validate_json_domain
 except ImportError:  # pragma: no cover - direct script execution
     from staging_infrastructure_action_io import ActionIoError, publish
     from staging_infrastructure_approval import (  # type: ignore[no-redef]
         InfrastructureApprovalError, load_json_with_bytes, validate_infrastructure_approval,
     )
-    from staging_infrastructure_validation import StrictJsonError, canonical_json_bytes, validate_json_domain
+    from staging_infrastructure_validation import StrictJsonError, canonical_json_bytes, parse_strict_json_bytes, validate_json_domain
 
 PLAN_SCHEMA = "rhwp.staging-infrastructure-plan/v1"
 EXECUTION_SCHEMA = "rhwp.staging-infrastructure-execution/v1"
@@ -400,12 +400,9 @@ def _canonical_plan_digest(plan: dict[str, Any]) -> str:
 
 
 def _require_exact_plan_bytes(plan: dict[str, Any], plan_bytes: bytes | None) -> str:
-    if not isinstance(plan_bytes, bytes):
-        raise InfrastructureActionsError("trusted exact plan bytes are required")
     try:
-        parsed = json.loads(plan_bytes.decode("utf-8"), object_pairs_hook=_json_object)
-    except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as error:
-        raise InfrastructureActionsError("plan bytes must be strict UTF-8 JSON") from error
+        parsed = parse_strict_json_bytes(plan_bytes, "plan bytes")  # type: ignore[arg-type]
+    except StrictJsonError as error: raise InfrastructureActionsError(str(error)) from error
     if not _same_json_structure(plan, parsed):
         raise InfrastructureActionsError("plan object does not match exact plan bytes")
     return hashlib.sha256(plan_bytes).hexdigest()

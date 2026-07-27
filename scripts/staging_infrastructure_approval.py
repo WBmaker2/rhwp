@@ -11,10 +11,10 @@ from pathlib import Path
 from typing import Any
 try:
     from scripts.staging_infrastructure_action_io import ActionIoError, publish
-    from scripts.staging_infrastructure_validation import MAX_JSON_BYTES, StrictJsonError, canonical_json_bytes, validate_json_domain
+    from scripts.staging_infrastructure_validation import StrictJsonError, canonical_json_bytes, parse_strict_json_bytes, read_bounded_json_file, validate_json_domain
 except ImportError:  # pragma: no cover - direct script execution
     from staging_infrastructure_action_io import ActionIoError, publish
-    from staging_infrastructure_validation import MAX_JSON_BYTES, StrictJsonError, canonical_json_bytes, validate_json_domain
+    from staging_infrastructure_validation import StrictJsonError, canonical_json_bytes, parse_strict_json_bytes, read_bounded_json_file, validate_json_domain
 
 INFRASTRUCTURE_APPROVAL_SCHEMA = "rhwp.staging-infrastructure-approval/v1"
 INFRASTRUCTURE_APPROVAL_RESULT_SCHEMA = "rhwp.staging-infrastructure-approval-result/v1"
@@ -44,12 +44,11 @@ class InfrastructureApprovalError(RuntimeError):
 
 def load_json_with_bytes(path: Path, label: str) -> tuple[dict[str, Any], bytes]:
     try:
-        if path.stat().st_size > MAX_JSON_BYTES:
-            raise InfrastructureApprovalError(f"{label} exceeds JSON size limit")
-        raw = path.read_bytes()
-    except FileNotFoundError as error:
-        raise InfrastructureApprovalError(f"{label} not found: {path}") from error
-    return _parse_json_object(raw, label), raw
+        value, raw = read_bounded_json_file(path, label)
+    except StrictJsonError as error:
+        raise InfrastructureApprovalError(str(error)) from error
+    if not isinstance(value, dict): raise InfrastructureApprovalError(f"{label} root must be an object")
+    return value, raw
 
 
 def validate_infrastructure_approval(
@@ -63,7 +62,8 @@ def validate_infrastructure_approval(
         validate_json_domain(plan); validate_json_domain(approval)
     except StrictJsonError as error:
         raise InfrastructureApprovalError(str(error)) from error
-    parsed_plan = _parse_json_object(plan_bytes, "plan bytes")
+    try: parsed_plan = parse_strict_json_bytes(plan_bytes, "plan bytes")
+    except StrictJsonError as error: raise InfrastructureApprovalError(str(error)) from error
     if not _same_json_structure(plan, parsed_plan):
         raise InfrastructureApprovalError("plan object does not match exact plan bytes")
     _reject_sensitive_keys(plan, "plan")

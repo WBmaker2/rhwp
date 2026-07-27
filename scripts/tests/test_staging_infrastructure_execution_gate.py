@@ -19,6 +19,7 @@ from scripts.staging_infrastructure_execution_gate import (  # type: ignore[impo
     main,
     render_markdown,
 )
+from scripts.staging_infrastructure_validation import MAX_JSON_BYTES
 from scripts.tests.test_staging_infrastructure_actions import canonical_plan_and_approval, plan_bytes
 
 
@@ -43,6 +44,15 @@ class ExecutionReadinessGateTest(unittest.TestCase):
             "cloud-mutation-approval-record", "apply-workflow-dispatch",
         ])
         self.assertEqual(result["blockedReasons"], [])
+
+    def test_direct_api_rejects_oversized_and_lone_surrogate_plan_bytes(self) -> None:
+        for raw in (b" " * (MAX_JSON_BYTES + 1), b'{"value":"\\ud800"}'):
+            with self.subTest(size=len(raw)):
+                result = evaluate_execution_readiness(
+                    self.manifest, self.approval, plan_bytes=raw
+                )
+                self.assertEqual(result["status"], "blocked")
+                self.assertEqual(result["blockedReasons"], ["malformed-input"])
 
     def test_claimed_mutation_approval_still_does_not_report_ready_to_apply(self) -> None:
         approval = copy.deepcopy(self.approval)

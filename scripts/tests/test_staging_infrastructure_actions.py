@@ -14,6 +14,7 @@ from unittest.mock import patch
 
 from scripts.staging_infrastructure_approval import validate_infrastructure_approval
 from scripts.staging_infrastructure_plan import build_infrastructure_plan
+from scripts.staging_infrastructure_validation import MAX_JSON_BYTES
 from scripts.tests.test_staging_infrastructure_plan import (
     approved_record as bootstrap_approval_record,
     manifest_and_packet,
@@ -237,6 +238,14 @@ class InfrastructureActionsTest(unittest.TestCase):
                 mutate(plan, approval)
                 with self.assertRaisesRegex(InfrastructureActionsError, pattern):
                     self.build(plan, approval)
+
+    def test_direct_api_rejects_oversized_and_lone_surrogate_plan_bytes(self) -> None:
+        for raw in (b" " * (MAX_JSON_BYTES + 1), b'{"value":"\\ud800"}'):
+            with self.subTest(size=len(raw)):
+                with self.assertRaises(InfrastructureActionsError):
+                    build_execution_manifest(
+                        self.plan, self.approval_result, plan_bytes=raw
+                    )
 
     def test_requires_exact_plan_bytes_and_canonical_mutation_flags(self) -> None:
         compact = json.dumps(self.plan, ensure_ascii=False, separators=(",", ":")).encode()

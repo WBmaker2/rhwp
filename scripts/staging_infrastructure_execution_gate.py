@@ -13,12 +13,12 @@ from typing import Any
 try:
     from scripts.staging_infrastructure_action_io import ActionIoError, publish
     from scripts.staging_infrastructure_actions import InfrastructureActionsError, build_execution_manifest
-    from scripts.staging_infrastructure_validation import StrictJsonError, canonical_json_bytes, validate_json_domain
+    from scripts.staging_infrastructure_validation import StrictJsonError, canonical_json_bytes, parse_strict_json_bytes, validate_json_domain
     from scripts.staging_infrastructure_approval import InfrastructureApprovalError, load_json_with_bytes
 except ImportError:  # pragma: no cover - direct script execution
     from staging_infrastructure_action_io import ActionIoError, publish
     from staging_infrastructure_actions import InfrastructureActionsError, build_execution_manifest
-    from staging_infrastructure_validation import StrictJsonError, canonical_json_bytes, validate_json_domain
+    from staging_infrastructure_validation import StrictJsonError, canonical_json_bytes, parse_strict_json_bytes, validate_json_domain
     from staging_infrastructure_approval import InfrastructureApprovalError, load_json_with_bytes
 
 EXECUTION_SCHEMA = "rhwp.staging-infrastructure-execution/v1"
@@ -54,6 +54,7 @@ def evaluate_execution_readiness(manifest: dict[str, Any], approval_result: dict
     reasons: list[str] = []
     try:
         if plan_bytes is None: raise GateError("plan-bytes-required")
+        parse_strict_json_bytes(plan_bytes, "plan bytes")
         _validate(manifest, approval_result, plan_bytes)
     except (GateError, InfrastructureActionsError, StrictJsonError, TypeError, AttributeError, KeyError, IndexError, ValueError, RecursionError):
         reasons.append("malformed-input")

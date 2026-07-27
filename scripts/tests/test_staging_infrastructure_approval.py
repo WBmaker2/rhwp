@@ -18,6 +18,7 @@ from scripts.staging_infrastructure_approval import (
     validate_infrastructure_approval,
 )
 from scripts.staging_infrastructure_plan import build_infrastructure_plan
+from scripts.staging_infrastructure_validation import MAX_JSON_BYTES
 from scripts.tests.test_staging_infrastructure_plan import (
     approved_record as bootstrap_approval_record,
     manifest_and_packet,
@@ -238,6 +239,21 @@ class InfrastructureApprovalValidationTest(unittest.TestCase):
                 self.assertIn("sensitive", str(caught.exception).lower())
                 self.assertNotIn(value, str(caught.exception))
 
+    def test_rejects_oversized_or_lone_surrogate_direct_plan_bytes_and_generic_token(self) -> None:
+        for raw in (b" " * (MAX_JSON_BYTES + 1), b'{"value":"\\ud800"}'):
+            with self.subTest(size=len(raw)):
+                with self.assertRaises(InfrastructureApprovalError):
+                    validate_infrastructure_approval(
+                        self.plan, raw, self.approval, require_cloud_mutation=False
+                    )
+        candidate = copy.deepcopy(self.approval)
+        candidate["token"] = "must-not-leak"
+        with self.assertRaises(InfrastructureApprovalError) as caught:
+            validate_infrastructure_approval(
+                self.plan, self.raw, candidate, require_cloud_mutation=False
+            )
+        self.assertNotIn("must-not-leak", str(caught.exception))
+
     def test_accepts_canonical_safe_secret_values_declaration_only_when_false(self) -> None:
         manifest, packet = manifest_and_packet()
         _, packet_digest = packet_text_and_digest(packet)
@@ -299,6 +315,40 @@ class InfrastructureApprovalCliTest(unittest.TestCase):
             self.assertNotIn("repository-owner", json_output.read_text())
             self.assertIn("awaiting-cloud-mutation-approval", markdown_output.read_text())
             self.assertIn("mutationCommands", stdout.getvalue())
+            marker = root / "nested/result.json.complete"
+            self.assertTrue(marker.is_file())
+            first_marker = marker.read_bytes()
+            with redirect_stdout(io.StringIO()):
+                self.assertEqual(main([
+                    "--plan", str(plan_path), "--approval", str(approval_path),
+                    "--json-output", str(json_output), "--markdown-output", str(markdown_output),
+                ]), 0)
+            self.assertEqual(marker.read_bytes(), first_marker)
+
+    def test_cli_rejects_oversized_and_lone_surrogate_files_without_partial_outputs(self) -> None:
+        plan = plan_fixture()
+        raw = plan_bytes(plan)
+        approval = approval_fixture(plan, raw)
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            approval_path = root / "approval.json"
+            approval_path.write_text(json.dumps(approval))
+            for name, content in (
+                ("oversized.json", b" " * (MAX_JSON_BYTES + 1)),
+                ("surrogate.json", b'{"value":"\\ud800"}'),
+            ):
+                plan_path = root / name
+                output, markdown = root / f"{name}.out", root / f"{name}.md"
+                plan_path.write_bytes(content)
+                with redirect_stderr(io.StringIO()):
+                    result = main([
+                        "--plan", str(plan_path), "--approval", str(approval_path),
+                        "--json-output", str(output), "--markdown-output", str(markdown),
+                    ])
+                self.assertEqual(result, 1)
+                self.assertFalse(output.exists())
+                self.assertFalse(markdown.exists())
+                self.assertFalse(output.with_name(output.name + ".complete").exists())
 
     def test_strict_json_loading_rejects_duplicate_keys_and_non_finite_values(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -408,3 +458,4 @@ class InfrastructureApprovalCliTest(unittest.TestCase):
             self.assertFalse(markdown_output.exists())
             self.assertFalse((root / "result.json.tmp").exists())
             self.assertFalse((root / "result.md.tmp").exists())
+            self.assertFalse((root / "result.json.complete").exists())

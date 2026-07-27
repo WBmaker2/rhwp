@@ -3,6 +3,9 @@ from __future__ import annotations
 
 import json
 import math
+import os
+import stat
+from pathlib import Path
 from typing import Any
 
 MAX_JSON_BYTES = 1_000_000
@@ -13,6 +16,40 @@ MAX_STRING_BYTES = 16_384
 
 class StrictJsonError(RuntimeError):
     pass
+
+
+def parse_strict_json_bytes(raw: bytes, label: str = "JSON") -> Any:
+    if not isinstance(raw, bytes) or len(raw) > MAX_JSON_BYTES:
+        raise StrictJsonError(f"{label} exceeds JSON size limit")
+    try:
+        value = json.loads(raw.decode("utf-8"), object_pairs_hook=_json_object, parse_constant=_reject_constant)
+        validate_json_domain(value)
+        return value
+    except (UnicodeDecodeError, json.JSONDecodeError, ValueError, RecursionError) as error:
+        raise StrictJsonError(f"{label} is not valid JSON or strict UTF-8") from error
+
+
+def read_bounded_json_file(path: Path, label: str) -> tuple[Any, bytes]:
+    try:
+        with path.open("rb") as stream:
+            if not stat.S_ISREG(os.fstat(stream.fileno()).st_mode):
+                raise StrictJsonError(f"{label} must be a regular file")
+            raw = stream.read(MAX_JSON_BYTES + 1)
+    except OSError as error:
+        raise StrictJsonError(f"{label} could not be read") from error
+    return parse_strict_json_bytes(raw, label), raw
+
+
+def _json_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result: raise ValueError("duplicate JSON key")
+        result[key] = value
+    return result
+
+
+def _reject_constant(_: str) -> None:
+    raise ValueError("non-finite JSON number")
 
 
 def validate_json_domain(value: Any) -> None:
