@@ -1,10 +1,24 @@
 # rhwp Staging Infrastructure Bootstrap Runbook
 
+## Lifecycle 개요와 인계 문서
+
+| 단계 | 상태 | 인계/근거 |
+| ---: | --- | --- |
+| 1-3 | 선행 절차 | [inputs](staging-bootstrap-inputs.md) → [readiness](staging-bootstrap-readiness.md) → [operator](staging-bootstrap-operator.md) |
+| 4 | 선행 검토 | [bootstrap packet review](staging-bootstrap-packet-review.md) 및 bootstrap approval record |
+| 5 | plan 생성 | `scripts/staging_infrastructure_plan.py`가 bootstrap manifest, packet, approval record에서 plan을 만듭니다. |
+| 6 | 현재 범위 | 아래 approval validator/action manifest/readiness gate가 plan review 증거를 확인합니다. |
+| 7 | 차단 | 별도 cloud mutation approval과 미래 executor가 필요합니다. |
+| 8-9 | 차단 | actual resource identifier 관찰 및 live read-only preflight는 7의 evidence 뒤에만 가능합니다. |
+| 10-12 | 차단 | deployment packet, 별도 deployment approval, deployment는 독립 절차입니다. |
+
+선행 runbook의 non-secret 산출물을 operator-local 경로로 복사한 뒤 아래 명령의 입력으로 사용합니다. bootstrap approval record와 `staging_infrastructure_plan.py`가 만든 plan이 없으면 이 runbook의 명령을 시작하지 않습니다.
+
 ## 상태와 안전 경계
 
 이 runbook은 staging 전용 infrastructure 검토 증거를 생성하고 확인하는 현재 구현을 설명합니다. 현재 구현은 클라우드 인증, cloud CLI 호출, resource 생성·변경, GitHub Environment 변경, workflow dispatch, 배포를 수행하지 않습니다.
 
-- 현재 상태: `awaiting-cloud-mutation-approval`
+- tracked repository 상태: `no-tracked-actual-approval-record`
 - 현재 지원: infrastructure plan 승인 검증, 구조화 action manifest 생성, execution readiness gate
 - 현재 미지원: dry-run, apply, WIF 인증, environment 생성·구성, resource mutation, live preflight, image build/push, deployment
 - 공통 출력 경계: `mutationCommands=[]`, deployment 권한은 항상 `false`, 실행 가능한 shell/argv는 생성하지 않습니다.
@@ -19,20 +33,20 @@
 | Cloud mutation approval | 동일한 증거에 바인딩한 별도 `cloudMutationApproved=true` record | 현재 executor가 없으므로 실행하지 않습니다. | plan review·deployment approval을 대체하지 않습니다. |
 | Deployment approval | deployment packet, immutable image digest, live preflight, IAM diff, rollback/acceptance evidence | 현재 범위 밖이며 항상 별도입니다. | infrastructure mutation approval을 대체하지 않습니다. |
 
-현재 actual plan-review record의 `cloudMutationApproved=false`는 plan 검토에만 유효합니다. 이 record는 apply 입력이 될 수 없으며, `--require-cloud-mutation` 검증도 통과하지 못합니다.
+operator-local reviewed plan record가 존재하고 `cloudMutationApproved=false`라면 `awaiting-cloud-mutation-approval`으로 평가됩니다. 이는 apply 입력이 아니며 `--require-cloud-mutation` 검증도 통과하지 못합니다. tracked repository에는 actual approval record가 없습니다.
 
 ## 현재 구현된 검토 명령
 
-아래 예시는 비밀이 없는 검토 증거용 로컬 경로만 사용합니다. `artifacts/reviewed/`와 `artifacts/execution-review/`는 문서 예시 경로이며 운영 값을 의미하지 않습니다.
+이 구현은 operational metadata를 ignored local `artifacts/actual-infrastructure-review/`에만 보관하도록 선택합니다. `docs/approvals/records/`는 repository archival 호환 경로이지만, 그곳에 기록하려면 별도 사용자 승인과 redaction policy가 필요하며 여기서는 수행하지 않습니다.
 
 ### 1. Infrastructure approval 검증
 
 ```bash
 python3 scripts/staging_infrastructure_approval.py \
-  --plan artifacts/reviewed/staging-infrastructure-plan.json \
-  --approval artifacts/reviewed/staging-infrastructure-approval-record.json \
-  --json-output artifacts/execution-review/infrastructure-approval-result.json \
-  --markdown-output artifacts/execution-review/infrastructure-approval-result.md
+  --plan artifacts/actual-infrastructure-review/staging-infrastructure-plan.json \
+  --approval artifacts/actual-infrastructure-review/staging-infrastructure-approval-record.json \
+  --json-output artifacts/actual-infrastructure-review/infrastructure-approval-result.json \
+  --markdown-output artifacts/actual-infrastructure-review/infrastructure-approval-result.md
 ```
 
 이 명령은 plan의 실제 바이트 SHA-256, canonical plan object digest, commit, project/billing, ordered stage IDs, budget, rollback acknowledgement를 fail-closed로 결합합니다. `cloudMutationApproved=false` record는 정상 검토 결과로 처리할 수 있지만 status는 `awaiting-cloud-mutation-approval`입니다. `--require-cloud-mutation`은 향후 별도 승인 record 검증용이며, 현재 record에는 사용하지 않습니다.
@@ -41,10 +55,10 @@ python3 scripts/staging_infrastructure_approval.py \
 
 ```bash
 python3 scripts/staging_infrastructure_actions.py \
-  --plan artifacts/reviewed/staging-infrastructure-plan.json \
-  --approval artifacts/reviewed/staging-infrastructure-approval-record.json \
-  --json-output artifacts/execution-review/staging-infrastructure-execution-manifest.json \
-  --markdown-output artifacts/execution-review/staging-infrastructure-execution-manifest.md
+  --plan artifacts/actual-infrastructure-review/staging-infrastructure-plan.json \
+  --approval artifacts/actual-infrastructure-review/staging-infrastructure-approval-record.json \
+  --json-output artifacts/actual-infrastructure-review/staging-infrastructure-execution-manifest.json \
+  --markdown-output artifacts/actual-infrastructure-review/staging-infrastructure-execution-manifest.md
 ```
 
 이 명령은 검토 증거만 생성합니다. action에는 `id`, `stageId`, classification, structured resource/evidence 정보만 포함되며 executable argv, shell string, credential, secret value는 포함되지 않습니다.
@@ -53,10 +67,10 @@ python3 scripts/staging_infrastructure_actions.py \
 
 ```bash
 python3 scripts/staging_infrastructure_execution_gate.py \
-  --execution-manifest artifacts/execution-review/staging-infrastructure-execution-manifest.json \
-  --approval-result artifacts/execution-review/infrastructure-approval-result.json \
-  --json-output artifacts/execution-review/staging-infrastructure-readiness.json \
-  --markdown-output artifacts/execution-review/staging-infrastructure-readiness.md \
+  --execution-manifest artifacts/actual-infrastructure-review/staging-infrastructure-execution-manifest.json \
+  --approval-result artifacts/actual-infrastructure-review/infrastructure-approval-result.json \
+  --json-output artifacts/actual-infrastructure-review/staging-infrastructure-readiness.json \
+  --markdown-output artifacts/actual-infrastructure-review/staging-infrastructure-readiness.md \
   --strict-blocked-exit
 ```
 
@@ -64,7 +78,7 @@ gate는 canonical manifest와 approval-result의 digest·commit·plan object pro
 
 ### Completion marker와 strict blocked exit
 
-action manifest와 readiness gate가 성공적으로 두 출력 파일을 모두 publish하면 JSON output 옆에 `.complete` completion marker를 만듭니다. 예를 들어 `artifacts/execution-review/staging-infrastructure-readiness.json.complete`입니다. marker는 두 산출물이 동일 실행에서 완성되었다는 로컬 publish 증거일 뿐, 승인·인증·apply 완료·배포 완료를 뜻하지 않습니다.
+action manifest와 readiness gate가 성공적으로 두 출력 파일을 모두 publish하면 JSON output 옆에 `.complete` completion marker를 만듭니다. 예를 들어 `artifacts/actual-infrastructure-review/staging-infrastructure-readiness.json.complete`입니다. marker는 두 산출물이 동일 실행에서 완성되었다는 로컬 publish 증거일 뿐, 승인·인증·apply 완료·배포 완료를 뜻하지 않습니다.
 
 `--strict-blocked-exit`은 readiness status가 `blocked`일 때 exit code `2`를 반환합니다. 정상적인 `awaiting-cloud-mutation-approval` 또는 `awaiting-executor-design-approval`은 blocked가 아니므로 exit code `0`입니다. 입력/출력 계약 오류는 exit code `1`입니다.
 

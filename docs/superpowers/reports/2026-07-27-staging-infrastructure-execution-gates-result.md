@@ -48,6 +48,7 @@ db9172a0053dd2d6e3d18035d625eb77dadd903d fix: harden untrusted infrastructure ev
 | `scripts/staging_infrastructure_action_io.py` | paired JSON/Markdown atomic publish와 `.complete` marker 처리 |
 | `scripts/staging_infrastructure_validation.py` | strict JSON domain 및 canonical JSON helper |
 | `scripts/staging_infrastructure_plan.py` | sensitive-data redaction 뒤에도 canonical safe `security.secretValuesIncluded=false` declaration을 유지하도록 수정하여 downstream validation의 deterministic non-secret boundary를 보장 |
+| `.gitignore` | `/artifacts/`를 ignore하여 actual operator-local operational metadata가 tracked repository에 들어가지 않도록 함 |
 | `scripts/tests/test_staging_infrastructure_approval.py` | approval schema, digest, evidence binding, boundary RED/GREEN coverage |
 | `scripts/tests/test_staging_infrastructure_actions.py` | action mapping, deterministic order, unsafe input, provenance RED/GREEN coverage |
 | `scripts/tests/test_staging_infrastructure_execution_gate.py` | readiness, blocked 상태, no-execution boundary RED/GREEN coverage |
@@ -85,7 +86,7 @@ TDD는 각 component에서 RED test를 먼저 추가하고 구현 후 GREEN으�
 
 ## 현재 상태와 차단 요인
 
-현재 상태는 `awaiting-cloud-mutation-approval`입니다. 실제 project/billing/resource 식별자, approval artifact, credential 또는 실행 evidence는 만들거나 추적하지 않았습니다.
+tracked worktree/repository 상태는 `no-tracked-actual-approval-record`입니다. operator-local reviewed plan record가 존재하고 `cloudMutationApproved=false`라면 `awaiting-cloud-mutation-approval`으로 평가되지만 apply 입력은 아닙니다. actual project/billing/resource 식별자, approval artifact, credential 또는 실행 evidence는 tracked repository에 만들거나 기록하지 않았습니다. Operational metadata는 ignored local `artifacts/actual-infrastructure-review/`에만 둘 수 있으며, `docs/approvals/records/` archival은 별도 사용자 승인과 redaction policy 없이는 수행하지 않습니다.
 
 apply 전 필요한 별도 사용자 승인은 다음과 같습니다.
 

@@ -33,6 +33,7 @@
 - Create `scripts/staging_infrastructure_action_io.py`: shared atomic paired-output publish and completion-marker handling.
 - Create `scripts/staging_infrastructure_validation.py`: shared strict JSON-domain and canonical JSON helpers for untrusted evidence.
 - Modify `scripts/staging_infrastructure_plan.py`: preserve the canonical safe `security.secretValuesIncluded=false` declaration after sensitive-data redaction so downstream validation has a non-secret, deterministic boundary marker.
+- Modify `.gitignore`: ignore `/artifacts/` so actual operator-local plan/approval/execution metadata cannot be added to the tracked repository by this workflow.
 - Modify `docs/runbooks/staging-infrastructure-bootstrap.md`: document validation, dry-run, apply approval, WIF, evidence, and rollback boundaries.
 - Create `docs/superpowers/reports/2026-07-27-staging-infrastructure-execution-gates-result.md`: implementation and verification result.
 
@@ -244,6 +245,8 @@ def evaluate_execution_readiness(
   7. `apply-workflow-dispatch`
 
 `implementation branch publish`는 위 apply 승인들을 대체하지 않는 별도 integration approval이다.
+
+Operator-local artifacts use `artifacts/actual-infrastructure-review/` and remain untracked. `docs/approvals/records/` remains a compatibility/archive location only; using it requires separate user approval and a redaction policy.
 
 ## Later lifecycle
 

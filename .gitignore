@@ -14,6 +14,7 @@ bindings/Native/Cargo.lock
 # Output (렌더링 결과물)
 /output/
 /dist/swift/
+/artifacts/
 
 # Docker
 .docker/
