@@ -8,6 +8,7 @@ import tempfile
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
+from unittest.mock import patch
 
 from scripts.staging_infrastructure_approval import validate_infrastructure_approval
 from scripts.staging_infrastructure_plan import build_infrastructure_plan
@@ -146,3 +147,65 @@ class InfrastructureActionsTest(unittest.TestCase):
             with redirect_stderr(stderr):
                 self.assertEqual(main(["--plan", str(plan_path), "--approval", str(approval_path), "--json-output", str(alias), "--markdown-output", str(markdown_output)]), 1)
             self.assertEqual(plan_path.read_bytes(), original)
+
+    def test_rejects_temp_aliases_before_any_input_is_removed(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            plan_path, approval_path = root / "execution.json.tmp", root / "approval.json"
+            json_output, markdown_output = root / "execution.json", root / "execution.md"
+            plan_path.write_text(json.dumps(self.plan))
+            approval_path.write_text(json.dumps(self.approval_result))
+            original = plan_path.read_bytes()
+            with redirect_stderr(io.StringIO()):
+                result = main(["--plan", str(plan_path), "--approval", str(approval_path), "--json-output", str(json_output), "--markdown-output", str(markdown_output)])
+            self.assertEqual(result, 1)
+            self.assertEqual(plan_path.read_bytes(), original)
+            self.assertFalse(json_output.exists())
+            plan_path = root / "plan.json"
+            approval_path = root / "execution.md.tmp"
+            plan_path.write_text(json.dumps(self.plan))
+            approval_path.write_text(json.dumps(self.approval_result))
+            original = approval_path.read_bytes()
+            with redirect_stderr(io.StringIO()):
+                result = main(["--plan", str(plan_path), "--approval", str(approval_path), "--json-output", str(root / "other.json"), "--markdown-output", str(root / "execution.md")])
+            self.assertEqual(result, 1)
+            self.assertEqual(approval_path.read_bytes(), original)
+
+    def test_second_publication_failure_restores_outputs_without_partial_publish(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            plan_path, approval_path = root / "plan.json", root / "approval.json"
+            json_output, markdown_output = root / "execution.json", root / "execution.md"
+            plan_path.write_text(json.dumps(self.plan, ensure_ascii=False, indent=2) + "\n")
+            approval_path.write_text(json.dumps(self.approval_result, ensure_ascii=False, indent=2) + "\n")
+            original_replace = Path.replace
+            def fail_markdown_publish(path: Path, target: Path) -> Path:
+                if path == markdown_output.with_name(markdown_output.name + ".tmp"):
+                    raise OSError("simulated markdown publish failure")
+                return original_replace(path, target)
+            with patch("scripts.staging_infrastructure_actions.Path.replace", autospec=True, side_effect=fail_markdown_publish), redirect_stderr(io.StringIO()):
+                result = main(["--plan", str(plan_path), "--approval", str(approval_path), "--json-output", str(json_output), "--markdown-output", str(markdown_output)])
+            self.assertEqual(result, 1)
+            self.assertFalse(json_output.exists())
+            self.assertFalse(markdown_output.exists())
+
+    def test_rejects_cross_binding_and_nested_contract_tampering(self) -> None:
+        cases = (
+            ("approval digest", lambda plan, approval: approval.__setitem__("planSha256", "0" * 64), "digest"),
+            ("approval status", lambda plan, approval: approval.__setitem__("cloudMutationApproved", True), "status"),
+            ("project stage mismatch", lambda plan, approval: plan["stages"][0]["resources"].__setitem__("projectId", "other-staging-project"), "project"),
+            ("forbidden empty", lambda plan, approval: plan["stages"][0]["resources"].__setitem__("forbiddenProjectIds", []), "forbidden"),
+            ("cloud run state", lambda plan, approval: plan["stages"][8]["resources"]["collaboration"].__setitem__("state", "ready"), "cloud-run"),
+            ("cloud tasks setting", lambda plan, approval: plan["stages"][9]["resources"]["parse"].pop("retry"), "cloud-tasks"),
+            ("evidence malformed", lambda plan, approval: plan["stages"][10]["resources"].append({"path": "x"}), "evidence"),
+            ("evidence duplicate", lambda plan, approval: plan["stages"][10]["resources"].append(copy.deepcopy(plan["stages"][10]["resources"][0])), "duplicate"),
+            ("bare token", lambda plan, approval: plan.__setitem__("token", "must-not-leak"), "sensitive"),
+            ("bare secret", lambda plan, approval: plan.__setitem__("secret", "must-not-leak"), "sensitive"),
+            ("api key", lambda plan, approval: plan.__setitem__("api_key", "must-not-leak"), "sensitive"),
+        )
+        for label, mutate, pattern in cases:
+            with self.subTest(label=label):
+                plan, approval = copy.deepcopy(self.plan), copy.deepcopy(self.approval_result)
+                mutate(plan, approval)
+                with self.assertRaisesRegex(InfrastructureActionsError, pattern):
+                    build_execution_manifest(plan, approval)

@@ -37,7 +37,7 @@ STAGES = (
     ("cloud-tasks-prerequisites", "blocked-deferred"),
     ("post-bootstrap-evidence", "observation-only"),
 )
-SENSITIVE = ("accesstoken", "authorization", "clientsecret", "credential", "idtoken",
+SENSITIVE = ("accesstoken", "authorization", "clientsecret", "credential", "idtoken", "token", "secret", "apikey",
              "password", "privatekey", "refreshtoken", "secretvalue", "firebaseapikey",
              "internalflushtoken")
 EXECUTABLE = ("command", "argv", "shell")
@@ -147,14 +147,29 @@ def _stage_actions(stage: dict[str, Any], classification: str, dependencies: lis
         return [action("verify-budget", "verify-budget", {"currency": resources["currency"], "amount": resources["amount"]}, {"exists": True, "mutationAuthorized": False}, {"type": "budget", "fields": ["currency", "amount"]}), action("verify-notification-channel", "verify-notification-channel", {"notificationChannels": resources["notificationChannels"]}, {"exists": True, "mutationAuthorized": False}, {"type": "notification-channel", "fields": ["notificationChannels"]})]
     if stage_id == "cloud-run-prerequisites":
         _require_keys(resources, {"collaboration", "documentApi", "documentWorker"}, stage_id)
+        for name in ("collaboration", "documentApi", "documentWorker"):
+            _validate_cloud_run_service(resources[name], name)
         return [action("record-cloud-run-prerequisite", f"record-{name}", {"service": resources[name]["name"], "state": resources[name].get("state")}, {"state": "blocked-pending-image-digest", "mutationAuthorized": False}, {"type": "cloud-run-prerequisite", "service": resources[name]["name"]}) for name in ("collaboration", "documentApi", "documentWorker")]
     if stage_id == "cloud-tasks-prerequisites":
         _require_keys(resources, {"callerServiceAccount", "parse", "export", "state"}, stage_id)
+        if resources["state"] != "blocked-pending-worker-url":
+            raise InfrastructureActionsError("cloud-tasks prerequisite state must be blocked-pending-worker-url")
+        _nonempty(resources["callerServiceAccount"], "cloud-tasks callerServiceAccount")
+        for name in ("parse", "export"):
+            _validate_cloud_task_queue(resources[name], name)
         return [action("record-cloud-tasks-prerequisite", f"record-{name}", {"queue": resources[name], "state": resources["state"]}, {"state": "blocked-pending-worker-url", "mutationAuthorized": False}, {"type": "cloud-tasks-prerequisite", "queue": name}) for name in ("parse", "export")]
     if stage_id == "post-bootstrap-evidence":
         if not isinstance(resources, list) or not resources:
             raise InfrastructureActionsError("post-bootstrap-evidence resources must be a non-empty array")
-        return [action("collect-resource-evidence", f"collect-{index + 1:02d}", {"path": entry.get("path")}, {"readOnly": True}, {"type": "resource-evidence", "path": entry.get("path")}) for index, entry in enumerate(resources) if isinstance(entry, dict) and isinstance(entry.get("path"), str)]
+        paths: list[str] = []
+        for index, entry in enumerate(resources):
+            _require_keys(entry, {"path", "resolutionPhase", "reason"}, f"post-bootstrap evidence {index}")
+            for field in ("path", "resolutionPhase", "reason"):
+                _nonempty(entry[field], f"post-bootstrap evidence {field}")
+            paths.append(entry["path"])
+        if len(paths) != len(set(paths)):
+            raise InfrastructureActionsError("post-bootstrap evidence paths must not contain duplicates")
+        return [action("collect-resource-evidence", f"collect-{index + 1:02d}", {"path": entry["path"]}, {"readOnly": True}, {"type": "resource-evidence", "path": entry["path"]}) for index, entry in enumerate(resources)]
     raise InfrastructureActionsError(f"unknown stage {stage_id}")
 
 
@@ -184,7 +199,17 @@ def _validate_plan(plan: dict[str, Any]) -> list[dict[str, Any]]:
         if any(item not in prior for item in dependencies):
             raise InfrastructureActionsError(f"stage {stage['id']} depends on a missing or later stage")
         _reject_production_resources(stage["resources"], f"stage {stage['id']}.resources")
+        _stage_actions(stage, dict(STAGES)[stage["id"]], [])
         prior.add(stage["id"])
+    project_resources = stages[0]["resources"]
+    if project_resources["projectId"] != plan["projectId"] or project_resources["billingAccount"] != plan["billingAccount"]:
+        raise InfrastructureActionsError("project-billing resources do not match plan project or billing")
+    forbidden = project_resources["forbiddenProjectIds"]
+    if not isinstance(forbidden, list) or not forbidden or any(not isinstance(item, str) or not item.strip() for item in forbidden) or len(forbidden) != len(set(forbidden)) or plan["projectId"] in forbidden:
+        raise InfrastructureActionsError("project-billing forbiddenProjectIds are invalid")
+    evidence = stages[-1]["resources"]
+    if plan.get("postBootstrapRequiredValues") != evidence:
+        raise InfrastructureActionsError("post-bootstrap evidence does not match required values")
     return stages
 
 
@@ -193,12 +218,19 @@ def _validate_approval_result(plan: dict[str, Any], result: dict[str, Any]) -> N
     _require_keys(result, required, "approval result")
     if result["schemaVersion"] != APPROVAL_RESULT_SCHEMA or result["status"] not in {"awaiting-cloud-mutation-approval", "cloud-mutation-approved", "ready-for-cloud-mutation"}:
         raise InfrastructureActionsError("approval result status is not supported")
-    if not re.fullmatch(r"[0-9a-f]{64}", str(result["planSha256"])):
+    digest = _canonical_plan_digest(plan)
+    if not re.fullmatch(r"[0-9a-f]{64}", str(result["planSha256"])) or result["planSha256"] != digest:
         raise InfrastructureActionsError("approval result plan digest is invalid")
     source = plan["sourceEvidence"]
     if result["commitSha"] != source["commitSha"] or result["projectId"] != plan["projectId"] or result["billingAccount"] != plan["billingAccount"]:
         raise InfrastructureActionsError("approval result does not match plan evidence")
-    if result["approvedStageIds"] != [item[0] for item in STAGES] or result["deploymentApproved"] is not False or result["mutationCommands"] != []:
+    budget = next(stage["resources"]["amount"] for stage in plan["stages"] if stage["id"] == "budget-guardrails")
+    status_is_ready = result["status"] in {"cloud-mutation-approved", "ready-for-cloud-mutation"}
+    if result["cloudMutationApproved"] is not status_is_ready:
+        raise InfrastructureActionsError("approval result status does not match cloud mutation approval")
+    if not isinstance(result["requireCloudMutation"], bool) or (result["requireCloudMutation"] and not status_is_ready):
+        raise InfrastructureActionsError("approval result cloud mutation requirement is invalid")
+    if result["approvedStageIds"] != [item[0] for item in STAGES] or result["maximumMonthlyBudgetKrw"] != budget or result["rollbackReviewed"] is not True or result["deploymentApproved"] is not False or result["mutationCommands"] != []:
         raise InfrastructureActionsError("approval result does not preserve approval boundaries")
 
 
@@ -232,7 +264,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--json-output", type=Path, required=True); parser.add_argument("--markdown-output", type=Path, required=True)
     args = parser.parse_args(argv)
     json_temp, markdown_temp = (args.json_output.with_name(args.json_output.name + ".tmp"), args.markdown_output.with_name(args.markdown_output.name + ".tmp"))
-    backups: dict[Path, bytes | None] = {}; published: list[Path] = []
+    backups: dict[Path, bytes | None] = {}; published: list[Path] = []; temp_written: list[Path] = []
     try:
         _validate_output_paths(args.plan, args.approval, args.json_output, args.markdown_output)
         plan, plan_bytes = load_json_with_bytes(args.plan, "infrastructure plan")
@@ -242,10 +274,11 @@ def main(argv: list[str] | None = None) -> int:
         execution = build_execution_manifest(plan, approval); markdown = render_markdown(execution)
         for path in (args.json_output, args.markdown_output): path.parent.mkdir(parents=True, exist_ok=True)
         backups = {path: path.read_bytes() if path.exists() else None for path in (args.json_output, args.markdown_output)}
-        json_temp.write_text(json.dumps(execution, ensure_ascii=False, indent=2) + "\n"); markdown_temp.write_text(markdown)
+        json_temp.write_text(json.dumps(execution, ensure_ascii=False, indent=2) + "\n"); temp_written.append(json_temp)
+        markdown_temp.write_text(markdown); temp_written.append(markdown_temp)
         json_temp.replace(args.json_output); published.append(args.json_output); markdown_temp.replace(args.markdown_output); published.append(args.markdown_output)
     except (InfrastructureActionsError, InfrastructureApprovalError, OSError) as error:
-        for path in (json_temp, markdown_temp):
+        for path in temp_written:
             try: path.unlink(missing_ok=True)
             except OSError: pass
         for path in published:
@@ -258,13 +291,18 @@ def main(argv: list[str] | None = None) -> int:
 
 
 def _validate_output_paths(plan: Path, approval: Path, json_output: Path, markdown_output: Path) -> None:
-    paths = [item.resolve(strict=False) for item in (plan, approval, json_output, markdown_output)]
-    if any(item.is_symlink() for item in (plan, approval, json_output, markdown_output)) or len(set(paths)) != 4:
+    temp_paths = (json_output.with_name(json_output.name + ".tmp"), markdown_output.with_name(markdown_output.name + ".tmp"))
+    all_paths = (plan, approval, json_output, markdown_output, *temp_paths)
+    paths = [item.resolve(strict=False) for item in all_paths]
+    if any(item.is_symlink() for item in all_paths) or len(set(paths)) != len(paths):
         raise InfrastructureActionsError("input and output paths must not overlap or alias")
-    if any(output in source.parents or source in output.parents for source in paths[:2] for output in paths[2:]):
-        raise InfrastructureActionsError("input and output paths must not overlap")
-    if json_output.resolve(strict=False) == markdown_output.resolve(strict=False):
-        raise InfrastructureActionsError("output paths must not overlap")
+    for index, left in enumerate(paths):
+        if any(left in right.parents or right in left.parents for right in paths[index + 1:]):
+            raise InfrastructureActionsError("input, output, and temporary paths must not overlap")
+    if any(path.exists() for path in temp_paths):
+        raise InfrastructureActionsError("temporary output path already exists")
+    if any(path.exists() and path.is_dir() for path in (json_output, markdown_output)):
+        raise InfrastructureActionsError("output path must not be a directory")
 
 
 def _reject_unsafe(value: Any, path: str) -> None:
@@ -310,6 +348,44 @@ def _reject_production_resources(value: Any, path: str, *, forbidden: bool = Fal
 def _production_resource_like(value: str) -> bool:
     lowered = value.lower()
     return "production" in lowered or bool(re.search(r"(^|[-_])prod($|[-_])", lowered))
+
+
+def _canonical_plan_digest(plan: dict[str, Any]) -> str:
+    return hashlib.sha256(
+        (json.dumps(plan, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
+    ).hexdigest()
+
+
+def _validate_cloud_run_service(value: Any, name: str) -> None:
+    _require_keys(value, {"name", "serviceAccount", "ingress", "runtime", "state"}, f"cloud-run {name}")
+    for field in ("name", "serviceAccount", "ingress"):
+        _nonempty(value[field], f"cloud-run {name}.{field}")
+    if value["state"] != "blocked-pending-image-digest":
+        raise InfrastructureActionsError("cloud-run prerequisite state must be blocked-pending-image-digest")
+    _require_keys(value["runtime"], {"containerConcurrency", "timeoutSeconds", "cpu", "memory", "minScale", "maxScale"}, f"cloud-run {name}.runtime")
+    for field in ("containerConcurrency", "timeoutSeconds", "minScale", "maxScale"):
+        _positive_number(value["runtime"][field], f"cloud-run {name}.runtime.{field}", allow_zero=field == "minScale")
+    for field in ("cpu", "memory"):
+        _nonempty(value["runtime"][field], f"cloud-run {name}.runtime.{field}")
+
+
+def _validate_cloud_task_queue(value: Any, name: str) -> None:
+    _require_keys(value, {"name", "location", "targetUrl", "dispatchDeadlineSeconds", "retry", "rateLimits"}, f"cloud-tasks {name}")
+    for field in ("name", "location", "targetUrl"):
+        _nonempty(value[field], f"cloud-tasks {name}.{field}")
+    if isinstance(value["dispatchDeadlineSeconds"], bool) or not isinstance(value["dispatchDeadlineSeconds"], int) or value["dispatchDeadlineSeconds"] <= 0:
+        raise InfrastructureActionsError("cloud-tasks dispatch deadline must be a positive integer")
+    _require_keys(value["retry"], {"maxAttempts", "minBackoffSeconds", "maxBackoffSeconds", "maxDoublings"}, f"cloud-tasks {name}.retry")
+    _require_keys(value["rateLimits"], {"maxConcurrentDispatches", "maxDispatchesPerSecond"}, f"cloud-tasks {name}.rateLimits")
+    for field, item in value["retry"].items():
+        _positive_number(item, f"cloud-tasks {name}.retry.{field}")
+    for field, item in value["rateLimits"].items():
+        _positive_number(item, f"cloud-tasks {name}.rateLimits.{field}")
+
+
+def _positive_number(value: Any, label: str, *, allow_zero: bool = False) -> None:
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or value < (0 if allow_zero else 1):
+        raise InfrastructureActionsError(f"{label} must be a positive number")
 
 
 def _md(value: Any) -> str:
