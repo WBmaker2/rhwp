@@ -257,7 +257,7 @@ class InfrastructureApprovalValidationTest(unittest.TestCase):
             )
         self.assertNotIn("must-not-leak", str(caught.exception))
 
-    def test_accepts_canonical_safe_secret_values_declaration_only_when_false(self) -> None:
+    def test_accepts_only_canonical_false_secret_values_declaration(self) -> None:
         manifest, packet = manifest_and_packet()
         _, packet_digest = packet_text_and_digest(packet)
         plan = build_infrastructure_plan(
@@ -274,7 +274,7 @@ class InfrastructureApprovalValidationTest(unittest.TestCase):
         )
         self.assertEqual(result["status"], "awaiting-cloud-mutation-approval")
 
-        for unsafe_value in (True, "false"):
+        for unsafe_value in (True, "false", 0, 1, {}, [], None):
             with self.subTest(unsafe_value=unsafe_value):
                 candidate_plan = copy.deepcopy(plan)
                 candidate_plan["security"]["secretValuesIncluded"] = unsafe_value

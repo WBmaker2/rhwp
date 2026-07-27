@@ -404,26 +404,39 @@ def _reject_sensitive_keys(value: Any, path: str) -> None:
         raise InfrastructureApprovalError("sensitive key is not allowed at " + ", ".join(sorted(paths)))
 
 
-def _find_sensitive_key_paths(value: Any, path: str) -> list[str]:
+def _find_sensitive_key_paths(
+    value: Any, path: str, path_segments: tuple[str, ...] | None = None
+) -> list[str]:
+    path_segments = (path,) if path_segments is None else path_segments
     if isinstance(value, dict):
         result: list[str] = []
         for key, item in value.items():
-            child = f"{path}.{key}"
+            key_segment = str(key)
+            child = f"{path}.{key_segment}"
+            child_segments = (*path_segments, key_segment)
             normalized = re.sub(r"[^a-z0-9]", "", str(key).lower())
             if (
                 any(marker in normalized for marker in SENSITIVE_KEY_MARKERS)
-                and not _is_safe_secret_values_declaration(child, item)
+                and not _is_safe_secret_values_declaration(child_segments, item)
             ):
                 result.append(child)
-            result.extend(_find_sensitive_key_paths(item, child))
+            result.extend(_find_sensitive_key_paths(item, child, child_segments))
         return result
     if isinstance(value, list):
-        return [child for index, item in enumerate(value) for child in _find_sensitive_key_paths(item, f"{path}[{index}]")]
+        return [
+            child
+            for index, item in enumerate(value)
+            for child in _find_sensitive_key_paths(
+                item, f"{path}[{index}]", (*path_segments, f"[{index}]")
+            )
+        ]
     return []
 
 
-def _is_safe_secret_values_declaration(path: str, value: Any) -> bool:
-    return path == "plan.security.secretValuesIncluded" and value is False
+def _is_safe_secret_values_declaration(
+    path_segments: tuple[str, ...], value: Any
+) -> bool:
+    return path_segments == ("plan", "security", "secretValuesIncluded") and value is False
 
 
 def _md(value: Any) -> str:
