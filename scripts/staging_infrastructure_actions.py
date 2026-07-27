@@ -81,6 +81,7 @@ def build_execution_manifest(
             "commitSha": source["commitSha"],
             "planSha256": approval_result["planSha256"],
             "planObjectSha256": approval_result["planObjectSha256"],
+            "actionSetSha256": _action_set_sha256(actions),
             "approvalResultSchema": approval_result["schemaVersion"],
         },
         "actions": actions,
@@ -92,6 +93,11 @@ def build_execution_manifest(
             "mutationCommands": [],
         },
     }
+
+
+def _action_set_sha256(actions: list[dict[str, Any]]) -> str:
+    encoded = json.dumps(actions, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
 
 
 def _stage_actions(stage: dict[str, Any], classification: str, dependencies: list[str]) -> list[dict[str, Any]]:

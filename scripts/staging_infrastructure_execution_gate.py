@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import re
 import sys
@@ -40,7 +41,7 @@ STAGES = (
 MANIFEST_KEYS = {"schemaVersion", "status", "projectId", "billingAccount", "sourceEvidence", "actions", "security"}
 APPROVAL_KEYS = {"schemaVersion", "status", "planSha256", "planObjectSha256", "commitSha", "projectId", "billingAccount", "approvedStageIds", "maximumMonthlyBudgetKrw", "cloudMutationApproved", "requireCloudMutation", "deploymentApproved", "rollbackReviewed", "mutationCommands"}
 ACTION_KEYS = {"id", "stageId", "classification", "kind", "resource", "dependencies", "desiredState", "rollbackBoundary", "evidenceQuery"}
-SENSITIVE = ("accesstoken", "author" + "ization", "clientsecret", "creden" + "tial", "idtoken", "password", "private" + "key", "refreshtoken", "secretvalue", "apikey", "internalflushtoken")
+SENSITIVE = ("accesstoken", "author" + "ization", "clientsecret", "creden" + "tial", "idtoken", "password", "private" + "key", "refreshtoken", "secret", "apikey", "internalflushtoken")
 EXECUTABLE = ("command", "argv", "shell")
 
 
@@ -49,8 +50,8 @@ def evaluate_execution_readiness(manifest: dict[str, Any], approval_result: dict
     reasons: list[str] = []
     try:
         _validate(manifest, approval_result)
-    except GateError as error:
-        reasons.append(str(error))
+    except (GateError, TypeError, AttributeError, KeyError, IndexError):
+        reasons.append("malformed-input")
     requested = _approval_requested_state(approval_result)
     if reasons:
         status = "blocked"
@@ -61,11 +62,11 @@ def evaluate_execution_readiness(manifest: dict[str, Any], approval_result: dict
     return {
         "schemaVersion": GATE_SCHEMA,
         "status": status,
-        "projectId": _safe_string(manifest.get("projectId")),
+        "projectId": _safe_string(_field(manifest, "projectId")),
         "blockedReasons": reasons,
         "requiredApprovals": list(REQUIRED_APPROVALS),
         "nextAction": "review-required-approvals",
-        "approvalRecord": {"recordedStatus": _safe_string(approval_result.get("status")), "cloudMutationApprovedRequested": requested},
+        "approvalRecord": {"recordedStatus": _safe_string(_field(approval_result, "status")), "cloudMutationApprovedRequested": requested},
         "cloudMutationApproved": False,
         "deploymentApproved": False,
         "mutationCommands": [],
@@ -126,12 +127,13 @@ def _validate(manifest: dict[str, Any], approval: dict[str, Any]) -> None:
     _staging_project(_string(manifest, "projectId", "manifest"))
     _string(manifest, "billingAccount", "manifest")
     source = manifest["sourceEvidence"]
-    _exact_keys(source, {"commitSha", "planSha256", "planObjectSha256", "approvalResultSchema"}, "manifest sourceEvidence")
+    _exact_keys(source, {"commitSha", "planSha256", "planObjectSha256", "actionSetSha256", "approvalResultSchema"}, "manifest sourceEvidence")
     if source["approvalResultSchema"] != APPROVAL_SCHEMA:
         raise GateError("manifest approval result provenance is invalid")
     _sha(source["commitSha"], 40, "manifest commitSha")
     _sha(source["planSha256"], 64, "manifest planSha256")
     _sha(source["planObjectSha256"], 64, "manifest planObjectSha256")
+    _sha(source["actionSetSha256"], 64, "manifest actionSetSha256")
     _sha(approval["commitSha"], 40, "approval result commitSha")
     _sha(approval["planSha256"], 64, "approval result planSha256")
     _sha(approval["planObjectSha256"], 64, "approval result planObjectSha256")
@@ -143,6 +145,8 @@ def _validate(manifest: dict[str, Any], approval: dict[str, Any]) -> None:
     _string(approval, "billingAccount", "approval result")
     _validate_approval(approval)
     _validate_security(manifest["security"])
+    if source["actionSetSha256"] != _action_set_sha256(manifest["actions"]):
+        raise GateError("action-set-mismatch")
     _validate_actions(manifest["actions"], approval)
 
 
@@ -172,43 +176,105 @@ def _validate_actions(actions: Any, approval: dict[str, Any]) -> None:
     if not isinstance(actions, list) or not actions:
         raise GateError("manifest actions must be a non-empty array")
     stage_map = {stage: (classification, kinds) for stage, classification, kinds in STAGES}
-    seen_ids: set[str] = set(); prior_stages: list[str] = []; last_index = -1
-    budget_seen = False
-    for index, action in enumerate(actions):
-        _exact_keys(action, ACTION_KEYS, f"action {index}")
-        action_id = _string(action, "id", f"action {index}")
+    groups: dict[str, list[dict[str, Any]]] = {stage: [] for stage, _, _ in STAGES}
+    seen_ids: set[str] = set(); seen_resources: set[str] = set(); sequence: list[str] = []
+    for action in actions:
+        _exact_keys(action, ACTION_KEYS, "action")
+        action_id = _string(action, "id", "action")
         if action_id in seen_ids:
-            raise GateError("manifest actions contain duplicate IDs")
+            raise GateError("duplicate-action-id")
         seen_ids.add(action_id)
-        stage = _string(action, "stageId", f"action {index}")
+        stage = _string(action, "stageId", "action")
         if stage not in stage_map:
-            raise GateError("manifest actions contain an unknown stage")
-        position = [item[0] for item in STAGES].index(stage)
-        if position < last_index:
-            raise GateError("manifest actions are reordered")
-        last_index = position
+            raise GateError("unknown-action-stage")
         classification, kinds = stage_map[stage]
         if action["classification"] != classification or action["kind"] not in kinds:
-            raise GateError("manifest action classification or kind is invalid")
-        if not isinstance(action["dependencies"], list) or any(not isinstance(item, str) or item not in seen_ids for item in action["dependencies"]):
-            raise GateError("manifest action dependency is missing or later")
-        if len(action["dependencies"]) != len(set(action["dependencies"])):
-            raise GateError("manifest action dependencies contain duplicates")
-        if not isinstance(action["desiredState"], dict) or not isinstance(action["resource"], (dict, list)) or not isinstance(action["evidenceQuery"], dict):
-            raise GateError("manifest action structure is invalid")
-        _string(action, "rollbackBoundary", f"action {index}")
+            raise GateError("invalid-action-kind")
+        if not isinstance(action["resource"], dict) or not isinstance(action["desiredState"], dict) or not isinstance(action["evidenceQuery"], dict):
+            raise GateError("invalid-action-shape")
+        _string(action, "rollbackBoundary", "action")
+        _validate_nested(action["resource"], "resource", _string(approval, "projectId", "approval result"), None)
+        _validate_nested(action["desiredState"], "desiredState", _string(approval, "projectId", "approval result"), None)
+        _validate_nested(action["evidenceQuery"], "evidenceQuery", _string(approval, "projectId", "approval result"), None)
+        _validate_nested(action["rollbackBoundary"], "rollbackBoundary", _string(approval, "projectId", "approval result"), None)
+        resource_key = _canonical(action["resource"])
+        if resource_key in seen_resources:
+            raise GateError("duplicate-action-resource")
+        seen_resources.add(resource_key)
         if classification in {"observation-only", "irreversible-manual-decision", "deferred-resource-specific", "blocked-deferred"} and action["desiredState"].get("mutationAuthorized") is True:
-            raise GateError("non-mutation action is marked executable")
-        if stage == "budget-guardrails" and action["kind"] == "verify-budget":
-            if action["resource"].get("amount") != approval["maximumMonthlyBudgetKrw"]:
-                raise GateError("manifest budget does not match approval result")
-            budget_seen = True
-        prior_stages.append(stage)
+            raise GateError("non-mutation-action-executable")
+        groups[stage].append(action); sequence.append(stage)
     expected_stages = [item[0] for item in STAGES]
-    if [stage for stage in dict.fromkeys(prior_stages)] != expected_stages:
-        raise GateError("manifest actions are missing, duplicate, unknown, or reordered")
-    if not budget_seen:
-        raise GateError("manifest budget action is missing")
+    if [stage for stage in dict.fromkeys(sequence)] != expected_stages:
+        raise GateError("canonical-stage-order-invalid")
+    finals: dict[str, str] = {}
+    for stage in expected_stages:
+        group = groups[stage]
+        _validate_stage_group(stage, group)
+        base = _base_dependencies(stage, finals)
+        for index, action in enumerate(group):
+            expected = base + ([group[index - 1]["id"]] if index else [])
+            if action["dependencies"] != expected:
+                raise GateError("canonical-dependencies-invalid")
+        finals[stage] = group[-1]["id"]
+    budget = groups["budget-guardrails"][0]
+    if budget["resource"].get("amount") != approval["maximumMonthlyBudgetKrw"]:
+        raise GateError("budget-binding-invalid")
+
+
+def _validate_stage_group(stage: str, group: list[dict[str, Any]]) -> None:
+    kinds = [item["kind"] for item in group]
+    exact = {
+        "project-billing": ["verify-project", "verify-billing-link", "verify-production-separation"],
+        "firebase-foundation": ["verify-firebase-project", "verify-firestore-location", "verify-storage-bucket", "verify-hosting-site"],
+        "service-accounts": ["ensure-service-account"] * 4,
+        "artifact-registry": ["ensure-artifact-repository"],
+        "budget-guardrails": ["verify-budget", "verify-notification-channel"],
+        "cloud-run-prerequisites": ["record-cloud-run-prerequisite"] * 3,
+        "cloud-tasks-prerequisites": ["record-cloud-tasks-prerequisite"] * 2,
+    }
+    if stage in exact and kinds != exact[stage]:
+        raise GateError("canonical-action-count-or-order-invalid")
+    if stage in {"api-baseline", "secret-metadata", "iam-bindings", "post-bootstrap-evidence"}:
+        allowed = {"api-baseline": "ensure-api-enabled", "secret-metadata": "ensure-secret-container", "iam-bindings": "review-iam-binding", "post-bootstrap-evidence": "collect-resource-evidence"}[stage]
+        if not group or any(kind != allowed for kind in kinds):
+            raise GateError("canonical-action-kind-invalid")
+    fixed_ids = {
+        "project-billing": ("verify-project", "verify-billing-link", "verify-production-separation"),
+        "firebase-foundation": ("firebase-project", "firestore-location", "storage-bucket", "hosting-site"),
+        "service-accounts": ("ensure-collaboration", "ensure-documentApi", "ensure-documentWorker", "ensure-tasksCaller"),
+        "artifact-registry": ("ensure-repository",),
+        "budget-guardrails": ("verify-budget", "verify-notification-channel"),
+        "cloud-run-prerequisites": ("record-collaboration", "record-documentApi", "record-documentWorker"),
+        "cloud-tasks-prerequisites": ("record-parse", "record-export"),
+    }
+    if stage in fixed_ids and [item["id"] for item in group] != [f"{stage}.{suffix}" for suffix in fixed_ids[stage]]:
+        raise GateError("canonical-action-id-order-invalid")
+    for index, action in enumerate(group, start=1):
+        if stage == "api-baseline" and action["id"] != f"{stage}.ensure-api-{index:02d}":
+            raise GateError("canonical-action-id-order-invalid")
+        if stage == "iam-bindings" and action["id"] != f"{stage}.review-{index:02d}":
+            raise GateError("canonical-action-id-order-invalid")
+        if stage == "post-bootstrap-evidence" and action["id"] != f"{stage}.collect-{index:02d}":
+            raise GateError("canonical-action-id-order-invalid")
+    if stage == "cloud-run-prerequisites" and [item["id"] for item in group] != [f"{stage}.record-{item}" for item in ("collaboration", "documentApi", "documentWorker")]:
+        raise GateError("canonical-action-id-order-invalid")
+    if stage == "cloud-tasks-prerequisites" and [item["id"] for item in group] != [f"{stage}.record-parse", f"{stage}.record-export"]:
+        raise GateError("canonical-action-id-order-invalid")
+
+
+def _base_dependencies(stage: str, finals: dict[str, str]) -> list[str]:
+    lookup = {
+        "project-billing": (), "api-baseline": ("project-billing",),
+        "firebase-foundation": ("api-baseline",), "service-accounts": ("api-baseline",),
+        "artifact-registry": ("api-baseline",), "secret-metadata": ("api-baseline", "service-accounts"),
+        "iam-bindings": ("firebase-foundation", "service-accounts", "secret-metadata"),
+        "budget-guardrails": ("project-billing",),
+        "cloud-run-prerequisites": ("service-accounts", "artifact-registry", "secret-metadata", "iam-bindings"),
+        "cloud-tasks-prerequisites": ("service-accounts", "cloud-run-prerequisites"),
+        "post-bootstrap-evidence": ("firebase-foundation", "service-accounts", "artifact-registry", "secret-metadata", "iam-bindings", "budget-guardrails"),
+    }
+    return [finals[item] for item in lookup[stage]]
 
 
 def _exact_keys(value: Any, expected: set[str], label: str) -> None:
@@ -235,7 +301,11 @@ def _staging_project(value: str) -> None:
 
 
 def _approval_requested_state(approval: dict[str, Any]) -> bool:
-    return approval.get("cloudMutationApproved") is True
+    return _field(approval, "cloudMutationApproved") is True
+
+
+def _field(value: Any, key: str) -> Any:
+    return value.get(key) if isinstance(value, dict) else None
 
 
 def _safe_string(value: Any) -> str:
@@ -248,7 +318,7 @@ def _reject_unsafe(value: Any, path: str) -> None:
             normalized = re.sub(r"[^a-z0-9]", "", str(key).lower())
             safe_metadata = (normalized == "secretvaluesincluded" and item is False) or (normalized == "containsmutationcommands" and item is False) or (normalized == "mutationcommands" and item == [])
             if (any(marker in normalized for marker in SENSITIVE) and not safe_metadata) or (any(marker in normalized for marker in EXECUTABLE) and not safe_metadata):
-                raise GateError(f"unsafe field is not allowed at {path}.{key}")
+                raise GateError("unsafe-input")
             _reject_unsafe(item, f"{path}.{key}")
     elif isinstance(value, list):
         for index, item in enumerate(value):
@@ -259,7 +329,51 @@ def _reject_unsafe(value: Any, path: str) -> None:
 
 def _sensitive_value(value: str) -> bool:
     lowered = value.lower()
-    return bool(re.search(r"(?:bearer\s+|-----begin|AIza|ya29\.)", lowered))
+    return bool(re.search(r"(?:bearer\s+|-----begin|aiza|ya29\.)", lowered))
+
+
+def _validate_nested(value: Any, label: str, project: str, parent_key: str | None) -> None:
+    if isinstance(value, dict):
+        for key, item in value.items():
+            if not isinstance(key, str):
+                raise GateError("nested-key-invalid")
+            normalized = re.sub(r"[^a-z0-9]", "", key.lower())
+            if any(marker in normalized for marker in SENSITIVE + EXECUTABLE):
+                raise GateError("nested-unsafe-field")
+            _validate_nested(item, label, project, normalized)
+        return
+    if isinstance(value, list):
+        for item in value:
+            _validate_nested(item, label, project, parent_key)
+        return
+    if isinstance(value, str):
+        if not value or value != value.strip() or re.search(r"[\x00-\x1f\x7f\x85\u2028\u2029]", value) or _sensitive_value(value):
+            raise GateError("nested-string-invalid")
+        if parent_key != "forbiddenprojectids" and _production_like(value):
+            raise GateError("nested-production-resource")
+        if parent_key == "projectid" and value != project:
+            raise GateError("nested-project-binding-invalid")
+        if parent_key in {"identity", "serviceaccount", "callerserviceaccount", "principal"} and "@" in value and f"@{project}.iam.gserviceaccount.com" not in value:
+            raise GateError("nested-identity-binding-invalid")
+        return
+    if value is None or isinstance(value, (bool, int, float)):
+        return
+    raise GateError("nested-value-type-invalid")
+
+
+def _production_like(value: str) -> bool:
+    lowered = value.lower()
+    return "production" in lowered or bool(re.search(r"(^|[-_.:/])prod(?:[-_.:/]|$)", lowered))
+
+
+def _canonical(value: Any) -> str:
+    return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+
+
+def _action_set_sha256(actions: Any) -> str:
+    if not isinstance(actions, list):
+        raise GateError("action-set-invalid")
+    return hashlib.sha256(_canonical(actions).encode("utf-8")).hexdigest()
 
 
 def _validate_paths(manifest: Path, approval: Path, json_output: Path, markdown_output: Path, marker: Path) -> None:

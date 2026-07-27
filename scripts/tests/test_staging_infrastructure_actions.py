@@ -79,6 +79,7 @@ class InfrastructureActionsTest(unittest.TestCase):
         self.assertEqual(execution["billingAccount"], self.plan["billingAccount"])
         self.assertEqual(execution["sourceEvidence"]["planSha256"], self.approval_result["planSha256"])
         self.assertEqual(execution["sourceEvidence"]["planObjectSha256"], self.approval_result["planObjectSha256"])
+        self.assertRegex(execution["sourceEvidence"]["actionSetSha256"], r"^[0-9a-f]{64}$")
         self.assertEqual(execution["security"], {
             "secretValuesIncluded": False,
             "productionResourcesAllowed": False,

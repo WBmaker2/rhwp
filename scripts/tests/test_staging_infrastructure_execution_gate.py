@@ -57,6 +57,7 @@ class ExecutionReadinessGateTest(unittest.TestCase):
             ("commit", lambda manifest, approval: manifest["sourceEvidence"].__setitem__("commitSha", "2" * 40)),
             ("plan", lambda manifest, approval: manifest["sourceEvidence"].__setitem__("planSha256", "2" * 64)),
             ("plan object", lambda manifest, approval: manifest["sourceEvidence"].__setitem__("planObjectSha256", "2" * 64)),
+            ("action set", lambda manifest, approval: manifest["sourceEvidence"].__setitem__("actionSetSha256", "2" * 64)),
             ("project", lambda manifest, approval: manifest.__setitem__("projectId", "other-staging-project")),
             ("billing", lambda manifest, approval: manifest.__setitem__("billingAccount", "AAAAAA-BBBBBB-CCCCCC")),
             ("stages", lambda manifest, approval: approval.__setitem__("approvedStageIds", list(reversed(approval["approvedStageIds"]))),),
@@ -89,6 +90,26 @@ class ExecutionReadinessGateTest(unittest.TestCase):
                 mutate(manifest)
                 self.assertEqual(self.evaluate(manifest)["status"], "blocked")
 
+    def test_requires_exact_canonical_action_shape_and_safe_nested_values(self) -> None:
+        cases = (
+            ("missing final", lambda manifest: manifest["actions"].pop()),
+            ("duplicate resource", lambda manifest: manifest["actions"].append(copy.deepcopy(manifest["actions"][0]))),
+            ("missing dependency", lambda manifest: manifest["actions"][1].__setitem__("dependencies", [])),
+            ("nested production", lambda manifest: manifest["actions"][0]["resource"].__setitem__("projectId", "rhwp-production-001")),
+            ("bad resource type", lambda manifest: manifest["actions"][0].__setitem__("resource", "not-a-map")),
+            ("unknown secret key", lambda manifest: manifest["actions"][0]["resource"].__setitem__("superSecret", "must-not-leak")),
+            ("AIza", lambda manifest: manifest["actions"][0]["resource"].__setitem__("value", "AIzaMustNotLeak")),
+        )
+        for label, mutate in cases:
+            with self.subTest(label=label):
+                manifest = copy.deepcopy(self.manifest)
+                mutate(manifest)
+                result = self.evaluate(manifest)
+                self.assertEqual(result["status"], "blocked")
+                self.assertEqual(result["blockedReasons"], ["malformed-input"])
+                self.assertNotIn("superSecret", json.dumps(result))
+                self.assertNotIn("must-not-leak", json.dumps(result))
+
     def test_rejects_sensitive_values_and_malformed_approval_without_leaking_them(self) -> None:
         for target, key in (("manifest", "privateKey"), ("approval", "accessToken")):
             with self.subTest(target=target):
@@ -97,6 +118,13 @@ class ExecutionReadinessGateTest(unittest.TestCase):
                 result = self.evaluate(manifest, approval)
                 self.assertEqual(result["status"], "blocked")
                 self.assertNotIn("must-not-leak", json.dumps(result))
+
+    def test_never_raises_for_non_mapping_untrusted_inputs(self) -> None:
+        for manifest, approval in ((None, self.approval), (self.manifest, None), ([], [])):
+            with self.subTest(manifest=type(manifest).__name__, approval=type(approval).__name__):
+                result = evaluate_execution_readiness(manifest, approval)  # type: ignore[arg-type]
+                self.assertEqual(result["status"], "blocked")
+                self.assertEqual(result["blockedReasons"], ["malformed-input"])
 
     def test_task1_task2_task3_integration_and_safe_markdown(self) -> None:
         result = self.evaluate()
