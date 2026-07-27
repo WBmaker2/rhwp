@@ -31,7 +31,7 @@
 - Create `scripts/staging_infrastructure_execution_gate.py`: non-mutating readiness evaluator for the reviewed execution manifest.
 - Create `scripts/tests/test_staging_infrastructure_execution_gate.py`: TDD coverage proving no subprocess, fail-closed approvals, and exact next-approval reporting.
 - Create `scripts/staging_infrastructure_action_io.py`: shared atomic paired-output publish and completion-marker handling.
-- Create `scripts/staging_infrastructure_validation.py`: shared bounded raw-byte parser and single-file-descriptor regular-file reader (`MAX_JSON_BYTES + 1` read after `fstat`), strict JSON-domain validation, and canonical JSON helpers for untrusted evidence.
+- Create `scripts/staging_infrastructure_validation.py`: shared bounded raw-byte parser and `O_NONBLOCK | O_CLOEXEC` single-file-descriptor reader that rejects non-regular files after same-FD `fstat` (`MAX_JSON_BYTES + 1` bounded read), strict JSON-domain validation, and canonical JSON helpers for untrusted evidence.
 - Modify `scripts/staging_infrastructure_plan.py`: preserve the canonical safe `security.secretValuesIncluded=false` declaration after sensitive-data redaction so downstream validation has a non-secret, deterministic boundary marker.
 - Modify `.gitignore`: ignore `/artifacts/` so actual operator-local plan/approval/execution metadata cannot be added to the tracked repository by this workflow.
 - Modify `docs/runbooks/staging-infrastructure-bootstrap.md`: document validation, dry-run, apply approval, WIF, evidence, and rollback boundaries.
