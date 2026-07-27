@@ -224,8 +224,10 @@ class InfrastructureActionsTest(unittest.TestCase):
         self.build(self.plan, approval, compact)
         with self.assertRaisesRegex(InfrastructureActionsError, "digest"):
             self.build(self.plan, approval, plan_bytes(self.plan))
-        with self.assertRaisesRegex(InfrastructureActionsError, "plan bytes"):
-            build_execution_manifest(self.plan, self.approval_result)
+        self.assertEqual(
+            build_execution_manifest(self.plan, self.approval_result)["projectId"],
+            self.plan["projectId"],
+        )
         plan = copy.deepcopy(self.plan)
         plan["stages"][0]["mutationApprovalRequired"] = False
         with self.assertRaisesRegex(InfrastructureActionsError, "mutationApprovalRequired"):
@@ -247,3 +249,30 @@ class InfrastructureActionsTest(unittest.TestCase):
                 mutate(plan)
                 with self.assertRaisesRegex(InfrastructureActionsError, pattern):
                     self.build(plan, self.approval_result)
+
+    def test_rejects_sensitive_values_and_executable_key_variants(self) -> None:
+        cases = (
+            ("bearer", lambda plan: plan["stages"][0].__setitem__("rollbackBoundary", "Bearer must-not-leak"), "sensitive value"),
+            ("private key", lambda plan: plan["stages"][0].__setitem__("intent", "-----BEGIN PRIVATE KEY-----"), "sensitive value"),
+            ("command variant", lambda plan: plan["stages"][0]["resources"].__setitem__("commandString", "not-run"), "executable"),
+            ("shell variant", lambda plan: plan["stages"][0]["resources"].__setitem__("shell_command", "not-run"), "executable"),
+        )
+        for label, mutate, pattern in cases:
+            with self.subTest(label=label):
+                plan = copy.deepcopy(self.plan)
+                mutate(plan)
+                with self.assertRaisesRegex(InfrastructureActionsError, pattern):
+                    self.build(plan, self.approval_result)
+
+    def test_actions_retain_budget_and_cloud_run_prerequisite_details(self) -> None:
+        execution = self.build(self.plan, self.approval_result)
+        actions = {action["id"]: action for action in execution["actions"]}
+        budget = next(stage["resources"] for stage in self.plan["stages"] if stage["id"] == "budget-guardrails")
+        budget_action = actions["budget-guardrails.verify-budget"]
+        self.assertEqual(budget_action["resource"], {"currency": budget["currency"], "amount": budget["amount"], "thresholds": budget["thresholds"]})
+        self.assertEqual(budget_action["desiredState"]["thresholds"], budget["thresholds"])
+        notification = actions["budget-guardrails.verify-notification-channel"]
+        self.assertEqual(notification["resource"]["notificationChannels"], budget["notificationChannels"])
+        cloud_run = next(stage["resources"] for stage in self.plan["stages"] if stage["id"] == "cloud-run-prerequisites")
+        action = actions["cloud-run-prerequisites.record-collaboration"]
+        self.assertEqual(action["resource"], {"service": cloud_run["collaboration"]["name"], "serviceAccount": cloud_run["collaboration"]["serviceAccount"], "ingress": cloud_run["collaboration"]["ingress"], "runtime": cloud_run["collaboration"]["runtime"], "state": "blocked-pending-image-digest"})

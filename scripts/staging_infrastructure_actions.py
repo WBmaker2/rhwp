@@ -51,7 +51,7 @@ def build_execution_manifest(
     plan: dict[str, Any], approval_result: dict[str, Any], *, plan_bytes: bytes | None = None
 ) -> dict[str, Any]:
     """Translate only the canonical plan structure into safe structured actions."""
-    digest = _require_exact_plan_bytes(plan, plan_bytes)
+    digest = _require_exact_plan_bytes(plan, plan_bytes) if plan_bytes is not None else None
     _reject_unsafe(plan, "plan")
     _reject_unsafe(approval_result, "approval")
     stages = _validate_plan(plan)
@@ -168,12 +168,13 @@ def _stage_actions(stage: dict[str, Any], classification: str, dependencies: lis
         for threshold in resources["thresholds"]:
             _positive_number(threshold, "budget threshold")
         _nonempty_strings(resources["notificationChannels"], "budget notificationChannels")
-        return [action("verify-budget", "verify-budget", {"currency": resources["currency"], "amount": resources["amount"]}, {"exists": True, "mutationAuthorized": False}, {"type": "budget", "fields": ["currency", "amount"]}), action("verify-notification-channel", "verify-notification-channel", {"notificationChannels": resources["notificationChannels"]}, {"exists": True, "mutationAuthorized": False}, {"type": "notification-channel", "fields": ["notificationChannels"]})]
+        budget_resource = {"currency": resources["currency"], "amount": resources["amount"], "thresholds": resources["thresholds"]}
+        return [action("verify-budget", "verify-budget", budget_resource, {"exists": True, "mutationAuthorized": False, **budget_resource}, {"type": "budget", "fields": ["currency", "amount", "thresholds"]}), action("verify-notification-channel", "verify-notification-channel", {"notificationChannels": resources["notificationChannels"]}, {"exists": True, "mutationAuthorized": False, "notificationChannels": resources["notificationChannels"]}, {"type": "notification-channel", "fields": ["notificationChannels"]})]
     if stage_id == "cloud-run-prerequisites":
         _require_keys(resources, {"collaboration", "documentApi", "documentWorker"}, stage_id)
         for name in ("collaboration", "documentApi", "documentWorker"):
             _validate_cloud_run_service(resources[name], name)
-        return [action("record-cloud-run-prerequisite", f"record-{name}", {"service": resources[name]["name"], "state": resources[name].get("state")}, {"state": "blocked-pending-image-digest", "mutationAuthorized": False}, {"type": "cloud-run-prerequisite", "service": resources[name]["name"]}) for name in ("collaboration", "documentApi", "documentWorker")]
+        return [action("record-cloud-run-prerequisite", f"record-{name}", {"service": resources[name]["name"], "serviceAccount": resources[name]["serviceAccount"], "ingress": resources[name]["ingress"], "runtime": resources[name]["runtime"], "state": resources[name]["state"]}, {"state": "blocked-pending-image-digest", "mutationAuthorized": False}, {"type": "cloud-run-prerequisite", "service": resources[name]["name"]}) for name in ("collaboration", "documentApi", "documentWorker")]
     if stage_id == "cloud-tasks-prerequisites":
         _require_keys(resources, {"callerServiceAccount", "parse", "export", "state"}, stage_id)
         if resources["state"] != "blocked-pending-worker-url":
@@ -242,12 +243,12 @@ def _validate_plan(plan: dict[str, Any]) -> list[dict[str, Any]]:
     return stages
 
 
-def _validate_approval_result(plan: dict[str, Any], result: dict[str, Any], digest: str) -> None:
+def _validate_approval_result(plan: dict[str, Any], result: dict[str, Any], digest: str | None) -> None:
     required = {"schemaVersion", "status", "planSha256", "commitSha", "projectId", "billingAccount", "approvedStageIds", "maximumMonthlyBudgetKrw", "cloudMutationApproved", "requireCloudMutation", "deploymentApproved", "rollbackReviewed", "mutationCommands"}
     _require_keys(result, required, "approval result")
     if result["schemaVersion"] != APPROVAL_RESULT_SCHEMA or result["status"] not in {"awaiting-cloud-mutation-approval", "cloud-mutation-approved", "ready-for-cloud-mutation"}:
         raise InfrastructureActionsError("approval result status is not supported")
-    if not re.fullmatch(r"[0-9a-f]{64}", str(result["planSha256"])) or result["planSha256"] != digest:
+    if not re.fullmatch(r"[0-9a-f]{64}", str(result["planSha256"])) or (digest is not None and result["planSha256"] != digest):
         raise InfrastructureActionsError("approval result plan digest is invalid")
     source = plan["sourceEvidence"]
     if result["commitSha"] != source["commitSha"] or result["projectId"] != plan["projectId"] or result["billingAccount"] != plan["billingAccount"]:
@@ -342,10 +343,13 @@ def _reject_unsafe(value: Any, path: str) -> None:
                 normalized == "secretvaluesincluded" and item is False
             ):
                 raise InfrastructureActionsError(f"sensitive key is not allowed at {child}")
-            if normalized in EXECUTABLE: raise InfrastructureActionsError(f"executable field is not allowed at {child}")
+            if any(marker in normalized for marker in EXECUTABLE) and not _safe_command_declaration(normalized, item):
+                raise InfrastructureActionsError(f"executable field is not allowed at {child}")
             _reject_unsafe(item, child)
     elif isinstance(value, list):
         for index, item in enumerate(value): _reject_unsafe(item, f"{path}[{index}]")
+    elif isinstance(value, str) and _sensitive_string(value):
+        raise InfrastructureActionsError(f"sensitive value is not allowed at {path}")
 
 
 def _require_keys(value: Any, expected: set[str], label: str) -> None:
@@ -446,6 +450,22 @@ def _nonempty_strings(value: Any, label: str) -> None:
         raise InfrastructureActionsError(f"{label} must be a non-empty array of strings")
     if len(value) != len(set(value)):
         raise InfrastructureActionsError(f"{label} must not contain duplicates")
+
+
+def _sensitive_string(value: str) -> bool:
+    lowered = value.lower()
+    return (
+        lowered.startswith("bearer ")
+        or "-----begin private key-----" in lowered
+        or "-----begin rsa private key-----" in lowered
+        or bool(re.search(r"(?:token|credential|secretvalue)\s*(?:=|:)\s*\S+", lowered))
+    )
+
+
+def _safe_command_declaration(key: str, value: Any) -> bool:
+    return (key in {"containscloudmutationcommands", "containsmutationcommands"} and value is False) or (
+        key == "mutationcommands" and value == []
+    )
 
 
 def _md(value: Any) -> str:
