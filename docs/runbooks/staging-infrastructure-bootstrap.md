@@ -1,416 +1,142 @@
 # rhwp Staging Infrastructure Bootstrap Runbook
 
-## 상태
+## 상태와 안전 경계
 
-- 적용 환경: staging only
-- 대상 PR: `WBmaker2/rhwp#1`
-- 현재 구현된 범위: 운영 값 결정, materialization, static preflight, bootstrap packet, bootstrap approval record 계약, infrastructure plan 생성
-- 현재 실행 금지 범위: project·billing·API·Firebase·IAM·service account·Artifact Registry·Secret·Cloud Tasks·Budget·Cloud Run 생성 또는 변경
-- live preflight: 실제 infrastructure 준비와 별도 승인 전 금지
-- deployment: deployment packet과 별도 deployment approval 전 금지
+이 runbook은 staging 전용 infrastructure 검토 증거를 생성하고 확인하는 현재 구현을 설명합니다. 현재 구현은 클라우드 인증, cloud CLI 호출, resource 생성·변경, GitHub Environment 변경, workflow dispatch, 배포를 수행하지 않습니다.
 
-## 1. 전체 수명 주기
+- 현재 상태: `awaiting-cloud-mutation-approval`
+- 현재 지원: infrastructure plan 승인 검증, 구조화 action manifest 생성, execution readiness gate
+- 현재 미지원: dry-run, apply, WIF 인증, environment 생성·구성, resource mutation, live preflight, image build/push, deployment
+- 공통 출력 경계: `mutationCommands=[]`, deployment 권한은 항상 `false`, 실행 가능한 shell/argv는 생성하지 않습니다.
 
-| 단계 | 목적 | 현재 지원 | Cloud mutation |
-|---:|---|---|---|
-| 1 | 실제 운영 값 결정서와 체크리스트 | 지원 | 없음 |
-| 2 | `staging-bootstrap` protected environment 설정 | workflow 계약·체크리스트 지원, 실제 설정은 저장소 소유자가 수행 | 없음 |
-| 3 | 최초 actual bootstrap packet 생성 | workflow 지원, actual values 필요 | 없음 |
-| 4 | packet 검토와 bootstrap approval record | schema·example·검증 지원 | 없음 |
-| 5 | infrastructure bootstrap plan 생성 | planner·protected plan-only workflow 지원 | 없음 |
-| 6 | 별도 infrastructure 승인 | example record와 검토 기준 지원 | 없음 |
-| 7 | staging resource 생성 | **미구현 / 별도 승인 단위** | 있음 |
-| 8 | 실제 resource identifier 반영 | 7단계 후 별도 구현 | 없음 또는 승인된 설정 변경 |
-| 9 | live read-only preflight | 기존 workflow 지원, 7·8단계 완료 필요 | 조회만 |
-| 10 | deployment approval packet | 기존 generator 지원 | 없음 |
-| 11 | 별도 deployment 승인 | example record 지원 | 없음 |
-| 12 | staging deployment | **미구현 / 별도 승인 단위** | 있음 |
+실제 운영 값, 승인 artifact, credential, token, private key, service-account key, Firebase API key 값, internal flush 원문은 추적 문서나 예시에 기록하지 않습니다.
 
-## 2. 관련 문서와 파일
+## 세 가지 별도 승인
 
-```text
-docs/approvals/staging-bootstrap-values-decision.md
-docs/approvals/staging-bootstrap-values-checklist.md
-docs/approvals/staging-bootstrap-approval-record.example.json
-docs/approvals/staging-infrastructure-approval-record.example.json
-docs/approvals/staging-deployment-approval-record.example.json
-deploy/staging/staging-bootstrap-values.example.json
-scripts/staging_bootstrap_materializer.py
-scripts/staging_preflight.py
-scripts/staging_approval_packet.py
-scripts/staging_infrastructure_plan.py
-.github/workflows/staging-config-validate.yml
-```
+| 승인 | 검토 대상 | 현재 구현의 결과 | 다른 승인과의 관계 |
+| --- | --- | --- | --- |
+| Plan review approval | exact infrastructure plan bytes, commit, project/billing 바인딩, stage 순서, 예산, rollback 검토 | `cloudMutationApproved=false`이면 `awaiting-cloud-mutation-approval` | apply 권한이 아닙니다. |
+| Cloud mutation approval | 동일한 증거에 바인딩한 별도 `cloudMutationApproved=true` record | 현재 executor가 없으므로 실행하지 않습니다. | plan review·deployment approval을 대체하지 않습니다. |
+| Deployment approval | deployment packet, immutable image digest, live preflight, IAM diff, rollback/acceptance evidence | 현재 범위 밖이며 항상 별도입니다. | infrastructure mutation approval을 대체하지 않습니다. |
 
-실제 승인 artifact를 저장소에 기록할 경우 다음 디렉터리를 사용한다.
+현재 actual plan-review record의 `cloudMutationApproved=false`는 plan 검토에만 유효합니다. 이 record는 apply 입력이 될 수 없으며, `--require-cloud-mutation` 검증도 통과하지 못합니다.
 
-```text
-docs/approvals/records/<approval-reference>/
-```
+## 현재 구현된 검토 명령
 
-권장 파일 이름:
+아래 `<reviewed-evidence-dir>`은 비밀이 없는 검토 완료 증거를 보관하는 로컬 경로 placeholder입니다. 출력 경로도 로컬 검토 산출물 placeholder이며, 운영 값을 의미하지 않습니다.
 
-```text
-staging-manifest-bootstrap.json
-staging-preflight-static.json
-staging-approval-packet.json
-staging-approval-packet.md
-staging-bootstrap-approval-record.json
-staging-infrastructure-plan.json
-staging-infrastructure-plan.md
-staging-infrastructure-approval-record.json
-staging-preflight-live.json
-staging-deployment-approval-packet.json
-staging-deployment-approval-packet.md
-staging-deployment-approval-record.json
-```
-
-이 디렉터리에는 secret 원문, token, credential, password, private key 또는 service-account key를 저장하지 않는다.
-
-## 3. 단계 1: 실제 운영 값 결정
-
-다음 문서를 순서대로 검토한다.
-
-```text
-docs/approvals/staging-bootstrap-values-decision.md
-docs/approvals/staging-bootstrap-values-checklist.md
-```
-
-확정할 값:
-
-```text
-STAGING_PROJECT_ID
-STAGING_BILLING_ACCOUNT
-STAGING_FORBIDDEN_PROJECT_IDS_JSON
-STAGING_STORAGE_BUCKET
-STAGING_MONTHLY_BUDGET_KRW
-STAGING_BUDGET_NOTIFICATION_CHANNELS_JSON
-STAGING_DATA_RETENTION_DAYS
-STAGING_APPROVAL_REFERENCE
-STAGING_INTERNAL_FLUSH_DECISION
-```
-
-아래 조건에서는 중단한다.
-
-- project ID가 production-like이거나 forbidden project와 일치
-- billing account·비용 책임자·KRW 예산이 미확정
-- Storage bucket이 staging project에 종속되지 않음
-- notification channel이 비어 있음
-- security decision이 `mvp-staging-internal-token`이 아님
-- values에 secret-like key가 포함됨
-
-## 4. 단계 2: `staging-bootstrap` protected environment
-
-실제 GitHub Environment 설정은 repository owner가 GitHub UI에서 수행한다. repository workflow는 환경을 생성하지 않는다.
-
-필수 설정:
-
-- Environment name: `staging-bootstrap`
-- Required reviewer: 최소 1명
-- Environment secrets: 없음
-- WIF provider 또는 GCP service account secret: 없음
-- 허용 variables: 운영 값 9개
-- workflow 권한: `contents: read`
-- `id-token: write`: 없음
-
-환경 설정이 존재하지 않거나 reviewer가 승인하지 않으면 bootstrap job을 실행하지 않는다.
-
-## 5. 단계 3: 최초 actual bootstrap packet
-
-GitHub Actions에서 `Staging configuration`을 수동 실행한다.
-
-```text
-approval_phase=bootstrap
-live_check=false
-manifest_path=deploy/staging/staging-manifest.json
-```
-
-예상 artifact:
-
-```text
-staging-approval-packet-bootstrap
-```
-
-필수 검토:
-
-- materialized manifest project ID와 billing account
-- forbidden production project IDs
-- Firebase domain, Storage bucket, Hosting site
-- KRW budget, thresholds, notification channels
-- service account와 IAM bindings
-- `cloudMutationApproved=false`
-- `mutationCommands=[]`
-- resource-derived deferred paths만 존재
-
-이 packet은 infrastructure 생성 또는 deployment 승인이 아니다.
-
-## 6. 단계 4: Bootstrap approval record
-
-Packet JSON 원문 바이트의 SHA-256을 계산한다.
+### 1. Infrastructure approval 검증
 
 ```bash
-shasum -a 256 staging-approval-packet.json
+python3 scripts/staging_infrastructure_approval.py \
+  --plan <reviewed-evidence-dir>/staging-infrastructure-plan.json \
+  --approval <reviewed-evidence-dir>/staging-infrastructure-approval-record.json \
+  --json-output <review-output-dir>/infrastructure-approval-result.json \
+  --markdown-output <review-output-dir>/infrastructure-approval-result.md
 ```
 
-다음 example을 복사해 실제 검토 결과를 기록한다.
+이 명령은 plan의 실제 바이트 SHA-256, canonical plan object digest, commit, project/billing, ordered stage IDs, budget, rollback acknowledgement를 fail-closed로 결합합니다. `cloudMutationApproved=false` record는 정상 검토 결과로 처리할 수 있지만 status는 `awaiting-cloud-mutation-approval`입니다. `--require-cloud-mutation`은 향후 별도 승인 record 검증용이며, 현재 record에는 사용하지 않습니다.
 
-```text
-docs/approvals/staging-bootstrap-approval-record.example.json
-```
-
-승인 record 필수 조건:
-
-- `schemaVersion=rhwp.staging-bootstrap-approval/v1`
-- `decision=approved`
-- UTC `approvedAt`
-- 비어 있지 않은 `approvedBy`
-- 대상 40자리 commit SHA
-- 실제 workflow run ID
-- packet SHA-256 일치
-- project ID와 billing account 일치
-- packet의 deferred path 전체와 정확히 일치
-- staging internal-token 예외 명시
-- `deploymentApproved=false`
-- `cloudMutationApproved=false`
-
-Packet이 수정되면 기존 record를 재사용하지 않고 새 digest와 새 승인 기록을 만든다.
-
-## 7. 단계 5: Infrastructure bootstrap plan
-
-### 7.1 Local 실행
+### 2. Action manifest 생성
 
 ```bash
-python3 scripts/staging_infrastructure_plan.py \
-  --manifest docs/approvals/records/<approval-reference>/staging-manifest-bootstrap.json \
-  --bootstrap-packet docs/approvals/records/<approval-reference>/staging-approval-packet.json \
-  --bootstrap-approval-record docs/approvals/records/<approval-reference>/staging-bootstrap-approval-record.json \
-  --json-output artifacts/staging-infrastructure-plan.json \
-  --markdown-output artifacts/staging-infrastructure-plan.md
+python3 scripts/staging_infrastructure_actions.py \
+  --plan <reviewed-evidence-dir>/staging-infrastructure-plan.json \
+  --approval <reviewed-evidence-dir>/staging-infrastructure-approval-record.json \
+  --json-output <review-output-dir>/staging-infrastructure-execution-manifest.json \
+  --markdown-output <review-output-dir>/staging-infrastructure-execution-manifest.md
 ```
 
-Planner는 다음을 검증한다.
+이 명령은 검토 증거만 생성합니다. action에는 `id`, `stageId`, classification, structured resource/evidence 정보만 포함되며 executable argv, shell string, credential, secret value는 포함되지 않습니다.
 
-- bootstrap approval record가 `approved`
-- packet digest 일치
-- project ID와 billing account 일치
-- deferred paths 일치
-- production-like project 차단
-- secret-like key 차단
-- deployment 및 cloud mutation 승인 플래그가 `false`
+### 3. Execution readiness gate
 
-생성 plan은 다음 11개 ordered stage를 포함한다.
-
-```text
-project-billing
-api-baseline
-firebase-foundation
-service-accounts
-artifact-registry
-secret-metadata
-iam-bindings
-budget-guardrails
-cloud-run-prerequisites
-cloud-tasks-prerequisites
-post-bootstrap-evidence
+```bash
+python3 scripts/staging_infrastructure_execution_gate.py \
+  --execution-manifest <review-output-dir>/staging-infrastructure-execution-manifest.json \
+  --approval-result <review-output-dir>/infrastructure-approval-result.json \
+  --json-output <review-output-dir>/staging-infrastructure-readiness.json \
+  --markdown-output <review-output-dir>/staging-infrastructure-readiness.md \
+  --strict-blocked-exit
 ```
 
-Plan은 shell 또는 cloud mutation command를 포함하지 않는다.
+gate는 canonical manifest와 approval-result의 digest·commit·plan object provenance를 재검증하고, 필요한 승인 목록만 보고합니다. 어떠한 cloud authentication이나 mutation도 하지 않습니다.
 
-### 7.2 GitHub plan-only workflow
+### Completion marker와 strict blocked exit
 
-실제 non-secret reviewed files가 branch에 존재할 때 다음 입력으로 수동 실행한다.
+action manifest와 readiness gate가 성공적으로 두 출력 파일을 모두 publish하면 JSON output 옆에 `<json-output>.complete` completion marker를 만듭니다. marker는 두 산출물이 동일 실행에서 완성되었다는 로컬 publish 증거일 뿐, 승인·인증·apply 완료·배포 완료를 뜻하지 않습니다.
 
-```text
-approval_phase=infrastructure-plan
-live_check=false
-manifest_path=docs/approvals/records/<approval-reference>/staging-manifest-bootstrap.json
-bootstrap_packet_path=docs/approvals/records/<approval-reference>/staging-approval-packet.json
-bootstrap_approval_record_path=docs/approvals/records/<approval-reference>/staging-bootstrap-approval-record.json
-```
+`--strict-blocked-exit`은 readiness status가 `blocked`일 때 exit code `2`를 반환합니다. 정상적인 `awaiting-cloud-mutation-approval` 또는 `awaiting-executor-design-approval`은 blocked가 아니므로 exit code `0`입니다. 입력/출력 계약 오류는 exit code `1`입니다.
 
-보호 환경:
+## Canonical stage 분류와 실행 경계
 
-```text
-staging-infrastructure
-```
+모든 stage는 canonical table에서만 분류합니다. 알 수 없는 stage, 누락된 required field, classification/action 불일치, disposition에 어긋나는 action은 fail-closed입니다. 어느 분류도 executable argv를 만들지 않습니다.
 
-이 job은 다음 특성을 가진다.
+| 분류 | Stage | 현재 허용 범위 |
+| --- | --- | --- |
+| observation-only | `project-billing`, `post-bootstrap-evidence` | read-only identity/billing/evidence 확인만 합니다. |
+| eligible-mutation | `api-baseline`, `service-accounts`, `artifact-registry`, `secret-metadata` | 미래 executor에서만 별도 allowlist와 승인 뒤 idempotent create/enable을 설계할 수 있습니다. 현재는 구조화 검토 증거만 생성합니다. |
+| irreversible-manual-decision | `firebase-foundation`, `budget-guardrails` | 현재 observation only입니다. 위치·budget/channel의 실제 생성은 별도 콘솔/API 의사결정과 승인이 필요합니다. |
+| deferred-resource-specific | `iam-bindings` | 모든 referenced resource 존재 및 exact before/after IAM diff 승인 전까지 deferred입니다. |
+| blocked-deferred | `cloud-run-prerequisites`, `cloud-tasks-prerequisites` | immutable image digest, worker URL, deployment approval 및 queue/IAM diff 전까지 blocked입니다. |
 
-- `contents: read` only
-- GCP authentication 없음
-- Firebase authentication 없음
-- cloud CLI 설치 없음
-- `id-token: write` 없음
-- resource mutation 없음
+`project-billing`은 project 생성·삭제·billing relink를 수행하지 않습니다. eligible-mutation stage도 API 자동 disable, service-account key 생성, secret version의 추가·읽기·출력, repository 삭제를 허용하지 않습니다.
 
-예상 artifact:
+## FUTURE REQUIREMENTS: executor trust design
 
-```text
-staging-infrastructure-bootstrap-plan
-```
+apply workflow를 구현하기 전에, 추적하지 않는 actual plan/approval/manifest package의 비밀 없는 실제 증거 전달·저장 방식을 사용자가 승인해야 합니다. caller가 넣은 attestation boolean이나 임의 경로 문자열을 신뢰해서는 안 됩니다.
 
-## 8. 단계 6: 별도 Infrastructure 승인
+미래 executor는 인증 전에 다음을 모두 수행해야 합니다.
 
-다음 example을 사용한다.
+1. immutable reviewed executor commit을 정확히 고정하고, 실행한 code revision을 evidence에 기록합니다.
+2. exact plan bytes, approval record, execution manifest의 SHA-256과 canonical object digest를 서로 대조합니다.
+3. GitHub protected environment의 required-reviewer 승인을 approval event로 사용합니다.
+4. approved non-secret evidence transport에서 받은 artifact의 provenance와 digest를 검증합니다.
+5. 검증 실패, 예상 밖 resource, allowlist 밖 action, evidence 불일치 시 첫 실패에서 중단하고 증거를 보존합니다.
 
-```text
-docs/approvals/staging-infrastructure-approval-record.example.json
-```
+특히 `cloudMutationApproved=true`라는 caller-provided boolean만으로 인증이나 apply를 시작해서는 안 됩니다.
 
-현재 example은 의도적으로 다음 상태다.
+## FUTURE REQUIREMENTS: dry-run, apply, environment, WIF
 
-```json
-{
-  "decision": "pending",
-  "cloudMutationApproved": false,
-  "deploymentApproved": false,
-  "rollbackReviewed": false
-}
-```
+다음은 현재 사용 가능한 명령이 아닙니다. 별도 사용자 승인과 구현이 완료되기 전에는 실행할 수 없습니다.
 
-실제 infrastructure 실행 승인을 만들기 전 검토할 사항:
+- Dry-run: exact canonical mutation subset에 대한 read-before-write evidence와 예상 diff를 산출하되, resource 변경은 하지 않아야 합니다.
+- Apply: protected environment 승인, immutable reviewed executor commit, exact plan/approval/manifest digest 검증을 끝낸 뒤에만 허용됩니다.
+- `staging-infrastructure-apply` environment: required reviewer 최소 1명, branch restriction은 정확히 `codex/staging-infrastructure-executor`만 허용, long-lived cloud credential 없음, WIF provider/audience/service-account identifier만 사용, least-privilege role diff가 필요합니다. 이 environment의 생성·구성 자체도 별도 사용자 승인이 필요합니다.
+- WIF/IAM: provider와 service account의 identifier 및 exact least-privilege IAM diff를 사람 검토·승인합니다. key file, static secret, long-lived credential은 허용하지 않습니다.
+- Rollback: 자동 delete rollback을 하지 않습니다. 미래 executor는 first-error에서 즉시 멈추고, 이미 관찰·변경된 상태와 evidence를 보존하여 사람이 후속 결정을 내리게 해야 합니다.
 
-- plan SHA-256
-- 승인 stage ID 목록
-- project ID와 billing account
-- 최대 월간 예산 KRW
-- API allowlist
-- Firebase 데이터 위치
-- service account별 IAM 역할
-- Secret 이름과 access principal; secret 값은 제외
-- resource별 rollback boundary
-- 비용·보안·운영 승인자
+## 남은 명시적 승인
 
-`cloudMutationApproved=true`는 이 별도 record에서만 허용될 수 있으며, 현재 구현에는 이 record를 소비해 mutation을 수행하는 executor가 없다.
+apply 전에는 다음 각각에 대한 별도 사용자 승인이 필요합니다.
 
-## 9. 단계 7: Staging resource 생성 — 현재 중단 경계
+1. implementation branch publish
+2. non-secret actual evidence transport/storage
+3. canonical mutation subset
+4. `staging-infrastructure-apply` environment 구성
+5. WIF identifier와 least-privilege IAM diff
+6. `cloudMutationApproved=true` infrastructure record
+7. apply dispatch
 
-현재 repository에는 infrastructure mutation executor가 없다. 다음 조건을 모두 충족한 별도 구현 요청과 승인이 필요하다.
+## Lifecycle 후속 상태
 
-1. actual bootstrap packet
-2. approved bootstrap record
-3. reviewed infrastructure plan
-4. approved infrastructure record
-5. billing ownership 확인
-6. protected environment reviewer 확인
-7. WIF identity와 최소 권한 diff 확인
-8. 단계별 rollback 절차 확인
-9. 변경 가능한 resource allowlist 확인
-10. dry-run 또는 read-only 사전 점검
+단계 8-12는 실제 단계 7 apply가 성공하여 actual resource identifier evidence를 남길 때까지 blocked입니다. 그 뒤에만 manifest observation update, live read-only preflight, immutable image build/push evidence, deployment packet, 별도 deployment approval, deployment executor, acceptance test, rollback evidence를 새 계획으로 다룹니다. deployment는 infrastructure lifecycle과 독립 승인입니다.
 
-이 단계는 현재 작업에서 실행하지 않는다.
-
-## 10. 단계 8: 실제 resource identifier 반영
-
-Infrastructure 실행 후 다음 실제 값을 evidence에서 수집한다.
-
-- GCP project number
-- Firebase Web App ID
-- Firebase Web API key reference; 값이 아닌 reference
-- 실제 Storage bucket
-- 실제 Hosting site
-- 생성된 service account 존재 상태
-- Artifact Registry repository
-- Secret metadata와 version reference
-- actual IAM state
-- Budget state
-
-Image build 이후:
-
-- Collaboration image와 digest
-- Document API image와 digest
-- Document Worker image와 digest
-
-초기 deployment 이후:
-
-- Document Worker URL
-- parse/export target URL
-- Cloud Run rollback revision IDs
-
-모든 placeholder가 해결되기 전에는 deployment packet을 생성하지 않는다.
-
-## 11. 단계 9: Live read-only preflight
-
-필수 전제:
-
-- infrastructure 승인과 실행 evidence 존재
-- 실제 resource identifiers로 materialized manifest 완성
-- `staging-preflight` protected environment
-- read-only WIF identity
-- active project가 승인된 staging project와 일치
-
-Live preflight는 조회만 수행한다. 예상하지 못한 resource 또는 IAM binding이 있으면 status를 `review`로 설정하고 lifecycle을 중단한다.
-
-## 12. 단계 10: Deployment approval packet
-
-Deployment packet 필수 조건:
-
-- 모든 placeholder 해결
-- live report 존재
-- project ID 일치
-- immutable image digest
-- actual IAM diff
-- actual Cloud Tasks target URL
-- rollback revision IDs 또는 명시적 최초 배포 전략
-- `mutationCommands=[]`
-
-## 13. 단계 11: 별도 Deployment 승인
-
-다음 example을 사용한다.
-
-```text
-docs/approvals/staging-deployment-approval-record.example.json
-```
-
-승인은 deployment packet digest, commit SHA, image digests, IAM diff digest, acceptance tests, rollback evidence에 결합해야 한다.
-
-Bootstrap 또는 infrastructure approval record를 deployment 승인으로 재사용하지 않는다.
-
-## 14. 단계 12: Staging deployment — 현재 중단 경계
-
-현재 repository에는 approval-bound staging deployment executor가 없다. 별도 구현과 승인이 필요하다.
-
-배포 전 필수 조건:
-
-- deployment approval record가 `approved`
-- `deploymentApproved=true`
-- approved immutable image digests 일치
-- live preflight status `pass`
-- IAM diff 승인
-- rollback revision 또는 최초 배포 rollback 전략 승인
-- acceptance test 계획 승인
-
-## 15. 공통 중단 조건
-
-다음 중 하나라도 발생하면 lifecycle을 중단한다.
-
-- actual artifact와 승인 digest 불일치
-- project ID 또는 billing account 불일치
-- production project 또는 bucket 참조
-- secret·token·credential 원문 노출
-- unknown approval record key
-- packet과 deferred path 승인 불일치
-- 계획하지 않은 API, IAM role, service account 또는 resource
-- 별도 승인 전 `cloudMutationApproved=true`
-- deployment 승인 전 `deploymentApproved=true`
-- live preflight에서 unexpected resource 발견
-- rollback evidence 누락
-
-## 16. 검증 명령
+## 로컬 검증
 
 ```bash
 python3 -m py_compile \
-  scripts/staging_bootstrap_materializer.py \
-  scripts/staging_approval_packet.py \
-  scripts/staging_infrastructure_plan.py \
-  scripts/tests/test_staging_infrastructure_plan.py
+  scripts/staging_infrastructure_approval.py \
+  scripts/staging_infrastructure_actions.py \
+  scripts/staging_infrastructure_execution_gate.py \
+  scripts/staging_infrastructure_action_io.py \
+  scripts/staging_infrastructure_validation.py \
+  scripts/tests/test_staging_infrastructure_approval.py \
+  scripts/tests/test_staging_infrastructure_actions.py \
+  scripts/tests/test_staging_infrastructure_execution_gate.py
 
-python3 -m unittest discover \
-  -s scripts/tests \
-  -p 'test_*.py' \
-  -v
-
+python3 -m unittest discover -s scripts/tests -p 'test_*.py' -v
 python3 scripts/validate_staging_config.py
 ```
 
-검증은 cloud resource 생성, live query, image build/push 또는 deployment를 수행하지 않는다.
+이 검증은 cloud authentication, cloud resource mutation, live query, image build/push, deployment, push, PR 변경을 수행하지 않습니다.

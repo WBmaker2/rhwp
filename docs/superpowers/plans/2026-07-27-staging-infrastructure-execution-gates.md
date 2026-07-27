@@ -30,6 +30,8 @@
 - Create `scripts/tests/test_staging_infrastructure_actions.py`: TDD coverage for stage mapping, dependencies, production separation, redaction, and deterministic output.
 - Create `scripts/staging_infrastructure_execution_gate.py`: non-mutating readiness evaluator for the reviewed execution manifest.
 - Create `scripts/tests/test_staging_infrastructure_execution_gate.py`: TDD coverage proving no subprocess, fail-closed approvals, and exact next-approval reporting.
+- Create `scripts/staging_infrastructure_action_io.py`: shared atomic paired-output publish and completion-marker handling.
+- Create `scripts/staging_infrastructure_validation.py`: shared strict JSON-domain and canonical JSON helpers for untrusted evidence.
 - Modify `docs/runbooks/staging-infrastructure-bootstrap.md`: document validation, dry-run, apply approval, WIF, evidence, and rollback boundaries.
 - Create `docs/superpowers/reports/2026-07-27-staging-infrastructure-execution-gates-result.md`: implementation and verification result.
 
@@ -122,18 +124,18 @@ def validate_infrastructure_approval(
     ...
 ```
 
-- [ ] **Step 1: Write failing schema and digest tests.**
+- [x] **Step 1: Write failing schema and digest tests.**
   Require exact approval keys, approved decision, UTC timestamp, non-empty unique approvers, 40-character commit SHA, 64-character exact-byte plan digest, staging-only project ID, billing format, positive integer KRW budget, and no sensitive key paths.
-- [ ] **Step 2: Run the focused module and verify RED.**
+- [x] **Step 2: Run the focused module and verify RED.**
   Run `python3 -m unittest scripts.tests.test_staging_infrastructure_approval -v`.
   Expected: import failure because the production module does not exist.
-- [ ] **Step 3: Implement strict loading and validation.**
+- [x] **Step 3: Implement strict loading and validation.**
   Return a sanitized result with `status=awaiting-cloud-mutation-approval` when the reviewed record is valid but mutation is false. When `require_cloud_mutation=True`, reject unless it is exactly `true`.
-- [ ] **Step 4: Add failing evidence-binding tests.**
+- [x] **Step 4: Add failing evidence-binding tests.**
   Require approval commit/project/billing/stage IDs to equal the plan, require every stage exactly once and in order, require `rollbackReviewed=true`, reject `deploymentApproved=true`, and reject production-like IDs.
-- [ ] **Step 5: Implement evidence binding and sanitized Markdown rendering.**
+- [x] **Step 5: Implement evidence binding and sanitized Markdown rendering.**
   Error messages may include field paths but never rejected values.
-- [ ] **Step 6: Verify GREEN and commit.**
+- [x] **Step 6: Verify GREEN and commit.**
   Run the focused tests, then `python3 -m py_compile` for both files.
   Commit message: `feat: validate staging infrastructure approvals`.
 
@@ -153,22 +155,22 @@ def build_execution_manifest(
     ...
 ```
 
-- [ ] **Step 1: Write failing ordered-action tests.**
+- [x] **Step 1: Write failing ordered-action tests.**
   Cover all eleven exact stage IDs:
   `project-billing`, `api-baseline`, `firebase-foundation`, `service-accounts`,
   `artifact-registry`, `secret-metadata`, `iam-bindings`, `budget-guardrails`,
   `cloud-run-prerequisites`, `cloud-tasks-prerequisites`,
   `post-bootstrap-evidence`.
-- [ ] **Step 2: Verify RED.**
+- [x] **Step 2: Verify RED.**
   Run `python3 -m unittest scripts.tests.test_staging_infrastructure_actions -v`.
-- [ ] **Step 3: Implement pure stage adapters.**
+- [x] **Step 3: Implement pure stage adapters.**
   Convert only structured plan fields into deterministic actions. Reject unknown stages, duplicate action IDs, unknown resource kinds, production-like resources, secret values, inline command strings, and dependencies that reference later/missing actions.
-- [ ] **Step 4: Add failing security tests.**
+- [x] **Step 4: Add failing security tests.**
   Assert serialized output has no `command`, `argv`, token, credential, private-key, password, secret-value, Firebase API key value, or internal flush token value.
-- [ ] **Step 5: Implement JSON/Markdown rendering and atomic CLI output.**
+- [x] **Step 5: Implement JSON/Markdown rendering and atomic CLI output.**
   CLI inputs: `--plan`, `--approval`, `--json-output`, `--markdown-output`.
   The CLI only generates review evidence; it never imports `subprocess`.
-- [ ] **Step 6: Verify GREEN and commit.**
+- [x] **Step 6: Verify GREEN and commit.**
   Commit message: `feat: generate staging infrastructure actions`.
 
 ## Task 3: Non-mutating execution readiness gate
@@ -187,17 +189,17 @@ def evaluate_execution_readiness(
     ...
 ```
 
-- [ ] **Step 1: Write failing readiness and fail-closed tests.**
+- [x] **Step 1: Write failing readiness and fail-closed tests.**
   A valid reviewed plan with `cloudMutationApproved=false` must return `awaiting-cloud-mutation-approval`. Evidence mismatch, production-like IDs, deployment approval, unknown actions, or missing rollback review must return `blocked`.
-- [ ] **Step 2: Verify RED.**
+- [x] **Step 2: Verify RED.**
   Run `python3 -m unittest scripts.tests.test_staging_infrastructure_execution_gate -v`.
-- [ ] **Step 3: Implement readiness evaluation and exact missing-approval output.**
+- [x] **Step 3: Implement readiness evaluation and exact missing-approval output.**
   Output `cloudMutationApproved=false`, `deploymentApproved=false`, `mutationCommands=[]`, and a `requiredApprovals` list covering mutation architecture, evidence transport, WIF identity, protected environment, least-privilege role diff, cloud-mutation record, and apply dispatch.
-- [ ] **Step 4: Add failing no-execution tests.**
+- [x] **Step 4: Add failing no-execution tests.**
   Assert the module source has no `subprocess`, `os.system`, shell string, `gcloud`, Firebase CLI invocation, authentication step, credential field, or workflow mutation.
-- [ ] **Step 5: Implement atomic JSON/Markdown CLI output.**
+- [x] **Step 5: Implement atomic JSON/Markdown CLI output.**
   CLI inputs: `--execution-manifest`, `--approval-result`, `--json-output`, `--markdown-output`.
-- [ ] **Step 6: Verify GREEN and commit.**
+- [x] **Step 6: Verify GREEN and commit.**
   Commit message: `feat: report staging execution readiness`.
 
 ## Task 4: Runbook, result report, and fresh verification
@@ -206,23 +208,23 @@ def evaluate_execution_readiness(
 - Modify: `docs/runbooks/staging-infrastructure-bootstrap.md`
 - Create: `docs/superpowers/reports/2026-07-27-staging-infrastructure-execution-gates-result.md`
 
-- [ ] **Step 1: Document the three distinct approvals.**
+- [x] **Step 1: Document the three distinct approvals.**
   Separate plan review, cloud mutation approval, and deployment approval. State that the current actual record with `cloudMutationApproved=false` cannot be used for apply.
-- [ ] **Step 2: Document the unresolved executor trust design.**
+- [x] **Step 2: Document the unresolved executor trust design.**
   Before an apply workflow can be implemented, choose an approved evidence-transport mechanism for the untracked actual plan/approval package. The later workflow must use the GitHub protected environment as the approval event, pin executor code to an immutable reviewed commit, bind the exact plan/approval/manifest digests before authentication, and never trust a caller-provided attestation boolean.
-- [ ] **Step 3: Document dry-run, apply, stop, and rollback procedures.**
+- [x] **Step 3: Document dry-run, apply, stop, and rollback procedures.**
   Label dry-run and apply procedures as future executor requirements, not currently available commands. No automatic delete rollback. A future executor must stop after the first failed action and preserve evidence.
-- [ ] **Step 4: Write the implementation result report.**
+- [x] **Step 4: Write the implementation result report.**
   Include commits, tests, changed files, security boundaries, known blockers, and the exact approvals still required.
-- [ ] **Step 5: Run complete fresh verification.**
+- [x] **Step 5: Run complete fresh verification.**
   Run:
   `python3 -m py_compile` for all new scripts/tests;
   `python3 -m unittest discover -s scripts/tests -p 'test_*.py' -v`;
   `python3 scripts/validate_staging_config.py`;
   `git diff --check`.
-- [ ] **Step 6: Confirm no real mutation occurred.**
+- [x] **Step 6: Confirm no real mutation occurred.**
   Verify no actual operating-value file, credential, token, private key, API key value, secret value, execution evidence, or cloud CLI output is tracked.
-- [ ] **Step 7: Commit documentation.**
+- [x] **Step 7: Commit documentation.**
   Commit message: `docs: document staging infrastructure execution gates`.
 
 ## Final review and continuation
