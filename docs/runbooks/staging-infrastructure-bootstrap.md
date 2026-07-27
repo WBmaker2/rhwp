@@ -23,16 +23,16 @@
 
 ## 현재 구현된 검토 명령
 
-아래 `<reviewed-evidence-dir>`은 비밀이 없는 검토 완료 증거를 보관하는 로컬 경로 placeholder입니다. 출력 경로도 로컬 검토 산출물 placeholder이며, 운영 값을 의미하지 않습니다.
+아래 예시는 비밀이 없는 검토 증거용 로컬 경로만 사용합니다. `artifacts/reviewed/`와 `artifacts/execution-review/`는 문서 예시 경로이며 운영 값을 의미하지 않습니다.
 
 ### 1. Infrastructure approval 검증
 
 ```bash
 python3 scripts/staging_infrastructure_approval.py \
-  --plan <reviewed-evidence-dir>/staging-infrastructure-plan.json \
-  --approval <reviewed-evidence-dir>/staging-infrastructure-approval-record.json \
-  --json-output <review-output-dir>/infrastructure-approval-result.json \
-  --markdown-output <review-output-dir>/infrastructure-approval-result.md
+  --plan artifacts/reviewed/staging-infrastructure-plan.json \
+  --approval artifacts/reviewed/staging-infrastructure-approval-record.json \
+  --json-output artifacts/execution-review/infrastructure-approval-result.json \
+  --markdown-output artifacts/execution-review/infrastructure-approval-result.md
 ```
 
 이 명령은 plan의 실제 바이트 SHA-256, canonical plan object digest, commit, project/billing, ordered stage IDs, budget, rollback acknowledgement를 fail-closed로 결합합니다. `cloudMutationApproved=false` record는 정상 검토 결과로 처리할 수 있지만 status는 `awaiting-cloud-mutation-approval`입니다. `--require-cloud-mutation`은 향후 별도 승인 record 검증용이며, 현재 record에는 사용하지 않습니다.
@@ -41,10 +41,10 @@ python3 scripts/staging_infrastructure_approval.py \
 
 ```bash
 python3 scripts/staging_infrastructure_actions.py \
-  --plan <reviewed-evidence-dir>/staging-infrastructure-plan.json \
-  --approval <reviewed-evidence-dir>/staging-infrastructure-approval-record.json \
-  --json-output <review-output-dir>/staging-infrastructure-execution-manifest.json \
-  --markdown-output <review-output-dir>/staging-infrastructure-execution-manifest.md
+  --plan artifacts/reviewed/staging-infrastructure-plan.json \
+  --approval artifacts/reviewed/staging-infrastructure-approval-record.json \
+  --json-output artifacts/execution-review/staging-infrastructure-execution-manifest.json \
+  --markdown-output artifacts/execution-review/staging-infrastructure-execution-manifest.md
 ```
 
 이 명령은 검토 증거만 생성합니다. action에는 `id`, `stageId`, classification, structured resource/evidence 정보만 포함되며 executable argv, shell string, credential, secret value는 포함되지 않습니다.
@@ -53,10 +53,10 @@ python3 scripts/staging_infrastructure_actions.py \
 
 ```bash
 python3 scripts/staging_infrastructure_execution_gate.py \
-  --execution-manifest <review-output-dir>/staging-infrastructure-execution-manifest.json \
-  --approval-result <review-output-dir>/infrastructure-approval-result.json \
-  --json-output <review-output-dir>/staging-infrastructure-readiness.json \
-  --markdown-output <review-output-dir>/staging-infrastructure-readiness.md \
+  --execution-manifest artifacts/execution-review/staging-infrastructure-execution-manifest.json \
+  --approval-result artifacts/execution-review/infrastructure-approval-result.json \
+  --json-output artifacts/execution-review/staging-infrastructure-readiness.json \
+  --markdown-output artifacts/execution-review/staging-infrastructure-readiness.md \
   --strict-blocked-exit
 ```
 
@@ -64,7 +64,7 @@ gate는 canonical manifest와 approval-result의 digest·commit·plan object pro
 
 ### Completion marker와 strict blocked exit
 
-action manifest와 readiness gate가 성공적으로 두 출력 파일을 모두 publish하면 JSON output 옆에 `<json-output>.complete` completion marker를 만듭니다. marker는 두 산출물이 동일 실행에서 완성되었다는 로컬 publish 증거일 뿐, 승인·인증·apply 완료·배포 완료를 뜻하지 않습니다.
+action manifest와 readiness gate가 성공적으로 두 출력 파일을 모두 publish하면 JSON output 옆에 `.complete` completion marker를 만듭니다. 예를 들어 `artifacts/execution-review/staging-infrastructure-readiness.json.complete`입니다. marker는 두 산출물이 동일 실행에서 완성되었다는 로컬 publish 증거일 뿐, 승인·인증·apply 완료·배포 완료를 뜻하지 않습니다.
 
 `--strict-blocked-exit`은 readiness status가 `blocked`일 때 exit code `2`를 반환합니다. 정상적인 `awaiting-cloud-mutation-approval` 또는 `awaiting-executor-design-approval`은 blocked가 아니므로 exit code `0`입니다. 입력/출력 계약 오류는 exit code `1`입니다.
 
@@ -110,13 +110,15 @@ apply workflow를 구현하기 전에, 추적하지 않는 actual plan/approval/
 
 apply 전에는 다음 각각에 대한 별도 사용자 승인이 필요합니다.
 
-1. implementation branch publish
-2. non-secret actual evidence transport/storage
-3. canonical mutation subset
-4. `staging-infrastructure-apply` environment 구성
-5. WIF identifier와 least-privilege IAM diff
-6. `cloudMutationApproved=true` infrastructure record
-7. apply dispatch
+1. `mutation-architecture`
+2. `actual-evidence-transport`
+3. `canonical-mutation-subset`
+4. `staging-infrastructure-apply-environment`
+5. `wif-identity-and-least-privilege-iam-diff`
+6. `cloud-mutation-approval-record`
+7. `apply-workflow-dispatch`
+
+`implementation branch publish`는 위 apply 승인들을 대체하지 않는 별도 integration approval입니다.
 
 ## Lifecycle 후속 상태
 

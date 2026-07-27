@@ -32,6 +32,7 @@
 - Create `scripts/tests/test_staging_infrastructure_execution_gate.py`: TDD coverage proving no subprocess, fail-closed approvals, and exact next-approval reporting.
 - Create `scripts/staging_infrastructure_action_io.py`: shared atomic paired-output publish and completion-marker handling.
 - Create `scripts/staging_infrastructure_validation.py`: shared strict JSON-domain and canonical JSON helpers for untrusted evidence.
+- Modify `scripts/staging_infrastructure_plan.py`: preserve the canonical safe `security.secretValuesIncluded=false` declaration after sensitive-data redaction so downstream validation has a non-secret, deterministic boundary marker.
 - Modify `docs/runbooks/staging-infrastructure-bootstrap.md`: document validation, dry-run, apply approval, WIF, evidence, and rollback boundaries.
 - Create `docs/superpowers/reports/2026-07-27-staging-infrastructure-execution-gates-result.md`: implementation and verification result.
 
@@ -234,13 +235,15 @@ def evaluate_execution_readiness(
 - [ ] Confirm PR #1 remains Draft/open/unmerged and its remote head was not changed.
 - [ ] Use `superpowers:finishing-a-development-branch` and ask before push/PR creation.
 - [ ] Before any actual apply, request separate approval for:
-  1. publishing the implementation branch,
-  2. the non-secret actual-evidence transport/storage mechanism,
-  3. the canonical mutation subset from the table above,
-  4. creating/configuring `staging-infrastructure-apply`,
-  5. registering WIF identifiers and least-privilege service account,
-  6. changing the actual infrastructure record to `cloudMutationApproved=true`,
-  7. workflow dispatch in `apply` mode.
+  1. `mutation-architecture`
+  2. `actual-evidence-transport`
+  3. `canonical-mutation-subset`
+  4. `staging-infrastructure-apply-environment`
+  5. `wif-identity-and-least-privilege-iam-diff`
+  6. `cloud-mutation-approval-record`
+  7. `apply-workflow-dispatch`
+
+`implementation branch publish`는 위 apply 승인들을 대체하지 않는 별도 integration approval이다.
 
 ## Later lifecycle
 

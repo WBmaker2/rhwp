@@ -47,6 +47,7 @@ db9172a0053dd2d6e3d18035d625eb77dadd903d fix: harden untrusted infrastructure ev
 | `scripts/staging_infrastructure_execution_gate.py` | manifest/approval provenance를 재검증하고 필요한 다음 승인을 보고하는 readiness CLI |
 | `scripts/staging_infrastructure_action_io.py` | paired JSON/Markdown atomic publish와 `.complete` marker 처리 |
 | `scripts/staging_infrastructure_validation.py` | strict JSON domain 및 canonical JSON helper |
+| `scripts/staging_infrastructure_plan.py` | sensitive-data redaction 뒤에도 canonical safe `security.secretValuesIncluded=false` declaration을 유지하도록 수정하여 downstream validation의 deterministic non-secret boundary를 보장 |
 | `scripts/tests/test_staging_infrastructure_approval.py` | approval schema, digest, evidence binding, boundary RED/GREEN coverage |
 | `scripts/tests/test_staging_infrastructure_actions.py` | action mapping, deterministic order, unsafe input, provenance RED/GREEN coverage |
 | `scripts/tests/test_staging_infrastructure_execution_gate.py` | readiness, blocked 상태, no-execution boundary RED/GREEN coverage |
@@ -88,13 +89,15 @@ TDD는 각 component에서 RED test를 먼저 추가하고 구현 후 GREEN으�
 
 apply 전 필요한 별도 사용자 승인은 다음과 같습니다.
 
-1. implementation branch publish
-2. non-secret actual evidence transport/storage
-3. canonical mutation subset
-4. `staging-infrastructure-apply` environment 구성
-5. WIF identifier와 least-privilege IAM diff
-6. `cloudMutationApproved=true` infrastructure record
-7. apply dispatch
+1. `mutation-architecture`
+2. `actual-evidence-transport`
+3. `canonical-mutation-subset`
+4. `staging-infrastructure-apply-environment`
+5. `wif-identity-and-least-privilege-iam-diff`
+6. `cloud-mutation-approval-record`
+7. `apply-workflow-dispatch`
+
+`implementation branch publish`는 위 apply 승인들을 대체하지 않는 별도 integration approval입니다.
 
 실제 step 7 evidence가 없으므로 lifecycle steps 8-12는 blocked입니다. deployment는 별도 approval과 executor가 필요한 독립 작업입니다.
 
