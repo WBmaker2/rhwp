@@ -77,6 +77,7 @@ def build_execution_manifest(
         "status": approval_result["status"],
         "projectId": plan["projectId"],
         "billingAccount": plan["billingAccount"],
+        "sourcePlan": plan,
         "sourceEvidence": {
             "commitSha": source["commitSha"],
             "planSha256": approval_result["planSha256"],

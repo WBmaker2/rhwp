@@ -12,9 +12,11 @@ from typing import Any
 
 try:
     from scripts.staging_infrastructure_action_io import ActionIoError, publish
+    from scripts.staging_infrastructure_actions import InfrastructureActionsError, build_execution_manifest
     from scripts.staging_infrastructure_approval import InfrastructureApprovalError, load_json_with_bytes
 except ImportError:  # pragma: no cover - direct script execution
     from staging_infrastructure_action_io import ActionIoError, publish
+    from staging_infrastructure_actions import InfrastructureActionsError, build_execution_manifest
     from staging_infrastructure_approval import InfrastructureApprovalError, load_json_with_bytes
 
 EXECUTION_SCHEMA = "rhwp.staging-infrastructure-execution/v1"
@@ -38,7 +40,7 @@ STAGES = (
     ("cloud-tasks-prerequisites", "blocked-deferred", {"record-cloud-tasks-prerequisite"}),
     ("post-bootstrap-evidence", "observation-only", {"collect-resource-evidence"}),
 )
-MANIFEST_KEYS = {"schemaVersion", "status", "projectId", "billingAccount", "sourceEvidence", "actions", "security"}
+MANIFEST_KEYS = {"schemaVersion", "status", "projectId", "billingAccount", "sourcePlan", "sourceEvidence", "actions", "security"}
 APPROVAL_KEYS = {"schemaVersion", "status", "planSha256", "planObjectSha256", "commitSha", "projectId", "billingAccount", "approvedStageIds", "maximumMonthlyBudgetKrw", "cloudMutationApproved", "requireCloudMutation", "deploymentApproved", "rollbackReviewed", "mutationCommands"}
 ACTION_KEYS = {"id", "stageId", "classification", "kind", "resource", "dependencies", "desiredState", "rollbackBoundary", "evidenceQuery"}
 SENSITIVE = ("accesstoken", "author" + "ization", "clientsecret", "creden" + "tial", "idtoken", "password", "private" + "key", "refreshtoken", "secret", "apikey", "internalflushtoken")
@@ -50,7 +52,7 @@ def evaluate_execution_readiness(manifest: dict[str, Any], approval_result: dict
     reasons: list[str] = []
     try:
         _validate(manifest, approval_result)
-    except (GateError, TypeError, AttributeError, KeyError, IndexError):
+    except (GateError, InfrastructureActionsError, TypeError, AttributeError, KeyError, IndexError, ValueError):
         reasons.append("malformed-input")
     requested = _approval_requested_state(approval_result)
     if reasons:
@@ -126,6 +128,16 @@ def _validate(manifest: dict[str, Any], approval: dict[str, Any]) -> None:
         raise GateError("approval result schemaVersion is not supported")
     _staging_project(_string(manifest, "projectId", "manifest"))
     _string(manifest, "billingAccount", "manifest")
+    source_plan = manifest["sourcePlan"]
+    if not isinstance(source_plan, dict):
+        raise GateError("source-plan-invalid")
+    if _plan_object_sha256(source_plan) != approval["planObjectSha256"]:
+        raise GateError("source-plan-object-mismatch")
+    if source_plan.get("projectId") != manifest["projectId"] or source_plan.get("billingAccount") != manifest["billingAccount"]:
+        raise GateError("source-plan-binding-invalid")
+    plan_source = source_plan.get("sourceEvidence")
+    if not isinstance(plan_source, dict) or plan_source.get("commitSha") != approval["commitSha"]:
+        raise GateError("source-plan-commit-binding-invalid")
     source = manifest["sourceEvidence"]
     _exact_keys(source, {"commitSha", "planSha256", "planObjectSha256", "actionSetSha256", "approvalResultSchema"}, "manifest sourceEvidence")
     if source["approvalResultSchema"] != APPROVAL_SCHEMA:
@@ -147,6 +159,10 @@ def _validate(manifest: dict[str, Any], approval: dict[str, Any]) -> None:
     _validate_security(manifest["security"])
     if source["actionSetSha256"] != _action_set_sha256(manifest["actions"]):
         raise GateError("action-set-mismatch")
+    expected = build_execution_manifest(source_plan, approval)
+    for field in ("status", "projectId", "billingAccount", "sourceEvidence", "security", "actions"):
+        if not _same_json_structure(manifest[field], expected[field]):
+            raise GateError("canonical-manifest-mismatch")
     _validate_actions(manifest["actions"], approval)
 
 
@@ -316,7 +332,7 @@ def _reject_unsafe(value: Any, path: str) -> None:
     if isinstance(value, dict):
         for key, item in value.items():
             normalized = re.sub(r"[^a-z0-9]", "", str(key).lower())
-            safe_metadata = (normalized == "secretvaluesincluded" and item is False) or (normalized == "containsmutationcommands" and item is False) or (normalized == "mutationcommands" and item == [])
+            safe_metadata = (normalized == "secretvaluesincluded" and item is False) or (normalized in {"containsmutationcommands", "containscloudmutationcommands"} and item is False) or (normalized == "mutationcommands" and item == [])
             if (any(marker in normalized for marker in SENSITIVE) and not safe_metadata) or (any(marker in normalized for marker in EXECUTABLE) and not safe_metadata):
                 raise GateError("unsafe-input")
             _reject_unsafe(item, f"{path}.{key}")
@@ -329,7 +345,7 @@ def _reject_unsafe(value: Any, path: str) -> None:
 
 def _sensitive_value(value: str) -> bool:
     lowered = value.lower()
-    return bool(re.search(r"(?:bearer\s+|-----begin|aiza|ya29\.)", lowered))
+    return bool(re.search(r"(?:bearer\s+|-----begin|aiza|ya29\.|ghp_|github_pat_|eyj|(?:token|password|api[_-]?key)\s*[:=]|secret\s*=)", lowered))
 
 
 def _validate_nested(value: Any, label: str, project: str, parent_key: str | None) -> None:
@@ -374,6 +390,21 @@ def _action_set_sha256(actions: Any) -> str:
     if not isinstance(actions, list):
         raise GateError("action-set-invalid")
     return hashlib.sha256(_canonical(actions).encode("utf-8")).hexdigest()
+
+
+def _plan_object_sha256(plan: dict[str, Any]) -> str:
+    encoded = (json.dumps(plan, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def _same_json_structure(left: Any, right: Any) -> bool:
+    if type(left) is not type(right):
+        return False
+    if isinstance(left, dict):
+        return set(left) == set(right) and all(_same_json_structure(value, right[key]) for key, value in left.items())
+    if isinstance(left, list):
+        return len(left) == len(right) and all(_same_json_structure(item, right[index]) for index, item in enumerate(left))
+    return left == right
 
 
 def _validate_paths(manifest: Path, approval: Path, json_output: Path, markdown_output: Path, marker: Path) -> None:

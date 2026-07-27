@@ -4,6 +4,8 @@ import copy
 import hashlib
 import io
 import json
+import subprocess
+import sys
 import tempfile
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
@@ -47,7 +49,7 @@ class ExecutionReadinessGateTest(unittest.TestCase):
         approval["cloudMutationApproved"] = True
         approval["status"] = "cloud-mutation-approved"
         approval["requireCloudMutation"] = True
-        result = self.evaluate(approval=approval)
+        result = self.evaluate(build_execution_manifest(self.plan, approval), approval)
         self.assertEqual(result["status"], "awaiting-executor-design-approval")
         self.assertFalse(result["cloudMutationApproved"])
         self.assertIn("mutation-architecture", result["requiredApprovals"])
@@ -109,6 +111,25 @@ class ExecutionReadinessGateTest(unittest.TestCase):
                 self.assertEqual(result["blockedReasons"], ["malformed-input"])
                 self.assertNotIn("superSecret", json.dumps(result))
                 self.assertNotIn("must-not-leak", json.dumps(result))
+
+    def test_recomputed_action_hash_cannot_bypass_rebuilt_plan_comparison(self) -> None:
+        manifest = copy.deepcopy(self.manifest)
+        manifest["actions"].pop()
+        from scripts.staging_infrastructure_execution_gate import _action_set_sha256
+        manifest["sourceEvidence"]["actionSetSha256"] = _action_set_sha256(manifest["actions"])
+        result = self.evaluate(manifest)
+        self.assertEqual(result["status"], "blocked")
+        self.assertEqual(result["blockedReasons"], ["malformed-input"])
+
+    def test_direct_script_cli_help_and_success(self) -> None:
+        script = Path(__file__).resolve().parents[1] / "staging_infrastructure_execution_gate.py"
+        self.assertEqual(subprocess.run([sys.executable, str(script), "--help"], capture_output=True, text=True).returncode, 0)
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest_path, approval_path = root / "manifest.json", root / "approval.json"
+            manifest_path.write_text(json.dumps(self.manifest)); approval_path.write_text(json.dumps(self.approval))
+            completed = subprocess.run([sys.executable, str(script), "--execution-manifest", str(manifest_path), "--approval-result", str(approval_path), "--json-output", str(root / "gate.json"), "--markdown-output", str(root / "gate.md")], capture_output=True, text=True)
+            self.assertEqual(completed.returncode, 0, completed.stderr)
 
     def test_rejects_sensitive_values_and_malformed_approval_without_leaking_them(self) -> None:
         for target, key in (("manifest", "privateKey"), ("approval", "accessToken")):
