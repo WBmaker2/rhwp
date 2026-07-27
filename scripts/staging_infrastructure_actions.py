@@ -9,6 +9,7 @@ import re
 import sys
 from pathlib import Path
 from typing import Any
+from scripts.staging_infrastructure_action_io import ActionIoError, publish
 
 try:
     from scripts.staging_infrastructure_approval import (
@@ -47,11 +48,11 @@ def build_execution_manifest(
     plan: dict[str, Any], approval_result: dict[str, Any], *, plan_bytes: bytes | None = None
 ) -> dict[str, Any]:
     """Translate only the canonical plan structure into safe structured actions."""
-    digest = _require_exact_plan_bytes(plan, plan_bytes) if plan_bytes is not None else _canonical_plan_digest(plan)
+    digest = _require_exact_plan_bytes(plan, plan_bytes) if plan_bytes is not None else None
     _reject_unsafe(plan, "plan")
     _reject_unsafe(approval_result, "approval")
     stages = _validate_plan(plan)
-    _validate_approval_result(plan, approval_result, digest)
+    _validate_approval_result(plan, approval_result, digest, _canonical_plan_digest(plan))
     actions: list[dict[str, Any]] = []
     final_action_by_stage: dict[str, str] = {}
     for stage in stages:
@@ -250,14 +251,14 @@ def _validate_plan(plan: dict[str, Any]) -> list[dict[str, Any]]:
     return stages
 
 
-def _validate_approval_result(plan: dict[str, Any], result: dict[str, Any], digest: str | None) -> None:
+def _validate_approval_result(plan: dict[str, Any], result: dict[str, Any], digest: str | None, object_digest: str) -> None:
     required = {"schemaVersion", "status", "planSha256", "planObjectSha256", "commitSha", "projectId", "billingAccount", "approvedStageIds", "maximumMonthlyBudgetKrw", "cloudMutationApproved", "requireCloudMutation", "deploymentApproved", "rollbackReviewed", "mutationCommands"}
     _require_keys(result, required, "approval result")
     if result["schemaVersion"] != APPROVAL_RESULT_SCHEMA or result["status"] not in {"awaiting-cloud-mutation-approval", "cloud-mutation-approved"}:
         raise InfrastructureActionsError("approval result status is not supported")
     if not re.fullmatch(r"[0-9a-f]{64}", str(result["planSha256"])) or (digest is not None and result["planSha256"] != digest):
         raise InfrastructureActionsError("approval result plan digest is invalid")
-    if result["planObjectSha256"] != _canonical_plan_digest(plan):
+    if result["planObjectSha256"] != object_digest:
         raise InfrastructureActionsError("approval result plan object provenance is invalid")
     source = plan["sourceEvidence"]
     if result["commitSha"] != source["commitSha"] or result["projectId"] != plan["projectId"] or result["billingAccount"] != plan["billingAccount"]:
@@ -301,9 +302,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--plan", type=Path, required=True); parser.add_argument("--approval", type=Path, required=True)
     parser.add_argument("--json-output", type=Path, required=True); parser.add_argument("--markdown-output", type=Path, required=True)
     args = parser.parse_args(argv)
-    json_temp, markdown_temp = (args.json_output.with_name(args.json_output.name + ".tmp"), args.markdown_output.with_name(args.markdown_output.name + ".tmp"))
-    marker, marker_temp = args.json_output.with_name(args.json_output.name + ".complete"), args.json_output.with_name(args.json_output.name + ".complete.tmp")
-    backups: dict[Path, bytes | None] = {}; published: list[Path] = []; temp_written: list[Path] = []
+    marker = args.json_output.with_name(args.json_output.name + ".complete")
     try:
         _validate_output_paths(args.plan, args.approval, args.json_output, args.markdown_output, marker)
         plan, plan_bytes = load_json_with_bytes(args.plan, "infrastructure plan")
@@ -311,21 +310,8 @@ def main(argv: list[str] | None = None) -> int:
         if approval.get("schemaVersion") == "rhwp.staging-infrastructure-approval/v1":
             approval = validate_infrastructure_approval(plan, plan_bytes, approval, require_cloud_mutation=False)
         execution = build_execution_manifest(plan, approval, plan_bytes=plan_bytes); markdown = render_markdown(execution)
-        for path in (args.json_output, args.markdown_output): path.parent.mkdir(parents=True, exist_ok=True)
-        backups = {path: path.read_bytes() if path.exists() else None for path in (args.json_output, args.markdown_output, marker)}
-        json_temp.write_text(json.dumps(execution, ensure_ascii=False, indent=2) + "\n"); temp_written.append(json_temp)
-        markdown_temp.write_text(markdown); temp_written.append(markdown_temp)
-        json_temp.replace(args.json_output); published.append(args.json_output); markdown_temp.replace(args.markdown_output); published.append(args.markdown_output)
-        marker_temp.write_text(json.dumps({"jsonOutput": str(args.json_output), "markdownOutput": str(args.markdown_output), "jsonSha256": hashlib.sha256(args.json_output.read_bytes()).hexdigest(), "markdownSha256": hashlib.sha256(args.markdown_output.read_bytes()).hexdigest()}) + "\n"); temp_written.append(marker_temp); marker_temp.replace(marker); published.append(marker)
-    except (InfrastructureActionsError, InfrastructureApprovalError, OSError) as error:
-        for path in temp_written:
-            try: path.unlink(missing_ok=True)
-            except OSError: pass
-        for path in published:
-            try:
-                if backups[path] is None: path.unlink(missing_ok=True)
-                else: path.write_bytes(backups[path])
-            except OSError: pass
+        marker = publish(args.json_output, args.markdown_output, json.dumps(execution, ensure_ascii=False, indent=2) + "\n", markdown)
+    except (InfrastructureActionsError, InfrastructureApprovalError, ActionIoError, OSError) as error:
         print(f"staging infrastructure actions failed: {error}", file=sys.stderr); return 1
     print(json.dumps({"status": execution["status"], "projectId": execution["projectId"], "jsonOutput": str(args.json_output), "markdownOutput": str(args.markdown_output), "completionMarker": str(marker), "mutationCommands": []})); return 0
 
@@ -339,7 +325,7 @@ def _validate_output_paths(plan: Path, approval: Path, json_output: Path, markdo
     for index, left in enumerate(paths):
         if any(left in right.parents or right in left.parents for right in paths[index + 1:]):
             raise InfrastructureActionsError("input, output, and temporary paths must not overlap")
-    if any(path.exists() for path in (*temp_paths, marker, marker.with_name(marker.name + ".tmp"))):
+    if any(path.exists() for path in (*temp_paths, marker.with_name(marker.name + ".tmp"))):
         raise InfrastructureActionsError("temporary output path already exists")
     if any(path.exists() and path.is_dir() for path in (json_output, markdown_output)):
         raise InfrastructureActionsError("output path must not be a directory")

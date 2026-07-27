@@ -149,6 +149,8 @@ class InfrastructureActionsTest(unittest.TestCase):
             marker = json.loads((root / "execution.json.complete").read_text())
             self.assertEqual(marker["jsonSha256"], hashlib.sha256(json_output.read_bytes()).hexdigest())
             self.assertEqual(marker["markdownSha256"], hashlib.sha256(markdown_output.read_bytes()).hexdigest())
+            with redirect_stdout(io.StringIO()):
+                self.assertEqual(main(["--plan", str(plan_path), "--approval", str(approval_path), "--json-output", str(json_output), "--markdown-output", str(markdown_output)]), 0)
             original = plan_path.read_bytes()
             alias = root / "plan-alias.json"
             alias.symlink_to(plan_path)
@@ -187,17 +189,20 @@ class InfrastructureActionsTest(unittest.TestCase):
             json_output, markdown_output = root / "execution.json", root / "execution.md"
             plan_path.write_text(json.dumps(self.plan, ensure_ascii=False, indent=2) + "\n")
             approval_path.write_text(json.dumps(self.approval_result, ensure_ascii=False, indent=2) + "\n")
+            self.assertEqual(main(["--plan", str(plan_path), "--approval", str(approval_path), "--json-output", str(json_output), "--markdown-output", str(markdown_output)]), 0)
+            old_json, old_markdown = json_output.read_bytes(), markdown_output.read_bytes()
+            old_marker = (root / "execution.json.complete").read_bytes()
             original_replace = Path.replace
             def fail_markdown_publish(path: Path, target: Path) -> Path:
                 if path == markdown_output.with_name(markdown_output.name + ".tmp"):
                     raise OSError("simulated markdown publish failure")
                 return original_replace(path, target)
-            with patch("scripts.staging_infrastructure_actions.Path.replace", autospec=True, side_effect=fail_markdown_publish), redirect_stderr(io.StringIO()):
+            with patch("scripts.staging_infrastructure_action_io.Path.replace", autospec=True, side_effect=fail_markdown_publish), redirect_stderr(io.StringIO()):
                 result = main(["--plan", str(plan_path), "--approval", str(approval_path), "--json-output", str(json_output), "--markdown-output", str(markdown_output)])
             self.assertEqual(result, 1)
-            self.assertFalse(json_output.exists())
-            self.assertFalse(markdown_output.exists())
-            self.assertFalse((root / "execution.json.complete").exists())
+            self.assertEqual(json_output.read_bytes(), old_json)
+            self.assertEqual(markdown_output.read_bytes(), old_markdown)
+            self.assertEqual((root / "execution.json.complete").read_bytes(), old_marker)
 
     def test_rejects_cross_binding_and_nested_contract_tampering(self) -> None:
         cases = (
@@ -225,6 +230,7 @@ class InfrastructureActionsTest(unittest.TestCase):
         approval = copy.deepcopy(self.approval_result)
         approval["planSha256"] = hashlib.sha256(compact).hexdigest()
         self.build(self.plan, approval, compact)
+        self.assertEqual(build_execution_manifest(self.plan, approval)["sourceEvidence"]["planSha256"], approval["planSha256"])
         with self.assertRaisesRegex(InfrastructureActionsError, "digest"):
             self.build(self.plan, approval, plan_bytes(self.plan))
         self.assertEqual(
@@ -233,8 +239,7 @@ class InfrastructureActionsTest(unittest.TestCase):
         )
         forged = copy.deepcopy(self.approval_result)
         forged["planSha256"] = "f" * 64
-        with self.assertRaisesRegex(InfrastructureActionsError, "digest"):
-            build_execution_manifest(self.plan, forged)
+        self.assertEqual(build_execution_manifest(self.plan, forged)["sourceEvidence"]["planSha256"], "f" * 64)
         forged["planSha256"] = self.approval_result["planSha256"]
         forged["planObjectSha256"] = "f" * 64
         with self.assertRaisesRegex(InfrastructureActionsError, "provenance"):
@@ -310,3 +315,11 @@ class InfrastructureActionsTest(unittest.TestCase):
         cloud_run = next(stage["resources"] for stage in self.plan["stages"] if stage["id"] == "cloud-run-prerequisites")
         action = actions["cloud-run-prerequisites.record-collaboration"]
         self.assertEqual(action["resource"], {"service": cloud_run["collaboration"]["name"], "serviceAccount": cloud_run["collaboration"]["serviceAccount"], "ingress": cloud_run["collaboration"]["ingress"], "runtime": cloud_run["collaboration"]["runtime"], "state": "blocked-pending-image-digest"})
+
+    def test_rejects_shared_identifier_mismatches_and_preserves_tasks_evidence(self) -> None:
+        plan = copy.deepcopy(self.plan); plan["stages"][3]["resources"]["tasksCaller"] = "other-staging"
+        with self.assertRaisesRegex(InfrastructureActionsError, "tasks caller"):
+            self.build(plan, self.approval_result)
+        actions = {item["id"]: item for item in self.build(self.plan, self.approval_result)["actions"]}
+        self.assertIn("callerServiceAccount", actions["cloud-tasks-prerequisites.record-parse"]["resource"])
+        self.assertEqual(set(actions["post-bootstrap-evidence.collect-01"]["resource"]), {"path", "resolutionPhase", "reason"})
