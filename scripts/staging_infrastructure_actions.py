@@ -51,7 +51,7 @@ def build_execution_manifest(
     plan: dict[str, Any], approval_result: dict[str, Any], *, plan_bytes: bytes | None = None
 ) -> dict[str, Any]:
     """Translate only the canonical plan structure into safe structured actions."""
-    digest = _require_exact_plan_bytes(plan, plan_bytes) if plan_bytes is not None else None
+    digest = _require_exact_plan_bytes(plan, plan_bytes) if plan_bytes is not None else _canonical_plan_digest(plan)
     _reject_unsafe(plan, "plan")
     _reject_unsafe(approval_result, "approval")
     stages = _validate_plan(plan)
@@ -220,6 +220,9 @@ def _validate_plan(plan: dict[str, Any]) -> list[dict[str, Any]]:
         _require_keys(stage, {"id", "title", "intent", "dependsOn", "resources", "acceptanceEvidence", "rollbackBoundary", "mutationApprovalRequired"}, f"stage {stage.get('id')}")
         if stage["mutationApprovalRequired"] is not True:
             raise InfrastructureActionsError(f"stage {stage['id']} mutationApprovalRequired must be true")
+        for field in ("title", "intent", "rollbackBoundary"):
+            _nonempty(stage[field], f"stage {stage['id']} {field}")
+        _nonempty_strings(stage["acceptanceEvidence"], f"stage {stage['id']} acceptanceEvidence")
         dependencies = stage["dependsOn"]
         if not isinstance(dependencies, list) or any(not isinstance(item, str) for item in dependencies):
             raise InfrastructureActionsError(f"stage {stage['id']} dependencies are invalid")
@@ -246,7 +249,7 @@ def _validate_plan(plan: dict[str, Any]) -> list[dict[str, Any]]:
 def _validate_approval_result(plan: dict[str, Any], result: dict[str, Any], digest: str | None) -> None:
     required = {"schemaVersion", "status", "planSha256", "commitSha", "projectId", "billingAccount", "approvedStageIds", "maximumMonthlyBudgetKrw", "cloudMutationApproved", "requireCloudMutation", "deploymentApproved", "rollbackReviewed", "mutationCommands"}
     _require_keys(result, required, "approval result")
-    if result["schemaVersion"] != APPROVAL_RESULT_SCHEMA or result["status"] not in {"awaiting-cloud-mutation-approval", "cloud-mutation-approved", "ready-for-cloud-mutation"}:
+    if result["schemaVersion"] != APPROVAL_RESULT_SCHEMA or result["status"] not in {"awaiting-cloud-mutation-approval", "cloud-mutation-approved"}:
         raise InfrastructureActionsError("approval result status is not supported")
     if not re.fullmatch(r"[0-9a-f]{64}", str(result["planSha256"])) or (digest is not None and result["planSha256"] != digest):
         raise InfrastructureActionsError("approval result plan digest is invalid")
@@ -254,7 +257,7 @@ def _validate_approval_result(plan: dict[str, Any], result: dict[str, Any], dige
     if result["commitSha"] != source["commitSha"] or result["projectId"] != plan["projectId"] or result["billingAccount"] != plan["billingAccount"]:
         raise InfrastructureActionsError("approval result does not match plan evidence")
     budget = next(stage["resources"]["amount"] for stage in plan["stages"] if stage["id"] == "budget-guardrails")
-    status_is_ready = result["status"] in {"cloud-mutation-approved", "ready-for-cloud-mutation"}
+    status_is_ready = result["status"] == "cloud-mutation-approved"
     if result["cloudMutationApproved"] is not status_is_ready:
         raise InfrastructureActionsError("approval result status does not match cloud mutation approval")
     if not isinstance(result["requireCloudMutation"], bool) or (result["requireCloudMutation"] and not status_is_ready):
@@ -358,7 +361,8 @@ def _require_keys(value: Any, expected: set[str], label: str) -> None:
 
 
 def _nonempty(value: Any, label: str) -> None:
-    if not isinstance(value, str) or not value.strip(): raise InfrastructureActionsError(f"{label} must be a non-empty string")
+    if not isinstance(value, str) or not value.strip() or re.search(r"[\x00-\x1f\x7f\x85\u2028\u2029]", value):
+        raise InfrastructureActionsError(f"{label} must be a non-empty control-free string")
 
 
 def _production_like(value: str) -> bool:
@@ -380,6 +384,12 @@ def _reject_production_resources(value: Any, path: str, *, forbidden: bool = Fal
 def _production_resource_like(value: str) -> bool:
     lowered = value.lower()
     return "production" in lowered or bool(re.search(r"(^|[-_])prod($|[-_])", lowered))
+
+
+def _canonical_plan_digest(plan: dict[str, Any]) -> str:
+    return hashlib.sha256(
+        (json.dumps(plan, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
+    ).hexdigest()
 
 
 def _require_exact_plan_bytes(plan: dict[str, Any], plan_bytes: bytes | None) -> str:
@@ -448,6 +458,8 @@ def _positive_number(value: Any, label: str, *, allow_zero: bool = False) -> Non
 def _nonempty_strings(value: Any, label: str) -> None:
     if not isinstance(value, list) or not value or any(not isinstance(item, str) or not item.strip() for item in value):
         raise InfrastructureActionsError(f"{label} must be a non-empty array of strings")
+    if any(re.search(r"[\x00-\x1f\x7f\x85\u2028\u2029]", item) for item in value):
+        raise InfrastructureActionsError(f"{label} must contain control-free strings")
     if len(value) != len(set(value)):
         raise InfrastructureActionsError(f"{label} must not contain duplicates")
 
@@ -458,7 +470,8 @@ def _sensitive_string(value: str) -> bool:
         lowered.startswith("bearer ")
         or "-----begin private key-----" in lowered
         or "-----begin rsa private key-----" in lowered
-        or bool(re.search(r"(?:token|credential|secretvalue)\s*(?:=|:)\s*\S+", lowered))
+        or lowered.startswith("aiza")
+        or bool(re.search(r"(?:token|credential|secretvalue|password|clientsecret|apikey)\s*(?:=|:)\s*\S+", lowered))
     )
 
 

@@ -228,6 +228,10 @@ class InfrastructureActionsTest(unittest.TestCase):
             build_execution_manifest(self.plan, self.approval_result)["projectId"],
             self.plan["projectId"],
         )
+        forged = copy.deepcopy(self.approval_result)
+        forged["planSha256"] = "f" * 64
+        with self.assertRaisesRegex(InfrastructureActionsError, "digest"):
+            build_execution_manifest(self.plan, forged)
         plan = copy.deepcopy(self.plan)
         plan["stages"][0]["mutationApprovalRequired"] = False
         with self.assertRaisesRegex(InfrastructureActionsError, "mutationApprovalRequired"):
@@ -254,6 +258,9 @@ class InfrastructureActionsTest(unittest.TestCase):
         cases = (
             ("bearer", lambda plan: plan["stages"][0].__setitem__("rollbackBoundary", "Bearer must-not-leak"), "sensitive value"),
             ("private key", lambda plan: plan["stages"][0].__setitem__("intent", "-----BEGIN PRIVATE KEY-----"), "sensitive value"),
+            ("password", lambda plan: plan["stages"][0].__setitem__("rollbackBoundary", "password=must-not-leak"), "sensitive value"),
+            ("client secret", lambda plan: plan["stages"][0].__setitem__("rollbackBoundary", "clientSecret=must-not-leak"), "sensitive value"),
+            ("firebase key", lambda plan: plan["stages"][0].__setitem__("rollbackBoundary", "AIzaMustNotLeak"), "sensitive value"),
             ("command variant", lambda plan: plan["stages"][0]["resources"].__setitem__("commandString", "not-run"), "executable"),
             ("shell variant", lambda plan: plan["stages"][0]["resources"].__setitem__("shell_command", "not-run"), "executable"),
         )
@@ -263,6 +270,20 @@ class InfrastructureActionsTest(unittest.TestCase):
                 mutate(plan)
                 with self.assertRaisesRegex(InfrastructureActionsError, pattern):
                     self.build(plan, self.approval_result)
+
+    def test_rejects_non_string_or_control_stage_text_and_non_task1_status(self) -> None:
+        cases = (
+            ("rollback empty", lambda plan, approval: plan["stages"][0].__setitem__("rollbackBoundary", ""), "rollbackBoundary"),
+            ("intent null", lambda plan, approval: plan["stages"][0].__setitem__("intent", None), "intent"),
+            ("evidence control", lambda plan, approval: plan["stages"][0].__setitem__("acceptanceEvidence", ["ok\x00bad"]), "acceptanceEvidence"),
+            ("invalid status", lambda plan, approval: approval.__setitem__("status", "ready-for-cloud-mutation"), "status"),
+        )
+        for label, mutate, pattern in cases:
+            with self.subTest(label=label):
+                plan, approval = copy.deepcopy(self.plan), copy.deepcopy(self.approval_result)
+                mutate(plan, approval)
+                with self.assertRaisesRegex(InfrastructureActionsError, pattern):
+                    self.build(plan, approval)
 
     def test_actions_retain_budget_and_cloud_run_prerequisite_details(self) -> None:
         execution = self.build(self.plan, self.approval_result)
