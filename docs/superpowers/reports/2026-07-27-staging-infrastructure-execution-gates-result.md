@@ -4,7 +4,7 @@
 
 목표는 별도 설계·승인이 필요한 staging cloud-mutation executor 이전에, infrastructure plan 검토 증거를 fail-closed로 검증하고 canonical action manifest 및 readiness gate를 제공하는 것이었습니다.
 
-구현 결과는 plan review만 지원합니다. 현재 status는 `awaiting-cloud-mutation-approval`이며, executable command/argv, cloud authentication, resource mutation, deployment 권한을 생성하지 않습니다.
+구현 결과는 plan review만 지원합니다. tracked 상태는 `no-tracked-actual-approval-record`이며, 유효한 operator-local reviewed record에 `cloudMutationApproved=false`가 공급되면 evaluator는 `awaiting-cloud-mutation-approval`을 반환합니다. executable command/argv, cloud authentication, resource mutation, deployment 권한을 생성하지 않습니다.
 
 ## 작업 기준
 
