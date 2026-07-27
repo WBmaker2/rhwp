@@ -45,7 +45,7 @@ f04d7dc39029908d8fc1435cb44a8d8ddd8d5c96 docs: require exact staging plan proven
 426b71ac7cf2873cfb97849f3a08b79ec0d1149b fix: reject blocking special JSON inputs
 ```
 
-위 목록은 이 문서 업데이트 직전 implementation HEAD인 `8f63836b`까지의 이력입니다. 이 보고서 자체를 포함하는 새 docs commit은 생성 후 작업 인계에서 SHA를 보고하므로 문서 안에서 자기 자신의 최종 SHA를 예측하지 않습니다.
+위 목록은 이 문서 업데이트 직전 최신 implementation commit인 `426b71ac`까지의 이력입니다. 이 보고서 자체를 포함하는 새 docs commit은 생성 후 작업 인계에서 SHA를 보고하므로 문서 안에서 자기 자신의 최종 SHA를 예측하지 않습니다.
 
 ## 파일과 역할
 
