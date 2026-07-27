@@ -27,7 +27,8 @@ APPROVAL_KEYS = frozenset({
 })
 SENSITIVE_KEY_MARKERS = (
     "accesstoken", "authorization", "clientsecret", "credential", "idtoken",
-    "password", "privatekey", "refreshtoken", "secretvalue",
+    "password", "privatekey", "refreshtoken", "secretvalue", "firebaseapikey",
+    "internalflushtoken",
 )
 
 
@@ -40,19 +41,7 @@ def load_json_with_bytes(path: Path, label: str) -> tuple[dict[str, Any], bytes]
         raw = path.read_bytes()
     except FileNotFoundError as error:
         raise InfrastructureApprovalError(f"{label} not found: {path}") from error
-    try:
-        value = json.loads(
-            raw.decode("utf-8"),
-            object_pairs_hook=_json_object,
-            parse_constant=_reject_json_constant,
-        )
-    except UnicodeDecodeError as error:
-        raise InfrastructureApprovalError(f"{label} must be UTF-8 JSON") from error
-    except (json.JSONDecodeError, ValueError) as error:
-        raise InfrastructureApprovalError(f"{label} is not valid JSON: {error}") from error
-    if not isinstance(value, dict):
-        raise InfrastructureApprovalError(f"{label} root must be an object")
-    return value, raw
+    return _parse_json_object(raw, label), raw
 
 
 def validate_infrastructure_approval(
@@ -62,6 +51,9 @@ def validate_infrastructure_approval(
     *,
     require_cloud_mutation: bool,
 ) -> dict[str, Any]:
+    parsed_plan = _parse_json_object(plan_bytes, "plan bytes")
+    if not _same_json_structure(plan, parsed_plan):
+        raise InfrastructureApprovalError("plan object does not match exact plan bytes")
     _reject_sensitive_keys(plan, "plan")
     _reject_sensitive_keys(approval, "approval")
     _validate_plan(plan)
@@ -114,16 +106,20 @@ def validate_infrastructure_approval(
     if billing_account != _required_string(plan, "billingAccount", "plan"):
         raise InfrastructureApprovalError("approval record billingAccount does not match plan")
 
+    budget = approval.get("maximumMonthlyBudgetKrw")
+    if isinstance(budget, bool) or not isinstance(budget, int) or budget <= 0:
+        raise InfrastructureApprovalError(
+            "approval record maximumMonthlyBudgetKrw must be a positive integer"
+        )
+    if budget != _budget_guardrails_amount(plan):
+        raise InfrastructureApprovalError(
+            "approval record maximumMonthlyBudgetKrw does not match budget-guardrails amount"
+        )
     stage_ids = _plan_stage_ids(plan)
     approved_stage_ids = _string_list(approval, "approvedStageIds", "approval record")
     if approved_stage_ids != stage_ids:
         raise InfrastructureApprovalError(
             "approval record approvedStageIds must list every plan stage exactly once and in order"
-        )
-    budget = approval.get("maximumMonthlyBudgetKrw")
-    if isinstance(budget, bool) or not isinstance(budget, int) or budget <= 0:
-        raise InfrastructureApprovalError(
-            "approval record maximumMonthlyBudgetKrw must be a positive integer"
         )
     if approval.get("rollbackReviewed") is not True:
         raise InfrastructureApprovalError("approval record rollbackReviewed must be true")
@@ -190,7 +186,12 @@ def main(argv: list[str] | None = None) -> int:
     output_backups: dict[Path, bytes | None] = {}
     published_paths: list[Path] = []
     try:
-        _validate_output_paths(args.json_output, args.markdown_output)
+        _validate_output_paths(
+            args.plan,
+            args.approval,
+            args.json_output,
+            args.markdown_output,
+        )
         plan, plan_bytes = load_json_with_bytes(args.plan, "infrastructure plan")
         approval, _ = load_json_with_bytes(args.approval, "infrastructure approval")
         result = validate_infrastructure_approval(
@@ -242,10 +243,16 @@ def _validate_plan(plan: dict[str, Any]) -> None:
     commit_sha = _required_string(_mapping(plan, "sourceEvidence", "plan"), "commitSha", "plan sourceEvidence")
     if not COMMIT_SHA_PATTERN.fullmatch(commit_sha):
         raise InfrastructureApprovalError("plan sourceEvidence.commitSha must be a lowercase commit SHA")
+    _budget_guardrails_amount(plan)
     _plan_stage_ids(plan)
 
 
-def _validate_output_paths(json_output: Path, markdown_output: Path) -> None:
+def _validate_output_paths(
+    plan_input: Path,
+    approval_input: Path,
+    json_output: Path,
+    markdown_output: Path,
+) -> None:
     json_path = json_output.resolve(strict=False)
     markdown_path = markdown_output.resolve(strict=False)
     if (
@@ -260,6 +267,14 @@ def _validate_output_paths(json_output: Path, markdown_output: Path) -> None:
     )
     if len({json_path, markdown_path, *temporary_paths}) != 4:
         raise InfrastructureApprovalError("output paths conflict with their temporary files")
+    for input_path in (plan_input.resolve(strict=False), approval_input.resolve(strict=False)):
+        for output_path in (json_path, markdown_path, *temporary_paths):
+            if (
+                input_path == output_path
+                or input_path in output_path.parents
+                or output_path in input_path.parents
+            ):
+                raise InfrastructureApprovalError("input and output paths must not overlap")
     for path in (json_path, markdown_path):
         if path.exists() and path.is_dir():
             raise InfrastructureApprovalError("output path must not be a directory")
@@ -272,6 +287,37 @@ def _json_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
             raise ValueError("duplicate JSON object key")
         result[key] = value
     return result
+
+
+def _parse_json_object(raw: bytes, label: str) -> dict[str, Any]:
+    try:
+        value = json.loads(
+            raw.decode("utf-8"),
+            object_pairs_hook=_json_object,
+            parse_constant=_reject_json_constant,
+        )
+    except UnicodeDecodeError as error:
+        raise InfrastructureApprovalError(f"{label} must be UTF-8 JSON") from error
+    except (json.JSONDecodeError, ValueError) as error:
+        raise InfrastructureApprovalError(f"{label} is not valid JSON: {error}") from error
+    if not isinstance(value, dict):
+        raise InfrastructureApprovalError(f"{label} root must be an object")
+    return value
+
+
+def _same_json_structure(left: Any, right: Any) -> bool:
+    if type(left) is not type(right):
+        return False
+    if isinstance(left, dict):
+        return set(left) == set(right) and all(
+            _same_json_structure(value, right[key]) for key, value in left.items()
+        )
+    if isinstance(left, list):
+        return len(left) == len(right) and all(
+            _same_json_structure(value, right[index])
+            for index, value in enumerate(left)
+        )
+    return left == right
 
 
 def _reject_json_constant(_: str) -> None:
@@ -302,6 +348,22 @@ def _plan_stage_ids(plan: dict[str, Any]) -> list[str]:
     if len(result) != len(set(result)):
         raise InfrastructureApprovalError("plan stage IDs must not contain duplicates")
     return result
+
+
+def _budget_guardrails_amount(plan: dict[str, Any]) -> int:
+    stages = plan.get("stages")
+    if not isinstance(stages, list):
+        raise InfrastructureApprovalError("plan stages must be an array")
+    budget_stages = [stage for stage in stages if isinstance(stage, dict) and stage.get("id") == "budget-guardrails"]
+    if len(budget_stages) != 1:
+        raise InfrastructureApprovalError("plan must contain exactly one budget-guardrails stage")
+    resources = budget_stages[0].get("resources")
+    if not isinstance(resources, dict):
+        raise InfrastructureApprovalError("budget-guardrails resources must be an object")
+    amount = resources.get("amount")
+    if isinstance(amount, bool) or not isinstance(amount, int) or amount <= 0:
+        raise InfrastructureApprovalError("budget-guardrails amount must be a positive integer")
+    return amount
 
 
 def _require_exact_keys(value: dict[str, Any], required: frozenset[str], label: str) -> None:

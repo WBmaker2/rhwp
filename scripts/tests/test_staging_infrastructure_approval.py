@@ -30,7 +30,10 @@ def plan_fixture() -> dict[str, object]:
         "projectId": "rhwp-collaboration-staging-001",
         "billingAccount": "123456-ABCDEF-123456",
         "sourceEvidence": {"commitSha": "1" * 40},
-        "stages": [{"id": "project-billing"}, {"id": "api-baseline"}],
+        "stages": [
+            {"id": "project-billing"},
+            {"id": "budget-guardrails", "resources": {"amount": 50000, "metadata": 1}},
+        ],
     }
 
 
@@ -44,7 +47,7 @@ def approval_fixture(plan: dict[str, object], raw: bytes) -> dict[str, object]:
         "planSha256": hashlib.sha256(raw).hexdigest(),
         "projectId": plan["projectId"],
         "billingAccount": plan["billingAccount"],
-        "approvedStageIds": ["project-billing", "api-baseline"],
+        "approvedStageIds": [stage["id"] for stage in plan["stages"]],  # type: ignore[index]
         "maximumMonthlyBudgetKrw": 50000,
         "cloudMutationApproved": False,
         "deploymentApproved": False,
@@ -89,7 +92,7 @@ class InfrastructureApprovalValidationTest(unittest.TestCase):
             ("plan digest", lambda item: item.__setitem__("planSha256", "0" * 64), "digest"),
             ("project", lambda item: item.__setitem__("projectId", "rhwp-prod-001"), "projectId"),
             ("billing", lambda item: item.__setitem__("billingAccount", "bad"), "billingAccount"),
-            ("stages", lambda item: item.__setitem__("approvedStageIds", ["api-baseline", "project-billing"]), "approvedStageIds"),
+            ("stages", lambda item: item.__setitem__("approvedStageIds", ["budget-guardrails", "project-billing"]), "approvedStageIds"),
             ("budget", lambda item: item.__setitem__("maximumMonthlyBudgetKrw", True), "maximumMonthlyBudgetKrw"),
             ("deployment", lambda item: item.__setitem__("deploymentApproved", True), "deploymentApproved"),
             ("rollback", lambda item: item.__setitem__("rollbackReviewed", False), "rollbackReviewed"),
@@ -114,7 +117,7 @@ class InfrastructureApprovalValidationTest(unittest.TestCase):
             ("digest", "planSha256", " " + hashlib.sha256(self.raw).hexdigest(), "planSha256"),
             ("project", "projectId", " rhwp-collaboration-staging-001", "projectId"),
             ("billing", "billingAccount", " 123456-ABCDEF-123456", "billingAccount"),
-            ("stage", "approvedStageIds", [" project-billing", "api-baseline"], "approvedStageIds"),
+            ("stage", "approvedStageIds", [" project-billing", "budget-guardrails"], "approvedStageIds"),
         )
         for label, key, value, pattern in cases:
             with self.subTest(label=label):
@@ -133,6 +136,48 @@ class InfrastructureApprovalValidationTest(unittest.TestCase):
                 with self.assertRaisesRegex(InfrastructureApprovalError, "approvedBy"):
                     validate_infrastructure_approval(
                         self.plan, self.raw, candidate, require_cloud_mutation=False
+                    )
+
+    def test_rejects_plan_object_that_does_not_match_exact_plan_bytes(self) -> None:
+        candidate = copy.deepcopy(self.plan)
+        candidate["stages"][1]["resources"]["amount"] = 60000  # type: ignore[index]
+
+        with self.assertRaisesRegex(InfrastructureApprovalError, "plan object"):
+            validate_infrastructure_approval(
+                candidate, self.raw, self.approval, require_cloud_mutation=False
+            )
+
+        type_changed = copy.deepcopy(self.plan)
+        type_changed["stages"][1]["resources"]["metadata"] = True  # type: ignore[index]
+        with self.assertRaisesRegex(InfrastructureApprovalError, "plan object"):
+            validate_infrastructure_approval(
+                type_changed, self.raw, self.approval, require_cloud_mutation=False
+            )
+
+    def test_binds_budget_to_one_budget_guardrails_stage(self) -> None:
+        mismatched_approval = copy.deepcopy(self.approval)
+        mismatched_approval["maximumMonthlyBudgetKrw"] = 60000
+        with self.assertRaisesRegex(InfrastructureApprovalError, "budget"):
+            validate_infrastructure_approval(
+                self.plan, self.raw, mismatched_approval, require_cloud_mutation=False
+            )
+
+        for label, mutate in (
+            ("missing", lambda plan: plan.__setitem__("stages", plan["stages"][:1])),
+            ("duplicate", lambda plan: plan["stages"].append(copy.deepcopy(plan["stages"][1]))),
+            ("malformed", lambda plan: plan["stages"][1].__setitem__("resources", {"amount": True})),
+        ):
+            with self.subTest(label=label):
+                candidate_plan = copy.deepcopy(self.plan)
+                mutate(candidate_plan)
+                candidate_raw = plan_bytes(candidate_plan)
+                candidate_approval = approval_fixture(candidate_plan, candidate_raw)
+                with self.assertRaisesRegex(InfrastructureApprovalError, "budget"):
+                    validate_infrastructure_approval(
+                        candidate_plan,
+                        candidate_raw,
+                        candidate_approval,
+                        require_cloud_mutation=False,
                     )
 
     def test_markdown_replaces_line_breaking_control_characters(self) -> None:
@@ -171,6 +216,21 @@ class InfrastructureApprovalValidationTest(unittest.TestCase):
             validate_infrastructure_approval(
                 production_plan, raw, approval, require_cloud_mutation=False
             )
+
+    def test_rejects_firebase_api_key_and_internal_flush_token_key_paths(self) -> None:
+        for key, value in (
+            ("firebaseApiKeyRaw", "firebase-value-must-not-leak"),
+            ("internalFlushTokenValue", "flush-value-must-not-leak"),
+        ):
+            with self.subTest(key=key):
+                candidate = copy.deepcopy(self.approval)
+                candidate[key] = value
+                with self.assertRaises(InfrastructureApprovalError) as caught:
+                    validate_infrastructure_approval(
+                        self.plan, self.raw, candidate, require_cloud_mutation=False
+                    )
+                self.assertIn("sensitive", str(caught.exception).lower())
+                self.assertNotIn(value, str(caught.exception))
 
 
 class InfrastructureApprovalCliTest(unittest.TestCase):
@@ -250,6 +310,36 @@ class InfrastructureApprovalCliTest(unittest.TestCase):
             self.assertFalse(same.exists())
             self.assertFalse(nested.exists())
             self.assertFalse((root / "nested/result.md").exists())
+
+    def test_cli_rejects_input_output_aliases_before_writing(self) -> None:
+        plan = plan_fixture()
+        raw = plan_bytes(plan)
+        approval = approval_fixture(plan, raw)
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            plan_path = root / "plan.json"
+            approval_path = root / "approval.json"
+            markdown_output = root / "result.md"
+            approval_alias = root / "approval-alias.json"
+            plan_path.write_bytes(raw)
+            approval_path.write_text(json.dumps(approval))
+            approval_alias.symlink_to(approval_path)
+            original_plan, original_approval = plan_path.read_bytes(), approval_path.read_bytes()
+
+            plan_exit = main([
+                "--plan", str(plan_path), "--approval", str(approval_path),
+                "--json-output", str(plan_path), "--markdown-output", str(markdown_output),
+            ])
+            approval_exit = main([
+                "--plan", str(plan_path), "--approval", str(approval_path),
+                "--json-output", str(approval_alias), "--markdown-output", str(markdown_output),
+            ])
+
+            self.assertEqual(plan_exit, 1)
+            self.assertEqual(approval_exit, 1)
+            self.assertEqual(plan_path.read_bytes(), original_plan)
+            self.assertEqual(approval_path.read_bytes(), original_approval)
+            self.assertFalse(markdown_output.exists())
 
     def test_cli_rolls_back_first_final_output_when_second_publish_fails(self) -> None:
         plan = plan_fixture()
