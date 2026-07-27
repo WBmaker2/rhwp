@@ -48,14 +48,14 @@ EXECUTABLE = ("command", "argv", "shell")
 class InfrastructureActionsError(RuntimeError):
     pass
 def build_execution_manifest(
-    plan: dict[str, Any], approval_result: dict[str, Any], *, plan_bytes: bytes | None = None
+    plan: dict[str, Any], approval_result: dict[str, Any], *, plan_bytes: bytes
 ) -> dict[str, Any]:
     """Translate only the canonical plan structure into safe structured actions."""
     try:
         validate_json_domain(plan); validate_json_domain(approval_result)
     except StrictJsonError as error:
         raise InfrastructureActionsError(str(error)) from error
-    digest = _require_exact_plan_bytes(plan, plan_bytes) if plan_bytes is not None else None
+    digest = _require_exact_plan_bytes(plan, plan_bytes)
     _reject_unsafe(plan, "plan")
     _reject_unsafe(approval_result, "approval")
     stages = _validate_plan(plan)
@@ -396,9 +396,7 @@ def _production_resource_like(value: str) -> bool:
 
 
 def _canonical_plan_digest(plan: dict[str, Any]) -> str:
-    return hashlib.sha256(
-        (json.dumps(plan, ensure_ascii=False, indent=2, allow_nan=False) + "\n").encode("utf-8")
-    ).hexdigest()
+    return hashlib.sha256(canonical_json_bytes(plan, indent=2)).hexdigest()
 
 
 def _require_exact_plan_bytes(plan: dict[str, Any], plan_bytes: bytes | None) -> str:

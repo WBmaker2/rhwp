@@ -49,11 +49,12 @@ SENSITIVE = ("accesstoken", "author" + "ization", "clientsecret", "creden" + "ti
 EXECUTABLE = ("command", "argv", "shell")
 
 
-def evaluate_execution_readiness(manifest: dict[str, Any], approval_result: dict[str, Any]) -> dict[str, Any]:
+def evaluate_execution_readiness(manifest: dict[str, Any], approval_result: dict[str, Any], *, plan_bytes: bytes | None = None) -> dict[str, Any]:
     """Evaluate review evidence only; this function never grants execution authority."""
     reasons: list[str] = []
     try:
-        _validate(manifest, approval_result)
+        if plan_bytes is None: raise GateError("plan-bytes-required")
+        _validate(manifest, approval_result, plan_bytes)
     except (GateError, InfrastructureActionsError, StrictJsonError, TypeError, AttributeError, KeyError, IndexError, ValueError, RecursionError):
         reasons.append("malformed-input")
     requested = _approval_requested_state(approval_result)
@@ -95,16 +96,18 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Report non-mutating staging execution readiness")
     parser.add_argument("--execution-manifest", type=Path, required=True)
     parser.add_argument("--approval-result", type=Path, required=True)
+    parser.add_argument("--plan", type=Path, required=True)
     parser.add_argument("--json-output", type=Path, required=True)
     parser.add_argument("--markdown-output", type=Path, required=True)
     parser.add_argument("--strict-blocked-exit", action="store_true")
     args = parser.parse_args(argv)
     marker = args.json_output.with_name(args.json_output.name + ".complete")
     try:
-        _validate_paths(args.execution_manifest, args.approval_result, args.json_output, args.markdown_output, marker)
+        _validate_paths(args.execution_manifest, args.approval_result, args.plan, args.json_output, args.markdown_output, marker)
         manifest, _ = load_json_with_bytes(args.execution_manifest, "execution manifest")
         approval, _ = load_json_with_bytes(args.approval_result, "approval result")
-        result = evaluate_execution_readiness(manifest, approval)
+        _, plan_bytes = load_json_with_bytes(args.plan, "infrastructure plan")
+        result = evaluate_execution_readiness(manifest, approval, plan_bytes=plan_bytes)
         marker = publish(args.json_output, args.markdown_output, json.dumps(result, ensure_ascii=False, indent=2, allow_nan=False) + "\n", render_markdown(result))
     except (GateError, InfrastructureApprovalError, ActionIoError, OSError) as error:
         print(f"staging execution readiness failed: {error}", file=sys.stderr)
@@ -117,7 +120,7 @@ class GateError(RuntimeError):
     pass
 
 
-def _validate(manifest: dict[str, Any], approval: dict[str, Any]) -> None:
+def _validate(manifest: dict[str, Any], approval: dict[str, Any], plan_bytes: bytes) -> None:
     validate_json_domain(manifest); validate_json_domain(approval)
     _reject_unsafe(manifest, "manifest")
     _reject_unsafe(approval, "approval result")
@@ -162,7 +165,7 @@ def _validate(manifest: dict[str, Any], approval: dict[str, Any]) -> None:
     _validate_security(manifest["security"])
     if source["actionSetSha256"] != _action_set_sha256(manifest["actions"]):
         raise GateError("action-set-mismatch")
-    expected = build_execution_manifest(source_plan, approval)
+    expected = build_execution_manifest(source_plan, approval, plan_bytes=plan_bytes)
     for field in ("status", "projectId", "billingAccount", "sourceEvidence", "security", "actions"):
         if not _same_json_structure(manifest[field], expected[field]):
             raise GateError("canonical-manifest-mismatch")
@@ -410,9 +413,9 @@ def _same_json_structure(left: Any, right: Any) -> bool:
     return left == right
 
 
-def _validate_paths(manifest: Path, approval: Path, json_output: Path, markdown_output: Path, marker: Path) -> None:
+def _validate_paths(manifest: Path, approval: Path, plan: Path, json_output: Path, markdown_output: Path, marker: Path) -> None:
     temporary = (json_output.with_name(json_output.name + ".tmp"), markdown_output.with_name(markdown_output.name + ".tmp"), marker.with_name(marker.name + ".tmp"))
-    all_paths = (manifest, approval, json_output, markdown_output, marker, *temporary)
+    all_paths = (manifest, approval, plan, json_output, markdown_output, marker, *temporary)
     resolved = [path.resolve(strict=False) for path in all_paths]
     if any(path.is_symlink() for path in all_paths) or len(set(resolved)) != len(resolved):
         raise GateError("input, output, and marker paths must not overlap or alias")

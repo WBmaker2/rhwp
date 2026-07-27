@@ -28,7 +28,7 @@ class ExecutionReadinessGateTest(unittest.TestCase):
         self.manifest = build_execution_manifest(self.plan, self.approval, plan_bytes=plan_bytes(self.plan))
 
     def evaluate(self, manifest: dict[str, object] | None = None, approval: dict[str, object] | None = None) -> dict[str, object]:
-        return evaluate_execution_readiness(manifest or self.manifest, approval or self.approval)
+        return evaluate_execution_readiness(manifest or self.manifest, approval or self.approval, plan_bytes=plan_bytes(self.plan))
 
     def test_valid_review_remains_awaiting_and_never_authorizes_mutation(self) -> None:
         result = self.evaluate()
@@ -49,7 +49,7 @@ class ExecutionReadinessGateTest(unittest.TestCase):
         approval["cloudMutationApproved"] = True
         approval["status"] = "cloud-mutation-approved"
         approval["requireCloudMutation"] = True
-        result = self.evaluate(build_execution_manifest(self.plan, approval), approval)
+        result = self.evaluate(build_execution_manifest(self.plan, approval, plan_bytes=plan_bytes(self.plan)), approval)
         self.assertEqual(result["status"], "awaiting-executor-design-approval")
         self.assertFalse(result["cloudMutationApproved"])
         self.assertIn("mutation-architecture", result["requiredApprovals"])
@@ -126,9 +126,10 @@ class ExecutionReadinessGateTest(unittest.TestCase):
         self.assertEqual(subprocess.run([sys.executable, str(script), "--help"], capture_output=True, text=True).returncode, 0)
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            manifest_path, approval_path = root / "manifest.json", root / "approval.json"
+            manifest_path, approval_path, plan_path = root / "manifest.json", root / "approval.json", root / "plan.json"
             manifest_path.write_text(json.dumps(self.manifest)); approval_path.write_text(json.dumps(self.approval))
-            completed = subprocess.run([sys.executable, str(script), "--execution-manifest", str(manifest_path), "--approval-result", str(approval_path), "--json-output", str(root / "gate.json"), "--markdown-output", str(root / "gate.md")], capture_output=True, text=True)
+            plan_path.write_bytes(plan_bytes(self.plan))
+            completed = subprocess.run([sys.executable, str(script), "--execution-manifest", str(manifest_path), "--approval-result", str(approval_path), "--plan", str(plan_path), "--json-output", str(root / "gate.json"), "--markdown-output", str(root / "gate.md")], capture_output=True, text=True)
             self.assertEqual(completed.returncode, 0, completed.stderr)
 
     def test_rejects_sensitive_values_and_malformed_approval_without_leaking_them(self) -> None:
@@ -181,39 +182,41 @@ class ExecutionReadinessGateTest(unittest.TestCase):
         }, require_cloud_mutation=False)
         manifest = build_execution_manifest(self.plan, task1, plan_bytes=raw)
         self.assertEqual(manifest["sourceEvidence"]["planObjectSha256"], task1["planObjectSha256"])
-        self.assertEqual(evaluate_execution_readiness(manifest, task1)["status"], "awaiting-cloud-mutation-approval")
+        self.assertEqual(evaluate_execution_readiness(manifest, task1, plan_bytes=raw)["status"], "awaiting-cloud-mutation-approval")
         manifest["sourceEvidence"]["planObjectSha256"] = "0" * 64
-        self.assertEqual(evaluate_execution_readiness(manifest, task1)["status"], "blocked")
+        self.assertEqual(evaluate_execution_readiness(manifest, task1, plan_bytes=raw)["status"], "blocked")
 
     def test_cli_is_atomic_marks_completion_and_strictly_exits_for_blocked_result(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            manifest_path, approval_path = root / "execution.json", root / "approval.json"
+            manifest_path, approval_path, plan_path = root / "execution.json", root / "approval.json", root / "plan.json"
             output, markdown = root / "gate.json", root / "gate.md"
             manifest_path.write_text(json.dumps(self.manifest, ensure_ascii=False) + "\n")
             approval_path.write_text(json.dumps(self.approval, ensure_ascii=False) + "\n")
+            plan_path.write_bytes(plan_bytes(self.plan))
             with redirect_stdout(io.StringIO()):
-                self.assertEqual(main(["--execution-manifest", str(manifest_path), "--approval-result", str(approval_path), "--json-output", str(output), "--markdown-output", str(markdown)]), 0)
+                self.assertEqual(main(["--execution-manifest", str(manifest_path), "--approval-result", str(approval_path), "--plan", str(plan_path), "--json-output", str(output), "--markdown-output", str(markdown)]), 0)
             marker = json.loads((root / "gate.json.complete").read_text())
             self.assertEqual(marker["jsonSha256"], hashlib.sha256(output.read_bytes()).hexdigest())
             bad = copy.deepcopy(self.manifest); bad["projectId"] = "rhwp-production-001"
             manifest_path.write_text(json.dumps(bad))
             with redirect_stderr(io.StringIO()):
-                self.assertEqual(main(["--execution-manifest", str(manifest_path), "--approval-result", str(approval_path), "--json-output", str(output), "--markdown-output", str(markdown), "--strict-blocked-exit"]), 2)
+                self.assertEqual(main(["--execution-manifest", str(manifest_path), "--approval-result", str(approval_path), "--plan", str(plan_path), "--json-output", str(output), "--markdown-output", str(markdown), "--strict-blocked-exit"]), 2)
             self.assertEqual(json.loads(output.read_text())["status"], "blocked")
             alias = root / "alias.json"; alias.symlink_to(manifest_path)
             original = manifest_path.read_bytes()
             with redirect_stderr(io.StringIO()):
-                self.assertEqual(main(["--execution-manifest", str(manifest_path), "--approval-result", str(approval_path), "--json-output", str(alias), "--markdown-output", str(markdown)]), 1)
+                self.assertEqual(main(["--execution-manifest", str(manifest_path), "--approval-result", str(approval_path), "--plan", str(plan_path), "--json-output", str(alias), "--markdown-output", str(markdown)]), 1)
             self.assertEqual(manifest_path.read_bytes(), original)
 
     def test_second_publication_failure_restores_outputs(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            manifest_path, approval_path = root / "execution.json", root / "approval.json"
+            manifest_path, approval_path, plan_path = root / "execution.json", root / "approval.json", root / "plan.json"
             output, markdown = root / "gate.json", root / "gate.md"
             manifest_path.write_text(json.dumps(self.manifest)); approval_path.write_text(json.dumps(self.approval))
-            self.assertEqual(main(["--execution-manifest", str(manifest_path), "--approval-result", str(approval_path), "--json-output", str(output), "--markdown-output", str(markdown)]), 0)
+            plan_path.write_bytes(plan_bytes(self.plan))
+            self.assertEqual(main(["--execution-manifest", str(manifest_path), "--approval-result", str(approval_path), "--plan", str(plan_path), "--json-output", str(output), "--markdown-output", str(markdown)]), 0)
             prior = (output.read_bytes(), markdown.read_bytes())
             original_replace = Path.replace
             def fail_markdown(path: Path, target: Path) -> Path:
@@ -221,7 +224,7 @@ class ExecutionReadinessGateTest(unittest.TestCase):
                     raise OSError("simulated failure")
                 return original_replace(path, target)
             with patch("scripts.staging_infrastructure_action_io.Path.replace", autospec=True, side_effect=fail_markdown), redirect_stderr(io.StringIO()):
-                self.assertEqual(main(["--execution-manifest", str(manifest_path), "--approval-result", str(approval_path), "--json-output", str(output), "--markdown-output", str(markdown)]), 1)
+                self.assertEqual(main(["--execution-manifest", str(manifest_path), "--approval-result", str(approval_path), "--plan", str(plan_path), "--json-output", str(output), "--markdown-output", str(markdown)]), 1)
             self.assertEqual((output.read_bytes(), markdown.read_bytes()), prior)
 
     def test_source_contains_no_execution_or_auth_mechanism(self) -> None:

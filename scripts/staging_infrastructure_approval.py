@@ -10,8 +10,10 @@ import sys
 from pathlib import Path
 from typing import Any
 try:
+    from scripts.staging_infrastructure_action_io import ActionIoError, publish
     from scripts.staging_infrastructure_validation import MAX_JSON_BYTES, StrictJsonError, canonical_json_bytes, validate_json_domain
 except ImportError:  # pragma: no cover - direct script execution
+    from staging_infrastructure_action_io import ActionIoError, publish
     from staging_infrastructure_validation import MAX_JSON_BYTES, StrictJsonError, canonical_json_bytes, validate_json_domain
 
 INFRASTRUCTURE_APPROVAL_SCHEMA = "rhwp.staging-infrastructure-approval/v1"
@@ -32,7 +34,7 @@ APPROVAL_KEYS = frozenset({
 SENSITIVE_KEY_MARKERS = (
     "accesstoken", "authorization", "clientsecret", "credential", "idtoken",
     "password", "privatekey", "refreshtoken", "secretvalue", "firebaseapikey",
-    "internalflushtoken",
+    "internalflushtoken", "token", "secret", "apikey",
 )
 
 
@@ -42,11 +44,11 @@ class InfrastructureApprovalError(RuntimeError):
 
 def load_json_with_bytes(path: Path, label: str) -> tuple[dict[str, Any], bytes]:
     try:
+        if path.stat().st_size > MAX_JSON_BYTES:
+            raise InfrastructureApprovalError(f"{label} exceeds JSON size limit")
         raw = path.read_bytes()
     except FileNotFoundError as error:
         raise InfrastructureApprovalError(f"{label} not found: {path}") from error
-    if len(raw) > MAX_JSON_BYTES:
-        raise InfrastructureApprovalError(f"{label} exceeds JSON size limit")
     return _parse_json_object(raw, label), raw
 
 
@@ -192,16 +194,14 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--markdown-output", type=Path, required=True)
     parser.add_argument("--require-cloud-mutation", action="store_true")
     args = parser.parse_args(argv)
-    json_temp = args.json_output.with_name(args.json_output.name + ".tmp")
-    markdown_temp = args.markdown_output.with_name(args.markdown_output.name + ".tmp")
-    output_backups: dict[Path, bytes | None] = {}
-    published_paths: list[Path] = []
+    marker = args.json_output.with_name(args.json_output.name + ".complete")
     try:
         _validate_output_paths(
             args.plan,
             args.approval,
             args.json_output,
             args.markdown_output,
+            marker,
         )
         plan, plan_bytes = load_json_with_bytes(args.plan, "infrastructure plan")
         approval, _ = load_json_with_bytes(args.approval, "infrastructure approval")
@@ -209,36 +209,11 @@ def main(argv: list[str] | None = None) -> int:
             plan, plan_bytes, approval, require_cloud_mutation=args.require_cloud_mutation
         )
         markdown = render_markdown(result)
-        args.json_output.parent.mkdir(parents=True, exist_ok=True)
-        args.markdown_output.parent.mkdir(parents=True, exist_ok=True)
-        output_backups = {
-            path: path.read_bytes() if path.exists() else None
-            for path in (args.json_output, args.markdown_output)
-        }
-        json_temp.write_text(json.dumps(result, ensure_ascii=False, indent=2, allow_nan=False) + "\n")
-        markdown_temp.write_text(markdown)
-        json_temp.replace(args.json_output)
-        published_paths.append(args.json_output)
-        markdown_temp.replace(args.markdown_output)
-        published_paths.append(args.markdown_output)
-    except (InfrastructureApprovalError, OSError) as error:
-        for path in (json_temp, markdown_temp):
-            try:
-                path.unlink(missing_ok=True)
-            except OSError:
-                pass
-        for path in published_paths:
-            try:
-                prior = output_backups[path]
-                if prior is None:
-                    path.unlink(missing_ok=True)
-                else:
-                    path.write_bytes(prior)
-            except OSError:
-                pass
+        marker = publish(args.json_output, args.markdown_output, json.dumps(result, ensure_ascii=False, indent=2, allow_nan=False) + "\n", markdown)
+    except (InfrastructureApprovalError, ActionIoError, OSError) as error:
         print(f"staging infrastructure approval failed: {error}", file=sys.stderr)
         return 1
-    print(json.dumps({"status": result["status"], "projectId": result["projectId"], "jsonOutput": str(args.json_output), "markdownOutput": str(args.markdown_output), "mutationCommands": []}))
+    print(json.dumps({"status": result["status"], "projectId": result["projectId"], "jsonOutput": str(args.json_output), "markdownOutput": str(args.markdown_output), "completionMarker": str(marker), "mutationCommands": []}))
     return 0
 
 
@@ -263,6 +238,7 @@ def _validate_output_paths(
     approval_input: Path,
     json_output: Path,
     markdown_output: Path,
+    marker: Path,
 ) -> None:
     json_path = json_output.resolve(strict=False)
     markdown_path = markdown_output.resolve(strict=False)
@@ -275,11 +251,12 @@ def _validate_output_paths(
     temporary_paths = (
         json_path.with_name(json_path.name + ".tmp"),
         markdown_path.with_name(markdown_path.name + ".tmp"),
+        marker.resolve(strict=False).with_name(marker.name + ".tmp"),
     )
-    if len({json_path, markdown_path, *temporary_paths}) != 4:
+    if len({json_path, markdown_path, marker.resolve(strict=False), *temporary_paths}) != 6:
         raise InfrastructureApprovalError("output paths conflict with their temporary files")
     for input_path in (plan_input.resolve(strict=False), approval_input.resolve(strict=False)):
-        for output_path in (json_path, markdown_path, *temporary_paths):
+        for output_path in (json_path, markdown_path, marker.resolve(strict=False), *temporary_paths):
             if (
                 input_path == output_path
                 or input_path in output_path.parents

@@ -243,20 +243,18 @@ class InfrastructureActionsTest(unittest.TestCase):
         approval = copy.deepcopy(self.approval_result)
         approval["planSha256"] = hashlib.sha256(compact).hexdigest()
         self.build(self.plan, approval, compact)
-        self.assertEqual(build_execution_manifest(self.plan, approval)["sourceEvidence"]["planSha256"], approval["planSha256"])
+        with self.assertRaises(TypeError): build_execution_manifest(self.plan, approval)
         with self.assertRaisesRegex(InfrastructureActionsError, "digest"):
             self.build(self.plan, approval, plan_bytes(self.plan))
-        self.assertEqual(
-            build_execution_manifest(self.plan, self.approval_result)["projectId"],
-            self.plan["projectId"],
-        )
+        with self.assertRaises(TypeError): build_execution_manifest(self.plan, self.approval_result)
         forged = copy.deepcopy(self.approval_result)
         forged["planSha256"] = "f" * 64
-        self.assertEqual(build_execution_manifest(self.plan, forged)["sourceEvidence"]["planSha256"], "f" * 64)
+        with self.assertRaisesRegex(InfrastructureActionsError, "digest"):
+            build_execution_manifest(self.plan, forged, plan_bytes=plan_bytes(self.plan))
         forged["planSha256"] = self.approval_result["planSha256"]
         forged["planObjectSha256"] = "f" * 64
         with self.assertRaisesRegex(InfrastructureActionsError, "provenance"):
-            build_execution_manifest(self.plan, forged)
+            build_execution_manifest(self.plan, forged, plan_bytes=plan_bytes(self.plan))
         plan = copy.deepcopy(self.plan)
         plan["stages"][0]["mutationApprovalRequired"] = False
         with self.assertRaisesRegex(InfrastructureActionsError, "mutationApprovalRequired"):

@@ -28,7 +28,9 @@ def validate_json_domain(value: Any) -> None:
         if isinstance(current, float):
             continue
         if isinstance(current, str):
-            if len(current.encode("utf-8")) > MAX_STRING_BYTES:
+            try: encoded = current.encode("utf-8")
+            except UnicodeEncodeError as error: raise StrictJsonError("invalid-unicode-string") from error
+            if len(encoded) > MAX_STRING_BYTES:
                 raise StrictJsonError("json-string-limit")
             continue
         if isinstance(current, dict):
@@ -47,5 +49,8 @@ def validate_json_domain(value: Any) -> None:
 
 def canonical_json_bytes(value: Any, *, indent: int | None = None) -> bytes:
     validate_json_domain(value)
-    text = json.dumps(value, ensure_ascii=False, sort_keys=indent is None, separators=(",", ":") if indent is None else None, indent=indent, allow_nan=False)
-    return (text + "\n").encode("utf-8")
+    try:
+        text = json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":") if indent is None else None, indent=indent, allow_nan=False)
+        return (text + "\n").encode("utf-8")
+    except UnicodeEncodeError as error:
+        raise StrictJsonError("invalid-unicode-string") from error
