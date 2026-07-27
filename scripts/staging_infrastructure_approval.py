@@ -1,0 +1,319 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+import re
+import sys
+from pathlib import Path
+from typing import Any
+
+INFRASTRUCTURE_APPROVAL_SCHEMA = "rhwp.staging-infrastructure-approval/v1"
+INFRASTRUCTURE_APPROVAL_RESULT_SCHEMA = "rhwp.staging-infrastructure-approval-result/v1"
+INFRASTRUCTURE_PLAN_SCHEMA = "rhwp.staging-infrastructure-plan/v1"
+PROJECT_ID_PATTERN = re.compile(r"^[a-z][a-z0-9-]{4,28}[a-z0-9]$")
+BILLING_ACCOUNT_PATTERN = re.compile(r"^[0-9A-F]{6}-[0-9A-F]{6}-[0-9A-F]{6}$")
+COMMIT_SHA_PATTERN = re.compile(r"^[0-9a-f]{40}$")
+SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
+UTC_TIMESTAMP_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$")
+
+APPROVAL_KEYS = frozenset({
+    "schemaVersion", "decision", "approvedAt", "approvedBy", "commitSha",
+    "planSha256", "projectId", "billingAccount", "approvedStageIds",
+    "maximumMonthlyBudgetKrw", "cloudMutationApproved", "deploymentApproved",
+    "rollbackReviewed",
+})
+SENSITIVE_KEY_MARKERS = (
+    "accesstoken", "authorization", "clientsecret", "credential", "idtoken",
+    "password", "privatekey", "refreshtoken", "secretvalue",
+)
+
+
+class InfrastructureApprovalError(RuntimeError):
+    pass
+
+
+def load_json_with_bytes(path: Path, label: str) -> tuple[dict[str, Any], bytes]:
+    try:
+        raw = path.read_bytes()
+    except FileNotFoundError as error:
+        raise InfrastructureApprovalError(f"{label} not found: {path}") from error
+    try:
+        value = json.loads(
+            raw.decode("utf-8"),
+            object_pairs_hook=_json_object,
+            parse_constant=_reject_json_constant,
+        )
+    except UnicodeDecodeError as error:
+        raise InfrastructureApprovalError(f"{label} must be UTF-8 JSON") from error
+    except (json.JSONDecodeError, ValueError) as error:
+        raise InfrastructureApprovalError(f"{label} is not valid JSON: {error}") from error
+    if not isinstance(value, dict):
+        raise InfrastructureApprovalError(f"{label} root must be an object")
+    return value, raw
+
+
+def validate_infrastructure_approval(
+    plan: dict[str, Any],
+    plan_bytes: bytes,
+    approval: dict[str, Any],
+    *,
+    require_cloud_mutation: bool,
+) -> dict[str, Any]:
+    _reject_sensitive_keys(plan, "plan")
+    _reject_sensitive_keys(approval, "approval")
+    _validate_plan(plan)
+    _require_exact_keys(approval, APPROVAL_KEYS, "approval record")
+
+    if approval.get("schemaVersion") != INFRASTRUCTURE_APPROVAL_SCHEMA:
+        raise InfrastructureApprovalError(
+            f"approval record schemaVersion must be {INFRASTRUCTURE_APPROVAL_SCHEMA}"
+        )
+    if approval.get("decision") != "approved":
+        raise InfrastructureApprovalError("approval record decision must be approved")
+    approved_at = _required_string(approval, "approvedAt", "approval record")
+    if not UTC_TIMESTAMP_PATTERN.fullmatch(approved_at):
+        raise InfrastructureApprovalError(
+            "approval record approvedAt must use UTC YYYY-MM-DDTHH:MM:SSZ"
+        )
+    approvers = _string_list(approval, "approvedBy", "approval record")
+    if len(approvers) != len(set(approvers)):
+        raise InfrastructureApprovalError("approval record approvedBy must not contain duplicates")
+
+    commit_sha = _required_string(approval, "commitSha", "approval record")
+    if not COMMIT_SHA_PATTERN.fullmatch(commit_sha):
+        raise InfrastructureApprovalError(
+            "approval record commitSha must be 40 lowercase hexadecimal characters"
+        )
+    source = _mapping(plan, "sourceEvidence", "plan")
+    if commit_sha != _required_string(source, "commitSha", "plan sourceEvidence"):
+        raise InfrastructureApprovalError("approval record commitSha does not match plan sourceEvidence")
+
+    plan_sha256 = _required_string(approval, "planSha256", "approval record")
+    if not SHA256_PATTERN.fullmatch(plan_sha256):
+        raise InfrastructureApprovalError(
+            "approval record planSha256 must be a 64-character SHA-256 digest"
+        )
+    if plan_sha256 != hashlib.sha256(plan_bytes).hexdigest():
+        raise InfrastructureApprovalError("plan digest does not match approval record")
+
+    project_id = _staging_project_id(_required_string(approval, "projectId", "approval record"))
+    if project_id != _required_string(plan, "projectId", "plan"):
+        raise InfrastructureApprovalError("approval record projectId does not match plan")
+    billing_account = _required_string(approval, "billingAccount", "approval record")
+    if not BILLING_ACCOUNT_PATTERN.fullmatch(billing_account):
+        raise InfrastructureApprovalError(
+            "approval record billingAccount must use XXXXXX-XXXXXX-XXXXXX format"
+        )
+    if billing_account != _required_string(plan, "billingAccount", "plan"):
+        raise InfrastructureApprovalError("approval record billingAccount does not match plan")
+
+    stage_ids = _plan_stage_ids(plan)
+    approved_stage_ids = _string_list(approval, "approvedStageIds", "approval record")
+    if approved_stage_ids != stage_ids:
+        raise InfrastructureApprovalError(
+            "approval record approvedStageIds must list every plan stage exactly once and in order"
+        )
+    budget = approval.get("maximumMonthlyBudgetKrw")
+    if isinstance(budget, bool) or not isinstance(budget, int) or budget <= 0:
+        raise InfrastructureApprovalError(
+            "approval record maximumMonthlyBudgetKrw must be a positive integer"
+        )
+    if approval.get("rollbackReviewed") is not True:
+        raise InfrastructureApprovalError("approval record rollbackReviewed must be true")
+    if approval.get("deploymentApproved") is not False:
+        raise InfrastructureApprovalError("approval record deploymentApproved must remain false")
+    cloud_mutation_approved = approval.get("cloudMutationApproved")
+    if not isinstance(cloud_mutation_approved, bool):
+        raise InfrastructureApprovalError("approval record cloudMutationApproved must be a boolean")
+    if require_cloud_mutation and cloud_mutation_approved is not True:
+        raise InfrastructureApprovalError(
+            "approval record cloudMutationApproved must be true when cloud mutation is required"
+        )
+
+    return {
+        "schemaVersion": INFRASTRUCTURE_APPROVAL_RESULT_SCHEMA,
+        "status": "cloud-mutation-approved" if cloud_mutation_approved else "awaiting-cloud-mutation-approval",
+        "planSha256": plan_sha256,
+        "commitSha": commit_sha,
+        "projectId": project_id,
+        "billingAccount": billing_account,
+        "approvedStageIds": stage_ids,
+        "maximumMonthlyBudgetKrw": budget,
+        "cloudMutationApproved": cloud_mutation_approved,
+        "requireCloudMutation": require_cloud_mutation,
+        "deploymentApproved": False,
+        "rollbackReviewed": True,
+        "mutationCommands": [],
+    }
+
+
+def render_markdown(result: dict[str, Any]) -> str:
+    _reject_sensitive_keys(result, "approval result")
+    if result.get("schemaVersion") != INFRASTRUCTURE_APPROVAL_RESULT_SCHEMA:
+        raise InfrastructureApprovalError("approval result schemaVersion is not supported")
+    if result.get("deploymentApproved") is not False or result.get("mutationCommands") != []:
+        raise InfrastructureApprovalError("approval result must not authorize deployment or commands")
+    stages = result.get("approvedStageIds")
+    if not isinstance(stages, list) or not all(isinstance(stage, str) for stage in stages):
+        raise InfrastructureApprovalError("approval result approvedStageIds must be an array of strings")
+    lines = [
+        "# rhwp Staging Infrastructure Approval Result", "",
+        "> This record does not authorize deployment and contains no mutation commands.", "",
+        f"- Status: `{_md(result.get('status'))}`",
+        f"- Project ID: `{_md(result.get('projectId'))}`",
+        f"- Plan SHA-256: `{_md(result.get('planSha256'))}`",
+        f"- Cloud mutation approved: `{_md(result.get('cloudMutationApproved'))}`",
+        "- Deployment approved: `False`", "- Mutation commands: none", "",
+        "## Approved stages", "",
+    ]
+    lines.extend(f"- `{_md(stage)}`" for stage in stages)
+    return "\n".join(lines) + "\n"
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description="Validate a non-deployment staging infrastructure approval")
+    parser.add_argument("--plan", type=Path, required=True)
+    parser.add_argument("--approval", type=Path, required=True)
+    parser.add_argument("--json-output", type=Path, required=True)
+    parser.add_argument("--markdown-output", type=Path, required=True)
+    parser.add_argument("--require-cloud-mutation", action="store_true")
+    args = parser.parse_args(argv)
+    json_temp = args.json_output.with_name(args.json_output.name + ".tmp")
+    markdown_temp = args.markdown_output.with_name(args.markdown_output.name + ".tmp")
+    try:
+        plan, plan_bytes = load_json_with_bytes(args.plan, "infrastructure plan")
+        approval, _ = load_json_with_bytes(args.approval, "infrastructure approval")
+        result = validate_infrastructure_approval(
+            plan, plan_bytes, approval, require_cloud_mutation=args.require_cloud_mutation
+        )
+        markdown = render_markdown(result)
+        args.json_output.parent.mkdir(parents=True, exist_ok=True)
+        args.markdown_output.parent.mkdir(parents=True, exist_ok=True)
+        json_temp.write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\n")
+        markdown_temp.write_text(markdown)
+        json_temp.replace(args.json_output)
+        markdown_temp.replace(args.markdown_output)
+    except (InfrastructureApprovalError, OSError) as error:
+        for path in (json_temp, markdown_temp):
+            try:
+                path.unlink(missing_ok=True)
+            except OSError:
+                pass
+        print(f"staging infrastructure approval failed: {error}", file=sys.stderr)
+        return 1
+    print(json.dumps({"status": result["status"], "projectId": result["projectId"], "jsonOutput": str(args.json_output), "markdownOutput": str(args.markdown_output), "mutationCommands": []}))
+    return 0
+
+
+def _validate_plan(plan: dict[str, Any]) -> None:
+    if plan.get("schemaVersion") != INFRASTRUCTURE_PLAN_SCHEMA:
+        raise InfrastructureApprovalError(f"plan schemaVersion must be {INFRASTRUCTURE_PLAN_SCHEMA}")
+    if plan.get("status") != "ready-for-infrastructure-approval":
+        raise InfrastructureApprovalError("plan status must be ready-for-infrastructure-approval")
+    _staging_project_id(_required_string(plan, "projectId", "plan"))
+    billing_account = _required_string(plan, "billingAccount", "plan")
+    if not BILLING_ACCOUNT_PATTERN.fullmatch(billing_account):
+        raise InfrastructureApprovalError("plan billingAccount must use XXXXXX-XXXXXX-XXXXXX format")
+    commit_sha = _required_string(_mapping(plan, "sourceEvidence", "plan"), "commitSha", "plan sourceEvidence")
+    if not COMMIT_SHA_PATTERN.fullmatch(commit_sha):
+        raise InfrastructureApprovalError("plan sourceEvidence.commitSha must be a lowercase commit SHA")
+    _plan_stage_ids(plan)
+
+
+def _json_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError("duplicate JSON object key")
+        result[key] = value
+    return result
+
+
+def _reject_json_constant(_: str) -> None:
+    raise ValueError("non-finite JSON number")
+
+
+def _staging_project_id(project_id: str) -> str:
+    if not PROJECT_ID_PATTERN.fullmatch(project_id):
+        raise InfrastructureApprovalError("approval record projectId is not a valid GCP project ID")
+    lowered = project_id.lower()
+    if "staging" not in lowered or "production" in lowered or re.search(r"(^|-)prod($|-)", lowered):
+        raise InfrastructureApprovalError("approval record projectId must identify a staging-only project")
+    return project_id
+
+
+def _plan_stage_ids(plan: dict[str, Any]) -> list[str]:
+    stages = plan.get("stages")
+    if not isinstance(stages, list) or not stages:
+        raise InfrastructureApprovalError("plan stages must be a non-empty array")
+    result: list[str] = []
+    for index, stage in enumerate(stages):
+        if not isinstance(stage, dict):
+            raise InfrastructureApprovalError(f"plan stages[{index}] must be an object")
+        stage_id = stage.get("id")
+        if not isinstance(stage_id, str) or not stage_id.strip():
+            raise InfrastructureApprovalError(f"plan stages[{index}].id must be a non-empty string")
+        result.append(stage_id)
+    if len(result) != len(set(result)):
+        raise InfrastructureApprovalError("plan stage IDs must not contain duplicates")
+    return result
+
+
+def _require_exact_keys(value: dict[str, Any], required: frozenset[str], label: str) -> None:
+    unknown, missing = sorted(set(value) - required), sorted(required - set(value))
+    if unknown:
+        raise InfrastructureApprovalError(f"unknown keys are not allowed in {label}: " + ", ".join(unknown))
+    if missing:
+        raise InfrastructureApprovalError(f"missing required keys in {label}: " + ", ".join(missing))
+
+
+def _mapping(value: dict[str, Any], key: str, label: str) -> dict[str, Any]:
+    item = value.get(key)
+    if not isinstance(item, dict):
+        raise InfrastructureApprovalError(f"{label}.{key} must be an object")
+    return item
+
+
+def _required_string(value: dict[str, Any], key: str, label: str) -> str:
+    item = value.get(key)
+    if not isinstance(item, str) or not item.strip():
+        raise InfrastructureApprovalError(f"{label}.{key} must be a non-empty string")
+    return item.strip()
+
+
+def _string_list(value: dict[str, Any], key: str, label: str) -> list[str]:
+    item = value.get(key)
+    if not isinstance(item, list) or not item or not all(isinstance(entry, str) and entry.strip() for entry in item):
+        raise InfrastructureApprovalError(f"{label}.{key} must be a non-empty array of strings")
+    return [entry.strip() for entry in item]
+
+
+def _reject_sensitive_keys(value: Any, path: str) -> None:
+    paths = _find_sensitive_key_paths(value, path)
+    if paths:
+        raise InfrastructureApprovalError("sensitive key is not allowed at " + ", ".join(sorted(paths)))
+
+
+def _find_sensitive_key_paths(value: Any, path: str) -> list[str]:
+    if isinstance(value, dict):
+        result: list[str] = []
+        for key, item in value.items():
+            child = f"{path}.{key}"
+            normalized = re.sub(r"[^a-z0-9]", "", str(key).lower())
+            if any(marker in normalized for marker in SENSITIVE_KEY_MARKERS):
+                result.append(child)
+            result.extend(_find_sensitive_key_paths(item, child))
+        return result
+    if isinstance(value, list):
+        return [child for index, item in enumerate(value) for child in _find_sensitive_key_paths(item, f"{path}[{index}]")]
+    return []
+
+
+def _md(value: Any) -> str:
+    return ("" if value is None else str(value)).replace("|", "\\|").replace("`", "'").replace("\n", " ")
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
