@@ -498,7 +498,10 @@ def build_infrastructure_plan(
             "cloudCliInvoked": False,
         },
     }
-    return redact_sensitive(plan)
+    safe_plan = redact_sensitive(plan)
+    safe_security = _mapping(safe_plan, "security", "plan")
+    safe_security["secretValuesIncluded"] = False
+    return safe_plan
 
 
 def render_markdown(plan: dict[str, Any]) -> str:

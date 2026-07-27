@@ -418,13 +418,20 @@ def _find_sensitive_key_paths(value: Any, path: str) -> list[str]:
         for key, item in value.items():
             child = f"{path}.{key}"
             normalized = re.sub(r"[^a-z0-9]", "", str(key).lower())
-            if any(marker in normalized for marker in SENSITIVE_KEY_MARKERS):
+            if (
+                any(marker in normalized for marker in SENSITIVE_KEY_MARKERS)
+                and not _is_safe_secret_values_declaration(child, item)
+            ):
                 result.append(child)
             result.extend(_find_sensitive_key_paths(item, child))
         return result
     if isinstance(value, list):
         return [child for index, item in enumerate(value) for child in _find_sensitive_key_paths(item, f"{path}[{index}]")]
     return []
+
+
+def _is_safe_secret_values_declaration(path: str, value: Any) -> bool:
+    return path == "plan.security.secretValuesIncluded" and value is False
 
 
 def _md(value: Any) -> str:

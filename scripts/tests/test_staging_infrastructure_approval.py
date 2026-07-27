@@ -17,6 +17,12 @@ from scripts.staging_infrastructure_approval import (
     render_markdown,
     validate_infrastructure_approval,
 )
+from scripts.staging_infrastructure_plan import build_infrastructure_plan
+from scripts.tests.test_staging_infrastructure_plan import (
+    approved_record as bootstrap_approval_record,
+    manifest_and_packet,
+    packet_text_and_digest,
+)
 
 
 def plan_bytes(plan: dict[str, object]) -> bytes:
@@ -231,6 +237,37 @@ class InfrastructureApprovalValidationTest(unittest.TestCase):
                     )
                 self.assertIn("sensitive", str(caught.exception).lower())
                 self.assertNotIn(value, str(caught.exception))
+
+    def test_accepts_canonical_safe_secret_values_declaration_only_when_false(self) -> None:
+        manifest, packet = manifest_and_packet()
+        _, packet_digest = packet_text_and_digest(packet)
+        plan = build_infrastructure_plan(
+            manifest,
+            packet,
+            bootstrap_approval_record(packet, packet_digest),
+            packet_digest,
+        )
+        raw = plan_bytes(plan)
+        approval = approval_fixture(plan, raw)
+
+        result = validate_infrastructure_approval(
+            plan, raw, approval, require_cloud_mutation=False
+        )
+        self.assertEqual(result["status"], "awaiting-cloud-mutation-approval")
+
+        for unsafe_value in (True, "false"):
+            with self.subTest(unsafe_value=unsafe_value):
+                candidate_plan = copy.deepcopy(plan)
+                candidate_plan["security"]["secretValuesIncluded"] = unsafe_value
+                candidate_raw = plan_bytes(candidate_plan)
+                candidate_approval = approval_fixture(candidate_plan, candidate_raw)
+                with self.assertRaisesRegex(InfrastructureApprovalError, "sensitive"):
+                    validate_infrastructure_approval(
+                        candidate_plan,
+                        candidate_raw,
+                        candidate_approval,
+                        require_cloud_mutation=False,
+                    )
 
 
 class InfrastructureApprovalCliTest(unittest.TestCase):
