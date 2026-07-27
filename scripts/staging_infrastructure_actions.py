@@ -47,12 +47,15 @@ class InfrastructureActionsError(RuntimeError):
     pass
 
 
-def build_execution_manifest(plan: dict[str, Any], approval_result: dict[str, Any]) -> dict[str, Any]:
+def build_execution_manifest(
+    plan: dict[str, Any], approval_result: dict[str, Any], *, plan_bytes: bytes | None = None
+) -> dict[str, Any]:
     """Translate only the canonical plan structure into safe structured actions."""
+    digest = _require_exact_plan_bytes(plan, plan_bytes)
     _reject_unsafe(plan, "plan")
     _reject_unsafe(approval_result, "approval")
     stages = _validate_plan(plan)
-    _validate_approval_result(plan, approval_result)
+    _validate_approval_result(plan, approval_result, digest)
     actions: list[dict[str, Any]] = []
     final_action_by_stage: dict[str, str] = {}
     for stage in stages:
@@ -101,6 +104,9 @@ def _stage_actions(stage: dict[str, Any], classification: str, dependencies: lis
                 "rollbackBoundary": rollback, "evidenceQuery": evidence}
     if stage_id == "project-billing":
         _require_keys(resources, {"projectId", "billingAccount", "region", "forbiddenProjectIds"}, stage_id)
+        for field in ("projectId", "billingAccount", "region"):
+            _nonempty(resources[field], f"project-billing {field}")
+        _nonempty_strings(resources["forbiddenProjectIds"], "project-billing forbiddenProjectIds")
         return [
             action("verify-project", "verify-project", {"projectId": resources["projectId"], "region": resources["region"]}, {"exists": True, "environment": "staging"}, {"type": "project-metadata", "fields": ["projectId", "region"]}),
             action("verify-billing-link", "verify-billing-link", {"projectId": resources["projectId"], "billingAccount": resources["billingAccount"]}, {"linked": True}, {"type": "billing-link", "fields": ["projectId", "billingAccount"]}),
@@ -112,6 +118,9 @@ def _stage_actions(stage: dict[str, Any], classification: str, dependencies: lis
         return [action("ensure-api-enabled", f"ensure-api-{index + 1:02d}", {"api": api}, {"enabled": True, "operation": "enable-only"}, {"type": "enabled-service-list", "api": api}) for index, api in enumerate(resources)]
     if stage_id == "firebase-foundation":
         _require_keys(resources, {"projectId", "authDomain", "authorizedDomains", "firestoreLocation", "storageBucket", "storageLocation", "hostingSite"}, stage_id)
+        for field in ("projectId", "authDomain", "firestoreLocation", "storageBucket", "storageLocation", "hostingSite"):
+            _nonempty(resources[field], f"firebase-foundation {field}")
+        _nonempty_strings(resources["authorizedDomains"], "firebase-foundation authorizedDomains")
         entries = (("verify-firebase-project", "firebase-project", {"projectId": resources["projectId"]}, {"linked": True}, ["projectId"]),
                    ("verify-firestore-location", "firestore-location", {"location": resources["firestoreLocation"]}, {"matchesPlan": True}, ["location"]),
                    ("verify-storage-bucket", "storage-bucket", {"bucket": resources["storageBucket"], "location": resources["storageLocation"]}, {"matchesPlan": True}, ["bucket", "location"]),
@@ -119,9 +128,13 @@ def _stage_actions(stage: dict[str, Any], classification: str, dependencies: lis
         return [action(kind, suffix, resource, desired, {"type": "firebase-resource", "fields": fields}) for kind, suffix, resource, desired, fields in entries]
     if stage_id == "service-accounts":
         _require_keys(resources, {"collaboration", "documentApi", "documentWorker", "tasksCaller"}, stage_id)
+        for name in ("collaboration", "documentApi", "documentWorker", "tasksCaller"):
+            _nonempty(resources[name], f"service-account {name}")
         return [action("ensure-service-account", f"ensure-{name}", {"identity": resources[name], "workload": name}, {"exists": True, "operation": "create-if-missing", "keysAllowed": False}, {"type": "service-account", "identity": resources[name]}) for name in ("collaboration", "documentApi", "documentWorker", "tasksCaller")]
     if stage_id == "artifact-registry":
         _require_keys(resources, {"repository", "location"}, stage_id)
+        _nonempty(resources["repository"], "artifact repository")
+        _nonempty(resources["location"], "artifact location")
         return [action("ensure-artifact-repository", "ensure-repository", resources, {"exists": True, "operation": "create-if-missing", "deletionAllowed": False}, {"type": "artifact-repository", "fields": ["repository", "location"]})]
     if stage_id == "secret-metadata":
         if not isinstance(resources, dict) or not resources:
@@ -132,6 +145,8 @@ def _stage_actions(stage: dict[str, Any], classification: str, dependencies: lis
             _require_keys(secret, {"name", "versionReference", "valueIncluded"}, f"secret {name}")
             if secret["valueIncluded"] is not False:
                 raise InfrastructureActionsError("secret metadata valueIncluded must be false")
+            _nonempty(secret["name"], f"secret {name} name")
+            _nonempty(secret["versionReference"], f"secret {name} versionReference")
             result.append(action("ensure-secret-container", f"ensure-{name}", {"name": secret["name"], "valueIncluded": False}, {"exists": True, "operation": "create-if-missing", "versionsAllowed": False}, {"type": "secret-container", "name": secret["name"]}))
         return result
     if stage_id == "iam-bindings":
@@ -140,10 +155,19 @@ def _stage_actions(stage: dict[str, Any], classification: str, dependencies: lis
         result = []
         for index, binding in enumerate(resources):
             _require_keys(binding, {"principal", "role", "resource"}, f"iam binding {index}")
+            for field in ("principal", "role", "resource"):
+                _nonempty(binding[field], f"iam binding {index} {field}")
             result.append(action("review-iam-binding", f"review-{index + 1:02d}", binding, {"approvedForMutation": False, "beforeAfterDiffRequired": True}, {"type": "iam-binding-diff", "fields": ["principal", "role", "resource"]}))
         return result
     if stage_id == "budget-guardrails":
         _require_keys(resources, {"currency", "amount", "thresholds", "notificationChannels"}, stage_id)
+        _nonempty(resources["currency"], "budget currency")
+        _positive_number(resources["amount"], "budget amount")
+        if not isinstance(resources["thresholds"], list) or not resources["thresholds"]:
+            raise InfrastructureActionsError("budget thresholds must be a non-empty array")
+        for threshold in resources["thresholds"]:
+            _positive_number(threshold, "budget threshold")
+        _nonempty_strings(resources["notificationChannels"], "budget notificationChannels")
         return [action("verify-budget", "verify-budget", {"currency": resources["currency"], "amount": resources["amount"]}, {"exists": True, "mutationAuthorized": False}, {"type": "budget", "fields": ["currency", "amount"]}), action("verify-notification-channel", "verify-notification-channel", {"notificationChannels": resources["notificationChannels"]}, {"exists": True, "mutationAuthorized": False}, {"type": "notification-channel", "fields": ["notificationChannels"]})]
     if stage_id == "cloud-run-prerequisites":
         _require_keys(resources, {"collaboration", "documentApi", "documentWorker"}, stage_id)
@@ -193,6 +217,8 @@ def _validate_plan(plan: dict[str, Any]) -> list[dict[str, Any]]:
     prior: set[str] = set()
     for stage in stages:
         _require_keys(stage, {"id", "title", "intent", "dependsOn", "resources", "acceptanceEvidence", "rollbackBoundary", "mutationApprovalRequired"}, f"stage {stage.get('id')}")
+        if stage["mutationApprovalRequired"] is not True:
+            raise InfrastructureActionsError(f"stage {stage['id']} mutationApprovalRequired must be true")
         dependencies = stage["dependsOn"]
         if not isinstance(dependencies, list) or any(not isinstance(item, str) for item in dependencies):
             raise InfrastructureActionsError(f"stage {stage['id']} dependencies are invalid")
@@ -207,18 +233,20 @@ def _validate_plan(plan: dict[str, Any]) -> list[dict[str, Any]]:
     forbidden = project_resources["forbiddenProjectIds"]
     if not isinstance(forbidden, list) or not forbidden or any(not isinstance(item, str) or not item.strip() for item in forbidden) or len(forbidden) != len(set(forbidden)) or plan["projectId"] in forbidden:
         raise InfrastructureActionsError("project-billing forbiddenProjectIds are invalid")
+    firebase_resources = stages[2]["resources"]
+    if firebase_resources["projectId"] != plan["projectId"]:
+        raise InfrastructureActionsError("firebase-foundation projectId does not match approved project")
     evidence = stages[-1]["resources"]
     if plan.get("postBootstrapRequiredValues") != evidence:
         raise InfrastructureActionsError("post-bootstrap evidence does not match required values")
     return stages
 
 
-def _validate_approval_result(plan: dict[str, Any], result: dict[str, Any]) -> None:
+def _validate_approval_result(plan: dict[str, Any], result: dict[str, Any], digest: str) -> None:
     required = {"schemaVersion", "status", "planSha256", "commitSha", "projectId", "billingAccount", "approvedStageIds", "maximumMonthlyBudgetKrw", "cloudMutationApproved", "requireCloudMutation", "deploymentApproved", "rollbackReviewed", "mutationCommands"}
     _require_keys(result, required, "approval result")
     if result["schemaVersion"] != APPROVAL_RESULT_SCHEMA or result["status"] not in {"awaiting-cloud-mutation-approval", "cloud-mutation-approved", "ready-for-cloud-mutation"}:
         raise InfrastructureActionsError("approval result status is not supported")
-    digest = _canonical_plan_digest(plan)
     if not re.fullmatch(r"[0-9a-f]{64}", str(result["planSha256"])) or result["planSha256"] != digest:
         raise InfrastructureActionsError("approval result plan digest is invalid")
     source = plan["sourceEvidence"]
@@ -271,7 +299,7 @@ def main(argv: list[str] | None = None) -> int:
         approval, _ = load_json_with_bytes(args.approval, "infrastructure approval")
         if approval.get("schemaVersion") == "rhwp.staging-infrastructure-approval/v1":
             approval = validate_infrastructure_approval(plan, plan_bytes, approval, require_cloud_mutation=False)
-        execution = build_execution_manifest(plan, approval); markdown = render_markdown(execution)
+        execution = build_execution_manifest(plan, approval, plan_bytes=plan_bytes); markdown = render_markdown(execution)
         for path in (args.json_output, args.markdown_output): path.parent.mkdir(parents=True, exist_ok=True)
         backups = {path: path.read_bytes() if path.exists() else None for path in (args.json_output, args.markdown_output)}
         json_temp.write_text(json.dumps(execution, ensure_ascii=False, indent=2) + "\n"); temp_written.append(json_temp)
@@ -350,10 +378,35 @@ def _production_resource_like(value: str) -> bool:
     return "production" in lowered or bool(re.search(r"(^|[-_])prod($|[-_])", lowered))
 
 
-def _canonical_plan_digest(plan: dict[str, Any]) -> str:
-    return hashlib.sha256(
-        (json.dumps(plan, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
-    ).hexdigest()
+def _require_exact_plan_bytes(plan: dict[str, Any], plan_bytes: bytes | None) -> str:
+    if not isinstance(plan_bytes, bytes):
+        raise InfrastructureActionsError("trusted exact plan bytes are required")
+    try:
+        parsed = json.loads(plan_bytes.decode("utf-8"), object_pairs_hook=_json_object)
+    except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as error:
+        raise InfrastructureActionsError("plan bytes must be strict UTF-8 JSON") from error
+    if not _same_json_structure(plan, parsed):
+        raise InfrastructureActionsError("plan object does not match exact plan bytes")
+    return hashlib.sha256(plan_bytes).hexdigest()
+
+
+def _json_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError("duplicate JSON key")
+        result[key] = value
+    return result
+
+
+def _same_json_structure(left: Any, right: Any) -> bool:
+    if type(left) is not type(right):
+        return False
+    if isinstance(left, dict):
+        return set(left) == set(right) and all(_same_json_structure(value, right[key]) for key, value in left.items())
+    if isinstance(left, list):
+        return len(left) == len(right) and all(_same_json_structure(value, right[index]) for index, value in enumerate(left))
+    return left == right
 
 
 def _validate_cloud_run_service(value: Any, name: str) -> None:
@@ -384,8 +437,15 @@ def _validate_cloud_task_queue(value: Any, name: str) -> None:
 
 
 def _positive_number(value: Any, label: str, *, allow_zero: bool = False) -> None:
-    if isinstance(value, bool) or not isinstance(value, (int, float)) or value < (0 if allow_zero else 1):
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or value < (0 if allow_zero else 0) or (not allow_zero and value == 0):
         raise InfrastructureActionsError(f"{label} must be a positive number")
+
+
+def _nonempty_strings(value: Any, label: str) -> None:
+    if not isinstance(value, list) or not value or any(not isinstance(item, str) or not item.strip() for item in value):
+        raise InfrastructureActionsError(f"{label} must be a non-empty array of strings")
+    if len(value) != len(set(value)):
+        raise InfrastructureActionsError(f"{label} must not contain duplicates")
 
 
 def _md(value: Any) -> str:

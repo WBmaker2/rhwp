@@ -56,12 +56,19 @@ def canonical_plan_and_approval() -> tuple[dict[str, object], dict[str, object]]
     return plan, result
 
 
+def plan_bytes(plan: dict[str, object]) -> bytes:
+    return (json.dumps(plan, ensure_ascii=False, indent=2) + "\n").encode()
+
+
 class InfrastructureActionsTest(unittest.TestCase):
     def setUp(self) -> None:
         self.plan, self.approval_result = canonical_plan_and_approval()
 
+    def build(self, plan: dict[str, object], approval: dict[str, object], raw: bytes | None = None) -> dict[str, object]:
+        return build_execution_manifest(plan, approval, plan_bytes=raw or plan_bytes(plan))
+
     def test_canonical_plan_generates_all_ordered_safe_actions(self) -> None:
-        execution = build_execution_manifest(self.plan, self.approval_result)
+        execution = self.build(self.plan, self.approval_result)
 
         self.assertEqual(execution["schemaVersion"], "rhwp.staging-infrastructure-execution/v1")
         self.assertEqual(execution["status"], "awaiting-cloud-mutation-approval")
@@ -99,8 +106,8 @@ class InfrastructureActionsTest(unittest.TestCase):
             self.assertEqual([action["kind"] for action in by_stage[stage_id]], kinds)
 
     def test_output_is_deterministic_and_safe_to_render(self) -> None:
-        first = build_execution_manifest(self.plan, self.approval_result)
-        second = build_execution_manifest(copy.deepcopy(self.plan), copy.deepcopy(self.approval_result))
+        first = self.build(self.plan, self.approval_result)
+        second = self.build(copy.deepcopy(self.plan), copy.deepcopy(self.approval_result))
         self.assertEqual(first, second)
         markdown = render_markdown(first)
         self.assertIn("does not authorize deployment", markdown)
@@ -120,13 +127,13 @@ class InfrastructureActionsTest(unittest.TestCase):
                 plan, approval = copy.deepcopy(self.plan), copy.deepcopy(self.approval_result)
                 mutate(plan, approval)
                 with self.assertRaisesRegex(InfrastructureActionsError, pattern):
-                    build_execution_manifest(plan, approval)
+                    self.build(plan, approval)
 
     def test_dependencies_must_only_reference_prior_actions(self) -> None:
         plan = copy.deepcopy(self.plan)
         plan["stages"][1]["dependsOn"] = ["post-bootstrap-evidence"]  # type: ignore[index]
         with self.assertRaisesRegex(InfrastructureActionsError, "later"):
-            build_execution_manifest(plan, self.approval_result)
+            self.build(plan, self.approval_result)
 
     def test_cli_writes_both_outputs_or_neither_and_rejects_aliases(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -208,4 +215,35 @@ class InfrastructureActionsTest(unittest.TestCase):
                 plan, approval = copy.deepcopy(self.plan), copy.deepcopy(self.approval_result)
                 mutate(plan, approval)
                 with self.assertRaisesRegex(InfrastructureActionsError, pattern):
-                    build_execution_manifest(plan, approval)
+                    self.build(plan, approval)
+
+    def test_requires_exact_plan_bytes_and_canonical_mutation_flags(self) -> None:
+        compact = json.dumps(self.plan, ensure_ascii=False, separators=(",", ":")).encode()
+        approval = copy.deepcopy(self.approval_result)
+        approval["planSha256"] = hashlib.sha256(compact).hexdigest()
+        self.build(self.plan, approval, compact)
+        with self.assertRaisesRegex(InfrastructureActionsError, "digest"):
+            self.build(self.plan, approval, plan_bytes(self.plan))
+        with self.assertRaisesRegex(InfrastructureActionsError, "plan bytes"):
+            build_execution_manifest(self.plan, self.approval_result)
+        plan = copy.deepcopy(self.plan)
+        plan["stages"][0]["mutationApprovalRequired"] = False
+        with self.assertRaisesRegex(InfrastructureActionsError, "mutationApprovalRequired"):
+            self.build(plan, self.approval_result)
+
+    def test_rejects_empty_required_resources_and_firebase_project_mismatch(self) -> None:
+        cases = (
+            ("firebase project", lambda plan: plan["stages"][2]["resources"].__setitem__("projectId", "other-staging"), "firebase"),
+            ("api", lambda plan: plan["stages"][1].__setitem__("resources", [""]), "API"),
+            ("identity", lambda plan: plan["stages"][3]["resources"].__setitem__("collaboration", None), "service-account"),
+            ("artifact", lambda plan: plan["stages"][4]["resources"].__setitem__("repository", None), "artifact"),
+            ("secret", lambda plan: next(iter(plan["stages"][5]["resources"].values())).__setitem__("name", ""), "secret"),
+            ("iam", lambda plan: plan["stages"][6]["resources"][0].__setitem__("principal", None), "iam"),
+            ("budget", lambda plan: plan["stages"][7]["resources"].__setitem__("notificationChannels", []), "budget"),
+        )
+        for label, mutate, pattern in cases:
+            with self.subTest(label=label):
+                plan = copy.deepcopy(self.plan)
+                mutate(plan)
+                with self.assertRaisesRegex(InfrastructureActionsError, pattern):
+                    self.build(plan, self.approval_result)
