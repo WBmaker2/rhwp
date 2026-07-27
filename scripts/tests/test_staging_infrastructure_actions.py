@@ -261,6 +261,9 @@ class InfrastructureActionsTest(unittest.TestCase):
             ("password", lambda plan: plan["stages"][0].__setitem__("rollbackBoundary", "password=must-not-leak"), "sensitive value"),
             ("client secret", lambda plan: plan["stages"][0].__setitem__("rollbackBoundary", "clientSecret=must-not-leak"), "sensitive value"),
             ("firebase key", lambda plan: plan["stages"][0].__setitem__("rollbackBoundary", "AIzaMustNotLeak"), "sensitive value"),
+            ("authorization header", lambda plan: plan["stages"][0].__setitem__("rollbackBoundary", "Authorization: Bearer should-not-leak"), "sensitive value"),
+            ("authorization spacing", lambda plan: plan["stages"][0].__setitem__("rollbackBoundary", " AUTHORIZATION = should-not-leak"), "sensitive value"),
+            ("private key label", lambda plan: plan["stages"][0].__setitem__("rollbackBoundary", "privateKey=should-not-leak"), "sensitive value"),
             ("command variant", lambda plan: plan["stages"][0]["resources"].__setitem__("commandString", "not-run"), "executable"),
             ("shell variant", lambda plan: plan["stages"][0]["resources"].__setitem__("shell_command", "not-run"), "executable"),
         )

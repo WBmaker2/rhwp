@@ -471,7 +471,7 @@ def _sensitive_string(value: str) -> bool:
         or "-----begin private key-----" in lowered
         or "-----begin rsa private key-----" in lowered
         or lowered.startswith("aiza")
-        or bool(re.search(r"(?:token|credential|secretvalue|password|clientsecret|apikey)\s*(?:=|:)\s*\S+", lowered))
+        or bool(re.search(r"(?:authorization|privatekey|token|credential|secretvalue|password|clientsecret|apikey)\s*(?:=|:)\s*\S+", lowered))
     )
 
 
