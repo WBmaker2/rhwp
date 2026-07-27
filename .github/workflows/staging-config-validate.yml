@@ -1,0 +1,488 @@
+name: Staging configuration
+
+on:
+  pull_request:
+    branches: [devel]
+    paths:
+      - 'firebase/firebase.json'
+      - 'firebase/.firebaserc.example'
+      - 'firebase/staging.env.example'
+      - 'deploy/cloudrun/**'
+      - 'deploy/staging/**'
+      - 'docs/approvals/**'
+      - 'docs/runbooks/staging-bootstrap-readiness.md'
+      - 'docs/runbooks/staging-bootstrap-packet-review.md'
+      - 'docs/runbooks/staging-bootstrap-operator.md'
+      - 'scripts/validate_staging_config.py'
+      - 'scripts/staging_preflight.py'
+      - 'scripts/staging_approval_packet.py'
+      - 'scripts/staging_bootstrap_materializer.py'
+      - 'scripts/staging_bootstrap_readiness.py'
+      - 'scripts/staging_bootstrap_approval_record.py'
+      - 'scripts/staging_bootstrap_operator.py'
+      - 'scripts/staging_infrastructure_plan.py'
+      - 'scripts/tests/**'
+      - '.github/workflows/staging-config-validate.yml'
+  workflow_dispatch:
+    inputs:
+      approval_phase:
+        description: Approval packet, review, or plan phase to generate
+        required: true
+        type: choice
+        options:
+          - none
+          - bootstrap
+          - bootstrap-review
+          - infrastructure-plan
+          - deployment
+        default: none
+      live_check:
+        description: Run live read-only GCP and Firebase queries
+        required: true
+        type: boolean
+        default: false
+      manifest_path:
+        description: Repository-relative staging manifest path
+        required: true
+        type: string
+        default: deploy/staging/staging-manifest.json
+      bootstrap_packet_path:
+        description: Repository-relative reviewed bootstrap packet JSON path
+        required: false
+        type: string
+        default: docs/approvals/records/staging-approval-packet.json
+      bootstrap_review_path:
+        description: Repository-relative approved bootstrap packet review declaration path
+        required: false
+        type: string
+        default: docs/approvals/records/staging-bootstrap-packet-review.json
+      bootstrap_approval_record_path:
+        description: Repository-relative approved bootstrap record JSON path
+        required: false
+        type: string
+        default: docs/approvals/records/staging-bootstrap-approval-record.json
+
+permissions:
+  contents: read
+
+jobs:
+  static:
+    name: Static preflight
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          show-progress: false
+      - name: Validate manual approval phase selection
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          APPROVAL_PHASE: ${{ inputs.approval_phase }}
+          LIVE_CHECK: ${{ inputs.live_check }}
+        run: |
+          case "${APPROVAL_PHASE}:${LIVE_CHECK}" in
+            none:false|bootstrap:false|bootstrap-review:false|infrastructure-plan:false|deployment:true)
+              ;;
+            *)
+              echo "invalid approval phase and live_check combination" >&2
+              exit 1
+              ;;
+          esac
+      - name: Run staging preflight unit tests
+        run: python3 -m unittest discover -s scripts/tests -p 'test_*.py' -v
+      - name: Validate staging templates without deployment
+        run: python3 scripts/validate_staging_config.py
+      - name: Generate deterministic bootstrap test evidence
+        run: |
+          mkdir -p artifacts/bootstrap-test
+          python3 scripts/staging_bootstrap_materializer.py \
+            --manifest deploy/staging/staging-manifest.json \
+            --values deploy/staging/staging-bootstrap-values.example.json \
+            --output artifacts/bootstrap-test/staging-manifest-bootstrap.json
+          python3 scripts/staging_preflight.py \
+            --manifest artifacts/bootstrap-test/staging-manifest-bootstrap.json \
+            --report artifacts/bootstrap-test/staging-preflight-static.json
+          python3 scripts/staging_approval_packet.py \
+            --phase bootstrap \
+            --manifest artifacts/bootstrap-test/staging-manifest-bootstrap.json \
+            --static-report artifacts/bootstrap-test/staging-preflight-static.json \
+            --json-output artifacts/bootstrap-test/staging-approval-packet.json \
+            --markdown-output artifacts/bootstrap-test/staging-approval-packet.md
+      - name: Upload deterministic bootstrap test evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: staging-bootstrap-test-evidence
+          path: artifacts/bootstrap-test/**
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Generate deterministic readiness test evidence
+        run: |
+          mkdir -p artifacts/readiness-test
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          source = Path('deploy/staging/staging-bootstrap-readiness.example.json')
+          payload = json.loads(source.read_text())
+          commit = '7' * 40
+          payload['repository']['commitSha'] = commit
+          run_numbers = {
+              'CI': 9001,
+              'CodeQL': 9002,
+              'Render Diff': 9003,
+              'Staging configuration': 9004,
+          }
+          payload['workflows'] = [
+              {
+                  'name': name,
+                  'runNumber': number,
+                  'commitSha': commit,
+                  'status': 'completed',
+                  'conclusion': 'success',
+              }
+              for name, number in run_numbers.items()
+          ]
+          for key in payload['governance']:
+              payload['governance'][key] = (
+                  'approved' if key == 'decisionStatus' else True
+              )
+          payload['protectedEnvironment'] = {
+              'name': 'staging-bootstrap',
+              'configured': True,
+              'requiredReviewerCount': 1,
+              'branchRestricted': True,
+              'secretNames': [],
+              'cloudCredentialsPresent': False,
+              'idTokenWrite': False,
+              'variableNames': sorted([
+                  'STAGING_PROJECT_ID',
+                  'STAGING_BILLING_ACCOUNT',
+                  'STAGING_FORBIDDEN_PROJECT_IDS_JSON',
+                  'STAGING_STORAGE_BUCKET',
+                  'STAGING_MONTHLY_BUDGET_KRW',
+                  'STAGING_BUDGET_NOTIFICATION_CHANNELS_JSON',
+                  'STAGING_DATA_RETENTION_DAYS',
+                  'STAGING_APPROVAL_REFERENCE',
+                  'STAGING_INTERNAL_FLUSH_DECISION',
+              ]),
+          }
+          Path('artifacts/readiness-test/staging-bootstrap-readiness-input-test.json').write_text(
+              json.dumps(payload, ensure_ascii=False, indent=2) + '\n'
+          )
+          PY
+          python3 scripts/staging_bootstrap_readiness.py \
+            --input artifacts/readiness-test/staging-bootstrap-readiness-input-test.json \
+            --json-output artifacts/readiness-test/staging-bootstrap-readiness-test.json \
+            --markdown-output artifacts/readiness-test/staging-bootstrap-readiness-test.md \
+            --normalized-values-output artifacts/readiness-test/staging-bootstrap-values-normalized-test.json
+          python3 scripts/staging_bootstrap_materializer.py \
+            --manifest deploy/staging/staging-manifest.json \
+            --values artifacts/readiness-test/staging-bootstrap-values-normalized-test.json \
+            --output artifacts/readiness-test/staging-manifest-bootstrap-test.json
+          python3 scripts/staging_preflight.py \
+            --manifest artifacts/readiness-test/staging-manifest-bootstrap-test.json \
+            --report artifacts/readiness-test/staging-preflight-readiness-test.json
+          python3 scripts/staging_approval_packet.py \
+            --phase bootstrap \
+            --manifest artifacts/readiness-test/staging-manifest-bootstrap-test.json \
+            --static-report artifacts/readiness-test/staging-preflight-readiness-test.json \
+            --json-output artifacts/readiness-test/staging-approval-packet-readiness-test.json \
+            --markdown-output artifacts/readiness-test/staging-approval-packet-readiness-test.md
+      - name: Upload deterministic readiness test evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: staging-bootstrap-readiness-test-evidence
+          path: artifacts/readiness-test/**
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Generate deterministic bootstrap review test evidence
+        run: |
+          mkdir -p artifacts/bootstrap-review-test
+          cp artifacts/bootstrap-test/staging-approval-packet.json \
+            artifacts/bootstrap-review-test/staging-approval-packet.json
+          python3 - <<'PY'
+          import hashlib
+          import json
+          from pathlib import Path
+
+          packet_path = Path('artifacts/bootstrap-review-test/staging-approval-packet.json')
+          packet = json.loads(packet_path.read_text())
+          digest = hashlib.sha256(packet_path.read_bytes()).hexdigest()
+          review = {
+              'schemaVersion': 'rhwp.staging-bootstrap-packet-review/v1',
+              'decision': 'approved',
+              'approvedAt': '2026-07-27T00:00:00Z',
+              'approvedBy': ['synthetic-test-reviewer'],
+              'commitSha': '8' * 40,
+              'workflowRunId': 99001,
+              'artifactName': 'staging-approval-packet-bootstrap',
+              'expectedPacketSha256': digest,
+              'expectedApprovalReference': packet['approval']['reference'],
+              'acknowledgements': {
+                  'packetReviewed': True,
+                  'deferredPathsAccepted': True,
+                  'billingAndBudgetReviewed': True,
+                  'internalFlushExceptionAccepted': True,
+                  'cloudMutationNotApproved': True,
+                  'deploymentNotApproved': True,
+              },
+              'notes': ['synthetic test evidence only; not an actual approval'],
+          }
+          Path('artifacts/bootstrap-review-test/staging-bootstrap-packet-review.json').write_text(
+              json.dumps(review, ensure_ascii=False, indent=2) + '\n'
+          )
+          PY
+          python3 scripts/staging_bootstrap_approval_record.py \
+            --packet artifacts/bootstrap-review-test/staging-approval-packet.json \
+            --review artifacts/bootstrap-review-test/staging-bootstrap-packet-review.json \
+            --record-output artifacts/bootstrap-review-test/staging-bootstrap-approval-record.json \
+            --review-json-output artifacts/bootstrap-review-test/staging-bootstrap-packet-review-result.json \
+            --review-markdown-output artifacts/bootstrap-review-test/staging-bootstrap-packet-review-result.md
+      - name: Upload deterministic bootstrap review test evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: staging-bootstrap-approval-review-test-evidence
+          path: artifacts/bootstrap-review-test/**
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Generate deterministic staging bootstrap operator test evidence
+        run: |
+          mkdir -p artifacts/operator-test
+          python3 scripts/staging_bootstrap_operator.py \
+            --readiness-input artifacts/readiness-test/staging-bootstrap-readiness-input-test.json \
+            --packet artifacts/readiness-test/staging-approval-packet-readiness-test.json \
+            --packet-workflow-run-id 99005 \
+            --packet-commit-sha 7777777777777777777777777777777777777777 \
+            --json-output artifacts/operator-test/staging-bootstrap-operator-status-test.json \
+            --markdown-output artifacts/operator-test/staging-bootstrap-operator-status-test.md \
+            --review-draft-output artifacts/operator-test/staging-bootstrap-packet-review-draft-test.json
+      - name: Upload deterministic staging bootstrap operator test evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: staging-bootstrap-operator-test-evidence
+          path: artifacts/operator-test/**
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Generate static preflight report
+        env:
+          MANIFEST_PATH: ${{ github.event_name == 'workflow_dispatch' && inputs.manifest_path || 'deploy/staging/staging-manifest.json' }}
+        run: |
+          mkdir -p artifacts
+          python3 scripts/staging_preflight.py \
+            --manifest "${MANIFEST_PATH}" \
+            --report artifacts/staging-preflight-static.json
+      - name: Upload static preflight report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: staging-preflight-report-static
+          path: artifacts/staging-preflight-static.json
+          if-no-files-found: warn
+          retention-days: 14
+
+  bootstrap:
+    name: Bootstrap approval packet
+    if: github.event_name == 'workflow_dispatch' && inputs.approval_phase == 'bootstrap' && !inputs.live_check
+    needs: static
+    runs-on: ubuntu-latest
+    environment: staging-bootstrap
+    permissions:
+      contents: read
+    env:
+      STAGING_PROJECT_ID: ${{ vars.STAGING_PROJECT_ID }}
+      STAGING_BILLING_ACCOUNT: ${{ vars.STAGING_BILLING_ACCOUNT }}
+      STAGING_FORBIDDEN_PROJECT_IDS_JSON: ${{ vars.STAGING_FORBIDDEN_PROJECT_IDS_JSON }}
+      STAGING_STORAGE_BUCKET: ${{ vars.STAGING_STORAGE_BUCKET }}
+      STAGING_MONTHLY_BUDGET_KRW: ${{ vars.STAGING_MONTHLY_BUDGET_KRW }}
+      STAGING_BUDGET_NOTIFICATION_CHANNELS_JSON: ${{ vars.STAGING_BUDGET_NOTIFICATION_CHANNELS_JSON }}
+      STAGING_DATA_RETENTION_DAYS: ${{ vars.STAGING_DATA_RETENTION_DAYS }}
+      STAGING_APPROVAL_REFERENCE: ${{ vars.STAGING_APPROVAL_REFERENCE }}
+      STAGING_INTERNAL_FLUSH_DECISION: ${{ vars.STAGING_INTERNAL_FLUSH_DECISION }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          show-progress: false
+      - name: Materialize approved bootstrap manifest
+        run: |
+          mkdir -p artifacts
+          python3 scripts/staging_bootstrap_materializer.py \
+            --manifest "${{ inputs.manifest_path }}" \
+            --from-environment \
+            --output artifacts/staging-manifest-bootstrap.json
+      - name: Generate static preflight report for bootstrap approval
+        run: |
+          python3 scripts/staging_preflight.py \
+            --manifest artifacts/staging-manifest-bootstrap.json \
+            --report artifacts/staging-preflight-static.json
+      - name: Generate bootstrap staging approval packet
+        run: |
+          python3 scripts/staging_approval_packet.py \
+            --phase bootstrap \
+            --manifest artifacts/staging-manifest-bootstrap.json \
+            --static-report artifacts/staging-preflight-static.json \
+            --json-output artifacts/staging-approval-packet.json \
+            --markdown-output artifacts/staging-approval-packet.md
+      - name: Upload bootstrap staging approval packet
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: staging-approval-packet-bootstrap
+          path: |
+            artifacts/staging-manifest-bootstrap.json
+            artifacts/staging-preflight-static.json
+            artifacts/staging-approval-packet.json
+            artifacts/staging-approval-packet.md
+          if-no-files-found: warn
+          retention-days: 14
+
+  bootstrap_review:
+    name: Bootstrap packet approval review
+    if: github.event_name == 'workflow_dispatch' && inputs.approval_phase == 'bootstrap-review' && !inputs.live_check
+    needs: static
+    runs-on: ubuntu-latest
+    environment: staging-bootstrap-approval
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          show-progress: false
+      - name: Validate reviewed bootstrap packet inputs
+        env:
+          BOOTSTRAP_PACKET_PATH: ${{ inputs.bootstrap_packet_path }}
+          BOOTSTRAP_REVIEW_PATH: ${{ inputs.bootstrap_review_path }}
+        run: |
+          for path in "${BOOTSTRAP_PACKET_PATH}" "${BOOTSTRAP_REVIEW_PATH}"; do
+            if [ ! -f "${path}" ]; then
+              echo "required reviewed bootstrap input does not exist: ${path}" >&2
+              exit 1
+            fi
+          done
+      - name: Generate non-mutating bootstrap approval record
+        run: |
+          mkdir -p artifacts/bootstrap-review
+          python3 scripts/staging_bootstrap_approval_record.py \
+            --packet "${{ inputs.bootstrap_packet_path }}" \
+            --review "${{ inputs.bootstrap_review_path }}" \
+            --record-output artifacts/bootstrap-review/staging-bootstrap-approval-record.json \
+            --review-json-output artifacts/bootstrap-review/staging-bootstrap-packet-review-result.json \
+            --review-markdown-output artifacts/bootstrap-review/staging-bootstrap-packet-review-result.md
+      - name: Upload bootstrap approval review
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: staging-bootstrap-approval-review
+          path: artifacts/bootstrap-review/**
+          if-no-files-found: warn
+          retention-days: 14
+
+  infrastructure_plan:
+    name: Infrastructure bootstrap plan
+    if: github.event_name == 'workflow_dispatch' && inputs.approval_phase == 'infrastructure-plan' && !inputs.live_check
+    needs: static
+    runs-on: ubuntu-latest
+    environment: staging-infrastructure
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          show-progress: false
+      - name: Validate reviewed infrastructure planning inputs
+        env:
+          MANIFEST_PATH: ${{ inputs.manifest_path }}
+          BOOTSTRAP_PACKET_PATH: ${{ inputs.bootstrap_packet_path }}
+          BOOTSTRAP_APPROVAL_RECORD_PATH: ${{ inputs.bootstrap_approval_record_path }}
+        run: |
+          for path in "${MANIFEST_PATH}" "${BOOTSTRAP_PACKET_PATH}" "${BOOTSTRAP_APPROVAL_RECORD_PATH}"; do
+            if [ ! -f "${path}" ]; then
+              echo "required reviewed planning input does not exist: ${path}" >&2
+              exit 1
+            fi
+          done
+      - name: Generate non-mutating infrastructure bootstrap plan
+        run: |
+          mkdir -p artifacts/infrastructure-plan
+          python3 scripts/staging_infrastructure_plan.py \
+            --manifest "${{ inputs.manifest_path }}" \
+            --bootstrap-packet "${{ inputs.bootstrap_packet_path }}" \
+            --bootstrap-approval-record "${{ inputs.bootstrap_approval_record_path }}" \
+            --json-output artifacts/infrastructure-plan/staging-infrastructure-plan.json \
+            --markdown-output artifacts/infrastructure-plan/staging-infrastructure-plan.md
+      - name: Upload infrastructure bootstrap plan
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: staging-infrastructure-bootstrap-plan
+          path: artifacts/infrastructure-plan/**
+          if-no-files-found: warn
+          retention-days: 14
+
+  live:
+    name: Deployment live read-only preflight
+    if: github.event_name == 'workflow_dispatch' && inputs.approval_phase == 'deployment' && inputs.live_check
+    needs: static
+    runs-on: ubuntu-latest
+    environment: staging-preflight
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          show-progress: false
+      - name: Authenticate with Workload Identity Federation
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_PREFLIGHT_SERVICE_ACCOUNT }}
+      - name: Set up Google Cloud CLI
+        uses: google-github-actions/setup-gcloud@v3
+      - name: Install Firebase CLI
+        run: npm install --global firebase-tools
+      - name: Generate static preflight report for deployment approval
+        run: |
+          mkdir -p artifacts
+          python3 scripts/staging_preflight.py \
+            --manifest "${{ inputs.manifest_path }}" \
+            --report artifacts/staging-preflight-static.json
+      - name: Run live read-only preflight
+        run: |
+          python3 scripts/staging_preflight.py \
+            --manifest "${{ inputs.manifest_path }}" \
+            --live \
+            --report artifacts/staging-preflight-live.json
+      - name: Generate deployment staging approval packet
+        run: |
+          python3 scripts/staging_approval_packet.py \
+            --phase deployment \
+            --manifest "${{ inputs.manifest_path }}" \
+            --static-report artifacts/staging-preflight-static.json \
+            --live-report artifacts/staging-preflight-live.json \
+            --json-output artifacts/staging-approval-packet.json \
+            --markdown-output artifacts/staging-approval-packet.md
+      - name: Upload live preflight report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: staging-preflight-report-live
+          path: artifacts/staging-preflight-live.json
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Upload deployment staging approval packet
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: staging-approval-packet-deployment
+          path: |
+            artifacts/staging-preflight-static.json
+            artifacts/staging-preflight-live.json
+            artifacts/staging-approval-packet.json
+            artifacts/staging-approval-packet.md
+          if-no-files-found: warn
+          retention-days: 14
