@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+from datetime import datetime
 import hashlib
 import json
 import re
@@ -77,6 +78,12 @@ def validate_infrastructure_approval(
         raise InfrastructureApprovalError(
             "approval record approvedAt must use UTC YYYY-MM-DDTHH:MM:SSZ"
         )
+    try:
+        datetime.strptime(approved_at, "%Y-%m-%dT%H:%M:%SZ")
+    except ValueError as error:
+        raise InfrastructureApprovalError(
+            "approval record approvedAt must be a real UTC timestamp"
+        ) from error
     approvers = _string_list(approval, "approvedBy", "approval record")
     if len(approvers) != len(set(approvers)):
         raise InfrastructureApprovalError("approval record approvedBy must not contain duplicates")
@@ -182,7 +189,10 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     json_temp = args.json_output.with_name(args.json_output.name + ".tmp")
     markdown_temp = args.markdown_output.with_name(args.markdown_output.name + ".tmp")
+    output_backups: dict[Path, bytes | None] = {}
+    published_paths: list[Path] = []
     try:
+        _validate_output_paths(args.json_output, args.markdown_output)
         plan, plan_bytes = load_json_with_bytes(args.plan, "infrastructure plan")
         approval, _ = load_json_with_bytes(args.approval, "infrastructure approval")
         result = validate_infrastructure_approval(
@@ -191,14 +201,29 @@ def main(argv: list[str] | None = None) -> int:
         markdown = render_markdown(result)
         args.json_output.parent.mkdir(parents=True, exist_ok=True)
         args.markdown_output.parent.mkdir(parents=True, exist_ok=True)
+        output_backups = {
+            path: path.read_bytes() if path.exists() else None
+            for path in (args.json_output, args.markdown_output)
+        }
         json_temp.write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\n")
         markdown_temp.write_text(markdown)
         json_temp.replace(args.json_output)
+        published_paths.append(args.json_output)
         markdown_temp.replace(args.markdown_output)
+        published_paths.append(args.markdown_output)
     except (InfrastructureApprovalError, OSError) as error:
         for path in (json_temp, markdown_temp):
             try:
                 path.unlink(missing_ok=True)
+            except OSError:
+                pass
+        for path in published_paths:
+            try:
+                prior = output_backups[path]
+                if prior is None:
+                    path.unlink(missing_ok=True)
+                else:
+                    path.write_bytes(prior)
             except OSError:
                 pass
         print(f"staging infrastructure approval failed: {error}", file=sys.stderr)
@@ -220,6 +245,26 @@ def _validate_plan(plan: dict[str, Any]) -> None:
     if not COMMIT_SHA_PATTERN.fullmatch(commit_sha):
         raise InfrastructureApprovalError("plan sourceEvidence.commitSha must be a lowercase commit SHA")
     _plan_stage_ids(plan)
+
+
+def _validate_output_paths(json_output: Path, markdown_output: Path) -> None:
+    json_path = json_output.resolve(strict=False)
+    markdown_path = markdown_output.resolve(strict=False)
+    if (
+        json_path == markdown_path
+        or json_path in markdown_path.parents
+        or markdown_path in json_path.parents
+    ):
+        raise InfrastructureApprovalError("JSON and Markdown output paths must not overlap")
+    temporary_paths = (
+        json_path.with_name(json_path.name + ".tmp"),
+        markdown_path.with_name(markdown_path.name + ".tmp"),
+    )
+    if len({json_path, markdown_path, *temporary_paths}) != 4:
+        raise InfrastructureApprovalError("output paths conflict with their temporary files")
+    for path in (json_path, markdown_path):
+        if path.exists() and path.is_dir():
+            raise InfrastructureApprovalError("output path must not be a directory")
 
 
 def _json_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
@@ -280,14 +325,14 @@ def _required_string(value: dict[str, Any], key: str, label: str) -> str:
     item = value.get(key)
     if not isinstance(item, str) or not item.strip():
         raise InfrastructureApprovalError(f"{label}.{key} must be a non-empty string")
-    return item.strip()
+    return item
 
 
 def _string_list(value: dict[str, Any], key: str, label: str) -> list[str]:
     item = value.get(key)
     if not isinstance(item, list) or not item or not all(isinstance(entry, str) and entry.strip() for entry in item):
         raise InfrastructureApprovalError(f"{label}.{key} must be a non-empty array of strings")
-    return [entry.strip() for entry in item]
+    return list(item)
 
 
 def _reject_sensitive_keys(value: Any, path: str) -> None:
@@ -312,7 +357,9 @@ def _find_sensitive_key_paths(value: Any, path: str) -> list[str]:
 
 
 def _md(value: Any) -> str:
-    return ("" if value is None else str(value)).replace("|", "\\|").replace("`", "'").replace("\n", " ")
+    text = "" if value is None else str(value)
+    text = re.sub(r"[\x00-\x1f\x7f\x85\u2028\u2029]", " ", text)
+    return text.replace("|", "\\|").replace("`", "'")
 
 
 if __name__ == "__main__":

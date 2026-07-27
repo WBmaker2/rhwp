@@ -8,9 +8,11 @@ import tempfile
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
+from unittest.mock import patch
 
 from scripts.staging_infrastructure_approval import (
     InfrastructureApprovalError,
+    load_json_with_bytes,
     main,
     render_markdown,
     validate_infrastructure_approval,
@@ -105,6 +107,35 @@ class InfrastructureApprovalValidationTest(unittest.TestCase):
                         require_cloud_mutation=label == "mutation required",
                     )
 
+    def test_rejects_impossible_timestamp_and_padded_evidence_identifiers(self) -> None:
+        cases = (
+            ("timestamp", "approvedAt", "2026-02-30T25:61:61Z", "approvedAt"),
+            ("commit", "commitSha", " " + "1" * 40, "commitSha"),
+            ("digest", "planSha256", " " + hashlib.sha256(self.raw).hexdigest(), "planSha256"),
+            ("project", "projectId", " rhwp-collaboration-staging-001", "projectId"),
+            ("billing", "billingAccount", " 123456-ABCDEF-123456", "billingAccount"),
+            ("stage", "approvedStageIds", [" project-billing", "api-baseline"], "approvedStageIds"),
+        )
+        for label, key, value, pattern in cases:
+            with self.subTest(label=label):
+                candidate = copy.deepcopy(self.approval)
+                candidate[key] = value
+                with self.assertRaisesRegex(InfrastructureApprovalError, pattern):
+                    validate_infrastructure_approval(
+                        self.plan, self.raw, candidate, require_cloud_mutation=False
+                    )
+
+    def test_markdown_replaces_line_breaking_control_characters(self) -> None:
+        result = validate_infrastructure_approval(
+            self.plan, self.raw, self.approval, require_cloud_mutation=False
+        )
+        result["approvedStageIds"] = ["project-billing\r\n- injected"]
+
+        markdown = render_markdown(result)
+
+        self.assertNotIn("\r", markdown)
+        self.assertIn("`project-billing  - injected`", markdown)
+
     def test_rejects_unknown_missing_sensitive_and_non_staging_data_without_values(self) -> None:
         cases = (
             ("unknown", lambda item: item.__setitem__("unexpected", True), "unknown"),
@@ -162,3 +193,81 @@ class InfrastructureApprovalCliTest(unittest.TestCase):
             self.assertIn("awaiting-cloud-mutation-approval", markdown_output.read_text())
             self.assertIn("mutationCommands", stdout.getvalue())
 
+    def test_strict_json_loading_rejects_duplicate_keys_and_non_finite_values(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            duplicate = root / "duplicate.json"
+            non_finite = root / "non-finite.json"
+            duplicate.write_text('{"schemaVersion":"one","schemaVersion":"two"}')
+            non_finite.write_text('{"value":NaN}')
+
+            for path in (duplicate, non_finite):
+                with self.subTest(path=path.name):
+                    with self.assertRaisesRegex(InfrastructureApprovalError, "valid JSON"):
+                        load_json_with_bytes(path, "fixture")
+
+    def test_cli_rejects_overlapping_outputs_and_leaves_no_partial_files(self) -> None:
+        plan = plan_fixture()
+        raw = plan_bytes(plan)
+        approval = approval_fixture(plan, raw)
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            plan_path = root / "plan.json"
+            approval_path = root / "approval.json"
+            plan_path.write_bytes(raw)
+            approval_path.write_text(json.dumps(approval))
+            same = root / "result"
+            nested = root / "nested/result.json"
+            bad_approval = root / "bad-approval.json"
+            bad_approval.write_text("{}")
+
+            same_exit = main([
+                "--plan", str(plan_path), "--approval", str(approval_path),
+                "--json-output", str(same), "--markdown-output", str(same),
+            ])
+            overlap_exit = main([
+                "--plan", str(plan_path), "--approval", str(approval_path),
+                "--json-output", str(root / "nested"), "--markdown-output", str(nested),
+            ])
+            failed_exit = main([
+                "--plan", str(plan_path), "--approval", str(bad_approval),
+                "--json-output", str(nested), "--markdown-output", str(root / "nested/result.md"),
+            ])
+
+            self.assertEqual(same_exit, 1)
+            self.assertEqual(overlap_exit, 1)
+            self.assertEqual(failed_exit, 1)
+            self.assertFalse(same.exists())
+            self.assertFalse(nested.exists())
+            self.assertFalse((root / "nested/result.md").exists())
+
+    def test_cli_rolls_back_first_final_output_when_second_publish_fails(self) -> None:
+        plan = plan_fixture()
+        raw = plan_bytes(plan)
+        approval = approval_fixture(plan, raw)
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            plan_path = root / "plan.json"
+            approval_path = root / "approval.json"
+            json_output = root / "result.json"
+            markdown_output = root / "result.md"
+            plan_path.write_bytes(raw)
+            approval_path.write_text(json.dumps(approval))
+            original_replace = Path.replace
+
+            def fail_markdown_publish(path: Path, target: Path) -> Path:
+                if target == markdown_output:
+                    raise OSError("simulated markdown publish failure")
+                return original_replace(path, target)
+
+            with patch.object(Path, "replace", fail_markdown_publish):
+                exit_code = main([
+                    "--plan", str(plan_path), "--approval", str(approval_path),
+                    "--json-output", str(json_output), "--markdown-output", str(markdown_output),
+                ])
+
+            self.assertEqual(exit_code, 1)
+            self.assertFalse(json_output.exists())
+            self.assertFalse(markdown_output.exists())
+            self.assertFalse((root / "result.json.tmp").exists())
+            self.assertFalse((root / "result.md.tmp").exists())
