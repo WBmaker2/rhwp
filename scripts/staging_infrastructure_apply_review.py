@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build a non-mutating review package for a future staging apply executor."""
+"""Build a non-mutating review package for guarded staging apply promotion."""
 from __future__ import annotations
 
 import argparse
@@ -30,6 +30,7 @@ try:
         canonical_json_bytes,
         validate_json_domain,
     )
+    from scripts.staging_infrastructure_apply_safety import ApplySafetyError, reject_sensitive_string_leaves
 except ImportError:  # pragma: no cover - direct script execution
     from staging_infrastructure_action_io import ActionIoError, publish
     from staging_infrastructure_actions import (  # type: ignore[no-redef]
@@ -50,8 +51,9 @@ except ImportError:  # pragma: no cover - direct script execution
         canonical_json_bytes,
         validate_json_domain,
     )
+    from staging_infrastructure_apply_safety import ApplySafetyError, reject_sensitive_string_leaves  # type: ignore[no-redef]
 
-SCHEMA = "rhwp.staging-infrastructure-apply-review/v1"
+SCHEMA = "rhwp.staging-infrastructure-apply-review/v2"
 EXECUTION_SCHEMA = "rhwp.staging-infrastructure-execution/v1"
 COMMIT_PATTERN = re.compile(r"^[0-9a-f]{40}$")
 ELIGIBLE_STAGES = (
@@ -126,33 +128,39 @@ def build_apply_review_package(
             "actionSetSha256": source["actionSetSha256"],
             "sourceCommitSha": source["commitSha"],
             "approvalResultSchema": source["approvalResultSchema"],
+            "canonicalActionSetSha256": hashlib.sha256(
+                canonical_json_bytes(subset).rstrip(b"\n")
+            ).hexdigest(),
         },
         "mutationArchitecture": {
             "authenticationBeforeValidationAllowed": False,
             "exactEvidenceBindingRequired": True,
             "firstFailureStopsExecution": True,
             "automaticDeleteRollbackAllowed": False,
-            "futureExecutorImplemented": False,
+            "futureExecutorImplemented": True,
         },
         "evidenceTransport": {
-            "artifactName": "staging-infrastructure-apply-review",
+            "artifactName": "staging-infrastructure-approved-evidence",
             "actualEvidenceTrackedInGit": False,
             "exactByteDigestRequired": True,
-            "approvedArtifactDownloadImplemented": False,
+            "sameProtectedRunPublicationImplemented": True,
+            "publicationBeforeCloudAuthentication": True,
+            "operatorReceiptSignatureRequired": True,
+            "operatorSigningKeyRegistry": "immutable-tracked-code",
             "containsCredentials": False,
+            "containsSecretValues": False,
         },
         "canonicalMutationSubset": subset,
         "executorActionAllowlistEnforcement": _executor_action_allowlist(subset),
         "protectedEnvironmentSpec": protected_environment_spec(),
         "wifIdentityAndIamDiff": wif_and_iam_diff(),
-        "requiredApprovalRecordSchema": (
-            "rhwp.staging-infrastructure-mutation-approval/v1"
-        ),
+        "requiredApprovalRecordSchema": "rhwp.staging-infrastructure-apply-ready/v3",
         "requiredApprovals": [
             "actual-review-package",
             "actual-environment-settings",
             "actual-wif-identity",
             "actual-live-iam-before-after-diff",
+            "operator-attestation-signing-key",
             "cloud-mutation-approval-record",
             "apply-workflow-diff",
             "apply-workflow-dispatch",
@@ -205,7 +213,7 @@ def _canonical_subset(execution: dict[str, Any]) -> list[dict[str, Any]]:
 
 def _executor_action_allowlist(subset: list[dict[str, Any]]) -> dict[str, Any]:
     return {
-        "implemented": False,
+        "implemented": True,
         "iamScopeAloneSufficient": False,
         "independentExecutorEnforcementRequired": True,
         "liveProjectScopeBindingDiffRequired": True,
@@ -222,6 +230,10 @@ def _executor_action_allowlist(subset: list[dict[str, Any]]) -> dict[str, Any]:
 
 def _assert_safe_package(package: dict[str, Any]) -> None:
     validate_json_domain(package)
+    try:
+        reject_sensitive_string_leaves(package, "review package")
+    except ApplySafetyError as error:
+        raise ApplyReviewError("review package contains a credential-shaped value") from error
     encoded = canonical_json_bytes(package).decode("utf-8").lower()
     forbidden_keys = (
         '"command":',

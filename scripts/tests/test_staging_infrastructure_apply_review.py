@@ -65,7 +65,7 @@ class ApplyReviewPackageTest(unittest.TestCase):
     def test_builds_deterministic_non_mutating_review_package(self) -> None:
         package = self.build()
 
-        self.assertEqual(package["schemaVersion"], "rhwp.staging-infrastructure-apply-review/v1")
+        self.assertEqual(package["schemaVersion"], "rhwp.staging-infrastructure-apply-review/v2")
         self.assertEqual(package["status"], "ready-for-apply-review")
         self.assertEqual(package["executorCommit"]["sha"], EXECUTOR_COMMIT)
         self.assertEqual(
@@ -134,6 +134,7 @@ class ApplyReviewPackageTest(unittest.TestCase):
         self.assertEqual(environment["secrets"], [])
         self.assertEqual(environment["longLivedCloudCredentials"], [])
         self.assertEqual(environment["currentReviewJobPermissions"]["id-token"], "none")
+        self.assertEqual(environment["currentReviewJobPermissions"]["actions"], "read")
         self.assertEqual(environment["futureApplyJobPermissions"]["id-token"], "write")
         self.assertEqual(
             environment["variableNames"],
@@ -141,6 +142,16 @@ class ApplyReviewPackageTest(unittest.TestCase):
                 "GCP_WORKLOAD_IDENTITY_PROVIDER",
                 "GCP_DEPLOYER_SERVICE_ACCOUNT",
                 "STAGING_PROJECT_ID",
+                "STAGING_APPROVED_REPOSITORY",
+                "STAGING_APPROVED_REPOSITORY_ID",
+                "STAGING_APPROVED_REPOSITORY_OWNER_ID",
+                "STAGING_APPROVED_REF",
+                "STAGING_APPROVED_WORKFLOW_REF",
+                "STAGING_APPROVED_WORKFLOW_SHA",
+                "STAGING_APPROVED_WORKFLOW_CONTENT_SHA256",
+                "STAGING_APPROVED_EXECUTOR_TREE_SHA",
+                "STAGING_APPROVED_APPLY_READY_PACKAGE_JSON",
+                "STAGING_APPROVED_MUTATION_APPROVAL_JSON",
             ],
         )
         self.assertEqual(identity["status"], "proposed-diff-requires-live-review")
@@ -179,23 +190,12 @@ class ApplyReviewPackageTest(unittest.TestCase):
 
         custom_roles = identity["candidateBindings"][1:]
         self.assertTrue(all(role["roleType"] == "custom" for role in custom_roles))
-        self.assertEqual(
-            {role["roleId"] for role in custom_roles},
-            {
-                "stagingApiEnableOnly",
-                "stagingServiceAccountCreateOnly",
-                "stagingArtifactRegistryRepositoryCreateRead",
-                "stagingSecretManagerMetadataCreateReadList",
-            },
-        )
+        self.assertEqual({role["roleId"] for role in custom_roles}, {"stagingApiEnableOnly", "stagingServiceAccountCreateReadList", "stagingArtifactRegistryRepositoryCreateRead", "stagingSecretManagerMetadataCreateReadList"})
         permissions = {
             role["roleId"]: role["includedPermissions"] for role in custom_roles
         }
         self.assertEqual(permissions["stagingApiEnableOnly"], ["serviceusage.services.enable"])
-        self.assertEqual(
-            permissions["stagingServiceAccountCreateOnly"],
-            ["iam.serviceAccounts.create"],
-        )
+        self.assertEqual(permissions["stagingServiceAccountCreateReadList"], ["iam.serviceAccounts.create", "iam.serviceAccounts.get", "iam.serviceAccounts.list", "iam.serviceAccountKeys.list"])
         self.assertEqual(
             permissions["stagingArtifactRegistryRepositoryCreateRead"],
             [
@@ -232,7 +232,7 @@ class ApplyReviewPackageTest(unittest.TestCase):
             all(role["scope"] == "staging-project" for role in custom_roles)
         )
         allowlist = package["executorActionAllowlistEnforcement"]
-        self.assertFalse(allowlist["implemented"])
+        self.assertTrue(allowlist["implemented"])
         self.assertFalse(allowlist["iamScopeAloneSufficient"])
         self.assertTrue(allowlist["independentExecutorEnforcementRequired"])
         self.assertTrue(allowlist["liveProjectScopeBindingDiffRequired"])
@@ -462,7 +462,7 @@ class ApplyReviewRepositoryContractTest(unittest.TestCase):
 
         self.assertEqual(
             payload["schemaVersion"],
-            "rhwp.staging-infrastructure-mutation-approval/v1",
+            "rhwp.staging-infrastructure-mutation-approval/v3",
         )
         self.assertEqual(payload["decision"], "pending")
         self.assertIsNone(payload["approvedAt"])

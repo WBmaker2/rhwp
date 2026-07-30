@@ -35,7 +35,7 @@ class ApplyReviewPolicyTest(unittest.TestCase):
         environment = package["protectedEnvironmentSpec"]
         self.assertFalse(environment["canAdminsBypass"])
         self.assertEqual(
-            environment["supportVerificationStatus"], "required-before-apply"
+            environment["supportVerificationStatus"], "operator-read-only-attestation-required"
         )
         self.assertTrue(environment["unsupportedOrUnverifiedBlocksApprovalApply"])
 

@@ -147,7 +147,7 @@ def _stage_actions(stage: dict[str, Any], classification: str, dependencies: lis
         _require_keys(resources, {"repository", "location"}, stage_id)
         _nonempty(resources["repository"], "artifact repository")
         _nonempty(resources["location"], "artifact location")
-        return [action("ensure-artifact-repository", "ensure-repository", resources, {"exists": True, "operation": "create-if-missing", "deletionAllowed": False}, {"type": "artifact-repository", "fields": ["repository", "location"]})]
+        return [action("ensure-artifact-repository", "ensure-repository", {**resources, "format": "DOCKER"}, {"exists": True, "operation": "create-if-missing", "deletionAllowed": False, "format": "DOCKER"}, {"type": "artifact-repository", "fields": ["repository", "location", "format"]})]
     if stage_id == "secret-metadata":
         if not isinstance(resources, dict) or not resources:
             raise InfrastructureActionsError("secret-metadata resources must be a non-empty object")
@@ -159,7 +159,7 @@ def _stage_actions(stage: dict[str, Any], classification: str, dependencies: lis
                 raise InfrastructureActionsError("secret metadata valueIncluded must be false")
             _nonempty(secret["name"], f"secret {name} name")
             _nonempty(secret["versionReference"], f"secret {name} versionReference")
-            result.append(action("ensure-secret-container", f"ensure-{name}", {"name": secret["name"], "valueIncluded": False}, {"exists": True, "operation": "create-if-missing", "versionsAllowed": False}, {"type": "secret-container", "name": secret["name"]}))
+            result.append(action("ensure-secret-container", f"ensure-{name}", {"name": secret["name"], "replication": "automatic", "valueIncluded": False}, {"exists": True, "operation": "create-if-missing", "versionsAllowed": False, "replication": "automatic"}, {"type": "secret-container", "name": secret["name"], "replication": "automatic"}))
         return result
     if stage_id == "iam-bindings":
         if not isinstance(resources, list) or not resources:

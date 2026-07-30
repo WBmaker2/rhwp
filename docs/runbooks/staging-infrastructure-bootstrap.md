@@ -7,8 +7,8 @@
 | 1-3 | 선행 절차 | [inputs](staging-bootstrap-inputs.md) → [readiness](staging-bootstrap-readiness.md) → [operator](staging-bootstrap-operator.md) |
 | 4 | 선행 검토 | [bootstrap packet review](staging-bootstrap-packet-review.md) 및 bootstrap approval record |
 | 5 | plan 생성 | `scripts/staging_infrastructure_plan.py`가 bootstrap manifest, packet, approval record에서 plan을 만듭니다. |
-| 6 | 현재 범위 | 아래 approval validator/action manifest/readiness gate와 apply review package가 plan review 증거를 확인합니다. |
-| 7 | 차단 | 별도 actual package 검토, cloud mutation approval과 미래 executor가 필요합니다. |
+| 6 | 현재 범위 | approval/action/readiness/review package와 guarded apply executor·operator attestation CLI가 계약을 확인합니다. |
+| 7 | 차단 | operator의 read-only Environment/WIF attestation, immutable signing-key registry onboarding, exact-byte v3 approval, protected job 승인과 별도 cloud mutation 승인이 필요합니다. |
 | 8-9 | 차단 | actual resource identifier 관찰 및 live read-only preflight는 7의 evidence 뒤에만 가능합니다. |
 | 10-12 | 차단 | deployment packet, 별도 deployment approval, deployment는 독립 절차입니다. |
 
@@ -16,12 +16,15 @@
 
 ## 상태와 안전 경계
 
-이 runbook은 staging 전용 infrastructure 검토 증거를 생성하고 확인하는 현재 구현을 설명합니다. 현재 구현은 클라우드 인증, cloud CLI 호출, resource 생성·변경, GitHub Environment 변경, workflow dispatch, 배포를 수행하지 않습니다.
+이 runbook은 staging 전용 infrastructure 검토·attestation·guarded apply 계약을 설명합니다. 이 저장소의
+review workflow와 로컬 검증은 cloud authentication, resource 변경, GitHub Environment 변경, workflow dispatch,
+배포를 수행하지 않습니다. 별도 operator CLI만 인증된 운영자가 의도적으로 실행할 때 fixed read-only
+`gh api`/`gcloud` 조회를 수행하며, 그 원문 응답·토큰·credential은 출력 또는 evidence에 기록하지 않습니다.
 
 - tracked repository 상태: `no-tracked-actual-approval-record`
-- 현재 지원: infrastructure plan 승인 검증, 구조화 action manifest 생성, execution readiness gate,
-  non-mutating apply review package
-- 현재 미지원: dry-run, apply, WIF 인증, environment 생성·구성, resource mutation, live preflight, image build/push, deployment
+- 현재 지원: infrastructure plan 승인 검증, 구조화 action manifest/readiness/review package, fixed-query
+  Environment/WIF operator attestation, immutable-key signed apply-ready v3/v3 approval 검증, guarded dry-run/apply executor
+- 현재 미지원: Environment/WIF/IAM 생성·구성, cloud mutation의 자동 승인, image build/push, deployment
 - 공통 출력 경계: `mutationCommands=[]`, deployment 권한은 항상 `false`, 실행 가능한 shell/argv는 생성하지 않습니다.
 
 실제 운영 값, 승인 artifact, credential, token, private key, service-account key, Firebase API key 값, internal flush 원문은 추적 문서나 예시에 기록하지 않습니다.
@@ -31,7 +34,7 @@
 | 승인 | 검토 대상 | 현재 구현의 결과 | 다른 승인과의 관계 |
 | --- | --- | --- | --- |
 | Plan review approval | exact infrastructure plan bytes, commit, project/billing 바인딩, stage 순서, 예산, rollback 검토 | `cloudMutationApproved=false`이면 `awaiting-cloud-mutation-approval` | apply 권한이 아닙니다. |
-| Cloud mutation approval | 동일한 증거에 바인딩한 별도 `cloudMutationApproved=true` record | 현재 executor가 없으므로 실행하지 않습니다. | plan review·deployment approval을 대체하지 않습니다. |
+| Cloud mutation approval | immutable-key signed operator attestation이 결합된 apply-ready v3 exact bytes와 동일 run에 바인딩한 `cloudMutationApproved=true` v3 record | executor는 protected job과 모든 pre-auth 검증 뒤에만 실행합니다. | plan review·deployment approval을 대체하지 않습니다. |
 | Deployment approval | deployment packet, immutable image digest, live preflight, IAM diff, rollback/acceptance evidence | 현재 범위 밖이며 항상 별도입니다. | infrastructure mutation approval을 대체하지 않습니다. |
 
 operator-local reviewed plan record가 존재하고 `cloudMutationApproved=false`라면 `awaiting-cloud-mutation-approval`으로 평가됩니다. 이는 apply 입력이 아니며 `--require-cloud-mutation` 검증도 통과하지 못합니다. tracked repository에는 actual approval record가 없습니다.
@@ -43,7 +46,7 @@ operator-local reviewed plan record가 존재하고 `cloudMutationApproved=false
 ### 1. Infrastructure approval 검증
 
 ```bash
-python3 scripts/staging_infrastructure_approval.py \
+python3 -m scripts.staging_infrastructure_approval \
   --plan artifacts/actual-infrastructure-review/staging-infrastructure-plan.json \
   --approval artifacts/actual-infrastructure-review/staging-infrastructure-approval-record.json \
   --json-output artifacts/actual-infrastructure-review/infrastructure-approval-result.json \
@@ -55,7 +58,7 @@ python3 scripts/staging_infrastructure_approval.py \
 ### 2. Action manifest 생성
 
 ```bash
-python3 scripts/staging_infrastructure_actions.py \
+python3 -m scripts.staging_infrastructure_actions \
   --plan artifacts/actual-infrastructure-review/staging-infrastructure-plan.json \
   --approval artifacts/actual-infrastructure-review/staging-infrastructure-approval-record.json \
   --json-output artifacts/actual-infrastructure-review/staging-infrastructure-execution-manifest.json \
@@ -67,7 +70,7 @@ python3 scripts/staging_infrastructure_actions.py \
 ### 3. Execution readiness gate
 
 ```bash
-python3 scripts/staging_infrastructure_execution_gate.py \
+python3 -m scripts.staging_infrastructure_execution_gate \
   --plan artifacts/actual-infrastructure-review/staging-infrastructure-plan.json \
   --execution-manifest artifacts/actual-infrastructure-review/staging-infrastructure-execution-manifest.json \
   --approval-result artifacts/actual-infrastructure-review/infrastructure-approval-result.json \
@@ -81,7 +84,7 @@ gate는 canonical manifest와 approval-result의 digest·commit·plan object pro
 ### 4. Apply review package
 
 ```bash
-python3 scripts/staging_infrastructure_apply_review.py \
+python3 -m scripts.staging_infrastructure_apply_review \
   --plan artifacts/actual-infrastructure-review/staging-infrastructure-plan.json \
   --approval-result artifacts/actual-infrastructure-review/infrastructure-approval-result.json \
   --execution-manifest artifacts/actual-infrastructure-review/staging-infrastructure-execution-manifest.json \
@@ -108,6 +111,40 @@ resource mutation이 없습니다. tracked pending declaration은
 record는 사람이 actual package의 exact-byte SHA-256과 설정 diff를 검토한 뒤 ignored `artifacts/`
 아래에서만 작성합니다.
 
+### 5. Operator attestation과 apply-ready promotion
+
+다음 명령은 authenticated operator만 operator-local ignored 경로에서 실행합니다. `--environment-attestation`
+또는 `--wif-attestation` 같은 관찰 JSON 입력은 없습니다. promotion CLI가 고정 repository/environment의
+read-only `gh api` endpoints와 고정 `gcloud` argv를 직접 호출하고, provider mapping·CEL condition·exact
+`roles/iam.workloadIdentityUser` service-account binding을 검증합니다.
+
+```bash
+python3 -m scripts.staging_infrastructure_apply_ready \
+  --review-package artifacts/actual-infrastructure-review/staging-infrastructure-apply-review-package.json \
+  --project-id <STAGING_PROJECT_ID> \
+  --provider-resource-name <WIF_PROVIDER_RESOURCE_NAME> \
+  --service-account <DEPLOYER_SERVICE_ACCOUNT_EMAIL> \
+  --operator-signing-key-id <PINNED_OPERATOR_KEY_ID> \
+  --operator-signing-private-key <OPERATOR_LOCAL_ED25519_PRIVATE_KEY_PATH> \
+  --output artifacts/actual-infrastructure-review/staging-infrastructure-apply-ready-package.json
+```
+
+각 receipt에는 query contract version, project/provider/service-account 및 immutable GitHub identifiers,
+exact expected mapping/condition/principal, GitHub OIDC issuer/default audience mode, raw response SHA-256,
+observedAt/expiresAt, verified result만 남습니다. canonical payload는 immutable tracked-code Ed25519 registry의
+public key로 확인되는 signature envelope에 넣습니다. response body, reviewer identity, variable value, stderr,
+token, credential 또는 private signing key는 남기지 않습니다. API disabled, 403, malformed/unknown response,
+pagination 불완전, admin-bypass 미관측, registry key 부재/서명 불일치는 모두 output 없이 fail-closed입니다.
+GitHub의 official GET Environment response가 admin bypass 상태를 제공하지 않는 현재 플랫폼에서는 이 명령이
+의도적으로 promotion을 중단합니다. 이는 사람이 수동 acknowledgement로 우회할 수 없습니다.
+
+`TRUSTED_OPERATOR_KEY_REGISTRY`는 현재 비어 있습니다. 따라서 위 CLI는 fixed query를 시작하기 전 signing-key
+configuration 오류로 중단합니다. 실제 public key onboarding은 별도 reviewed source change와 사용자 승인이
+필요하며, protected Environment variable의 public key를 trust root로 사용하지 않습니다.
+
+operator가 signed v3 package의 exact raw SHA-256, 두 receipt envelope digest 및 expiry를 확인한 뒤에만 v3 human approval을
+작성합니다. approval 시각과 protected apply run 시각은 두 receipt의 15분 이하 validity window 안에 있어야 합니다.
+
 ### Completion marker와 strict blocked exit
 
 approval validator, action manifest, readiness gate, apply review package CLI가 성공적으로 두 출력 파일을 모두 publish하면 JSON output 옆에 `.complete` completion marker를 만듭니다. 예를 들어 `artifacts/actual-infrastructure-review/staging-infrastructure-readiness.json.complete`입니다. marker는 두 산출물이 동일 실행에서 완성되었다는 로컬 publish 증거일 뿐, 승인·인증·apply 완료·배포 완료를 뜻하지 않습니다.
@@ -127,21 +164,21 @@ approval validator, action manifest, readiness gate, apply review package CLI가
 | 분류 | Stage | 현재 허용 범위 |
 | --- | --- | --- |
 | observation-only | `project-billing`, `post-bootstrap-evidence` | read-only identity/billing/evidence 확인만 합니다. |
-| eligible-mutation | `api-baseline`, `service-accounts`, `artifact-registry`, `secret-metadata` | 미래 executor에서만 별도 allowlist와 승인 뒤 idempotent create/enable을 설계할 수 있습니다. 현재는 구조화 검토 증거만 생성합니다. |
+| eligible-mutation | `api-baseline`, `service-accounts`, `artifact-registry`, `secret-metadata` | guarded executor가 exact allowlist·operator attestation·v3 approval 뒤에만 idempotent create/enable을 수행할 수 있습니다. |
 | irreversible-manual-decision | `firebase-foundation`, `budget-guardrails` | 현재 observation only입니다. 위치·budget/channel의 실제 생성은 별도 콘솔/API 의사결정과 승인이 필요합니다. |
 | deferred-resource-specific | `iam-bindings` | 모든 referenced resource 존재 및 exact before/after IAM diff 승인 전까지 deferred입니다. |
 | blocked-deferred | `cloud-run-prerequisites`, `cloud-tasks-prerequisites` | immutable image digest, worker URL, deployment approval 및 queue/IAM diff 전까지 blocked입니다. |
 
 `project-billing`은 project 생성·삭제·billing relink를 수행하지 않습니다. eligible-mutation stage도 API 자동 disable, service-account key 생성, secret version의 추가·읽기·출력, repository 삭제를 허용하지 않습니다.
 
-## 구현된 review-package trust design과 미래 executor
+## 구현된 review-package trust design과 executor
 
 현재 review-package builder는 caller가 넣은 attestation boolean이나 parsed object만 신뢰하지 않고 exact
-plan bytes와 canonical execution manifest를 재구성합니다. 그러나 실제 apply workflow를 구현하기
-전에는 추적하지 않는 actual plan/approval/manifest package의 비밀 없는 전달·저장 방식과 artifact
-provenance 검증을 사용자가 별도로 승인해야 합니다.
+plan bytes와 canonical execution manifest를 재구성합니다. review package는 검토 전용이며, 실제 apply에는
+tracked review evidence를 실행하지 않고 ignored live attestation을 결합한 apply-ready promotion과 별도 human
+approval을 사용합니다.
 
-미래 executor는 인증 전에 다음을 모두 수행해야 합니다.
+apply executor와 workflow는 인증 전에 다음을 모두 수행합니다.
 
 1. caller-declared executor commit을 provenance로 신뢰하지 않고, 승인 브랜치 포함성 및 commit object/tree와
    `.github/workflows/staging-infrastructure-apply.yml`의 승인된 내용을 독립 검증한 뒤 실행한 revision을 evidence에 기록합니다.
@@ -152,22 +189,46 @@ provenance 검증을 사용자가 별도로 승인해야 합니다.
 
 특히 `cloudMutationApproved=true`라는 caller-provided boolean만으로 인증이나 apply를 시작해서는 안 됩니다.
 
-## FUTURE REQUIREMENTS: actual transport, dry-run, apply, environment, WIF
+## Approved apply executor와 protected workflow
 
-다음은 현재 사용 가능한 명령이 아닙니다. 별도 사용자 승인과 구현이 완료되기 전에는 실행할 수 없습니다.
+`scripts/staging_infrastructure_apply_executor.py`는 review package를 직접 실행하지 않습니다. actual CLI는
+관찰 JSON을 받지 않고, `scripts/staging_infrastructure_apply_ready.py`가 fixed-query operator receipt로 만든
+`rhwp.staging-infrastructure-apply-ready/v3`의 exact bytes를 사람이 승인한 v3 record만 받습니다. tracked/synthetic
+review package와 caller-supplied attestation dict는 apply-ready가 아니므로 fail-closed입니다. 기본값은 dry-run이며,
+실제 apply는 `--apply`와 embedded attestation의 digest·expiry·runtime context 검증을 요구합니다. package 안의
+command, argv, shell, credential, token, secret value는 지원하지 않습니다.
 
-- Dry-run: exact canonical mutation subset에 대한 read-before-write evidence와 예상 diff를 산출하되, resource 변경은 하지 않아야 합니다.
+`.github/workflows/staging-infrastructure-apply.yml`은 `workflow_dispatch` 전용입니다. dispatch가 run
+ID/attempt를 만든 뒤, 사람이 그 값에 결합한 v3 approval과 exact apply-ready package를 protected Environment 변수에
+넣고 `publish-approved-evidence` job을 승인합니다. 이 job은 cloud auth와 `id-token` 없이 같은 run의
+artifact만 게시합니다. apply job은 그 artifact만 download하고 exact approval digest, source commit에서
+checked-out executor commit까지의 Git object/ancestor/approved-branch 관계, repository/owner immutable ID,
+workflow path/content SHA와 OIDC `workflow_ref`/`workflow_sha` claim을 검증한 뒤에만 WIF 인증을 요청합니다.
+실제 ID/SHA, package, approval, WIF 값은 tracked workflow나 dispatch input이 아니라 protected Environment
+변수 또는 ignored artifact에만 둡니다.
+
+성공/실패와 무관하게 artifact에는 sanitized plan/post evidence만 올립니다. package, approval, provenance
+temporary file과 credential은 artifact에 포함하지 않습니다. API enable, service-account create, Artifact
+Registry create, secret metadata create 외 stage와 secret version/value, service-account key, broad IAM,
+delete/disable, build/push/deploy는 executor allowlist 밖입니다.
+
+## Dispatch 전 필수 운영 게이트
+
+다음은 구현되어 있으나, review→apply-ready promotion·artifact transport·protected Environment 값·human approval이 모두
+재생성·검토되기 전에는 dispatch할 수 없는 필수 게이트입니다.
+
+- Dry-run: exact canonical mutation subset에 대한 plan/post evidence를 산출하되, resource 변경은 하지 않아야 합니다.
 - Apply: protected environment 승인, caller-declared commit의 독립 membership/tree/workflow 검증, exact
   plan/approval/manifest digest 검증을 끝낸 뒤에만 허용됩니다.
 - `staging-infrastructure-apply` environment: required reviewer 최소 1명, prevent self-review 활성화,
-  `canAdminsBypass=false`를 요구합니다. 이 setting의 platform/account 지원 여부는
-  `required-before-apply`로 남으며 unsupported 또는 unverified이면 approval/apply를 fail-closed로 차단합니다.
+  `canAdminsBypass=false`를 요구합니다. operator는 official REST read contract가 이 값을 관측하지 못하면
+  사람 acknowledgement로 대체하지 않고 attestation/promotion을 fail-closed로 중단합니다.
   deployment branch policy에서 protected branches는 `false`, custom branch policies는 `true`로 두고
   branch policy `[{'name':'feat/firebase-collaboration-mvp-v1','type':'branch'}]`, tag policy `[]`만 허용합니다.
   long-lived cloud credential
   없음, WIF provider/audience/service-account identifier만 사용, least-privilege role diff가 필요합니다.
   이 environment의 생성·구성 자체도 별도 사용자 승인이 필요합니다.
-- WIF/IAM: subject는 아직 구현되지 않은 별도 `.github/workflows/staging-infrastructure-apply.yml`에만
+- WIF/IAM: subject는 `.github/workflows/staging-infrastructure-apply.yml`에만
   바인딩하고, 현재 review workflow는 명시적으로 제외합니다. mapping은 `google.subject=assertion.sub`,
   `attribute.repository=assertion.repository`, `attribute.ref=assertion.ref`,
   `attribute.workflow_ref=assertion.workflow_ref`, `attribute.repository_id=assertion.repository_id`,
@@ -184,14 +245,31 @@ provenance 검증을 사용자가 별도로 승인해야 합니다.
   resource identifier를 제한할 수 없으므로 live project-scope binding before/after diff와 executor의 exact
   action ID/resource/precondition allowlist 검증을 별도로 승인해야 합니다. key file, static secret,
   long-lived credential은 허용하지 않습니다.
-- Rollback: 자동 delete rollback을 하지 않습니다. 미래 executor는 first-error에서 즉시 멈추고, 이미 관찰·변경된 상태와 evidence를 보존하여 사람이 후속 결정을 내리게 해야 합니다.
+- Rollback: 자동 delete rollback을 하지 않습니다. executor는 first-error에서 즉시 멈추고, 이미 관찰·변경된 상태와 evidence를 보존하여 사람이 후속 결정을 내리게 합니다.
 
-현재 review workflow의 artifact `staging-infrastructure-apply-review`는 합성 계약 증거입니다. actual
-evidence artifact를 가져오거나 신뢰하는 기능은 없습니다. 실제 transport 구현에서는 source run ID,
-source commit, artifact digest, package exact-byte SHA-256과 caller-declared executor commit을 함께
-기록하되, 이를 provenance로 신뢰해서는 안 됩니다. 미래 executor는 인증 전에 해당 commit의 승인 브랜치
-포함성, commit object/tree, apply workflow 경로와 내용을 독립 검증해야 하며, 그 검증이 끝나기 전에는
-OIDC token을 요청하지 않아야 합니다.
+현재 review workflow의 artifact `staging-infrastructure-apply-review`는 합성 계약 증거입니다. actual apply는
+cross-run 입력을 사용하지 않습니다. 같은 protected run의 publication job이 package/approval artifact를 먼저
+게시하고, apply job은 현재 run REST metadata의 artifact ID/digest/head SHA와 download 결과를 결합합니다.
+package raw digest, actual GitHub repository/ID/owner/ref/workflow claims, artifact source commit, checked-out
+source/executor commit object·tree·ancestor·approved-branch 관계, approval run ID/attempt/nonce/expiry가 모두
+맞아야 하며, 검증이 끝나기 전에는 OIDC token을 요청하지 않습니다.
+
+### Same-run evidence publication 순서
+
+1. 실제 apply workflow를 dispatch하여 GitHub가 run ID와 attempt를 생성하게 합니다. 이 시점에는 cloud auth와 mutation이 없습니다.
+2. immutable code registry에 별도 승인된 Ed25519 public key가 onboarding된 뒤에만 인증된 operator가 fixed `gh api` GET 및 fixed `gcloud` read-only argv로 Environment/WIF/IAM을 재조회합니다. 조회 원문 대신 response digest와 sanitized provenance를 canonical signed receipt에 넣어 15분 이하 ignored apply-ready v3 package를 생성하고, 그 raw SHA-256과 canonical subset을 검토합니다.
+3. 생성된 run ID/attempt를 v3 approval record에 기록하고, apply-ready package JSON과 approved record JSON을 protected `staging-infrastructure-apply` Environment의 전용 변수에만 설정합니다. 실제 값은 tracked file, dispatch input, report에 넣지 않습니다.
+4. `publish-approved-evidence` protected job을 승인합니다. 이 job은 `contents: read`, `actions: read`, `id-token: none`이며 non-cloud artifact만 만들고 approval의 run binding을 검증합니다.
+5. `apply` job은 publication 성공을 `needs`로 요구하고 같은 run artifact만 다운로드합니다. in-workflow Environment REST 조회를 하지 않으며, 승인된 package의 exact attestation digest·15분 expiry·repository/owner/ref/workflow runtime context, artifact provenance와 Git object/tree를 검증합니다. 어느 하나라도 불일치·만료·unknown이면 WIF auth와 write 단계 전에 중단합니다. 두 job의 `environment: staging-infrastructure-apply`는 추가 플랫폼 gate입니다.
+
+Protected Environment 변수는 `GCP_WORKLOAD_IDENTITY_PROVIDER`, `GCP_DEPLOYER_SERVICE_ACCOUNT`,
+`STAGING_PROJECT_ID`, `STAGING_APPROVED_REPOSITORY`, `STAGING_APPROVED_REPOSITORY_ID`,
+`STAGING_APPROVED_REPOSITORY_OWNER_ID`, `STAGING_APPROVED_REF`, `STAGING_APPROVED_WORKFLOW_REF`,
+`STAGING_APPROVED_WORKFLOW_SHA`, `STAGING_APPROVED_WORKFLOW_CONTENT_SHA256`,
+`STAGING_APPROVED_EXECUTOR_TREE_SHA`, `STAGING_APPROVED_APPLY_READY_PACKAGE_JSON`,
+`STAGING_APPROVED_MUTATION_APPROVAL_JSON`만 사용합니다. repo-level fallback은 허용하지 않습니다.
+
+GitHub Environment 변수 설정과 job 승인은 실제 GitHub 변경이므로 별도 사용자 승인 없이는 수행하지 않습니다.
 
 ## 남은 명시적 승인
 
@@ -221,6 +299,13 @@ python3 -m py_compile \
   scripts/staging_infrastructure_apply_review.py \
   scripts/staging_infrastructure_apply_review_paths.py \
   scripts/staging_infrastructure_apply_review_policy.py \
+  scripts/staging_infrastructure_operator_attestation.py \
+  scripts/staging_infrastructure_environment_attestation.py \
+  scripts/staging_infrastructure_wif_attestation.py \
+  scripts/staging_infrastructure_apply_ready.py \
+  scripts/staging_infrastructure_apply_approval.py \
+  scripts/staging_infrastructure_apply_provenance.py \
+  scripts/staging_infrastructure_apply_executor.py \
   scripts/staging_infrastructure_synthetic_fixture.py \
   scripts/staging_infrastructure_action_io.py \
   scripts/staging_infrastructure_validation.py \
@@ -228,7 +313,9 @@ python3 -m py_compile \
   scripts/tests/test_staging_infrastructure_actions.py \
   scripts/tests/test_staging_infrastructure_execution_gate.py \
   scripts/tests/test_staging_infrastructure_apply_review.py \
-  scripts/tests/test_staging_infrastructure_apply_review_policy.py
+  scripts/tests/test_staging_infrastructure_apply_review_policy.py \
+  scripts/tests/test_staging_infrastructure_operator_attestations.py \
+  scripts/tests/test_staging_infrastructure_apply_executor.py
 
 python3 -m unittest discover -s scripts/tests -p 'test_*.py' -v
 python3 scripts/validate_staging_config.py

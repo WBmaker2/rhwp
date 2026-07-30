@@ -303,7 +303,7 @@ class InfrastructurePlanCliAndWorkflowTest(unittest.TestCase):
         self.assertIn("bootstrap_packet_path", workflow)
         self.assertIn("bootstrap_approval_record_path", workflow)
         self.assertIn("environment: staging-infrastructure", workflow)
-        self.assertIn("python3 scripts/staging_infrastructure_plan.py", workflow)
+        self.assertIn("python3 -m scripts.staging_infrastructure_plan", workflow)
         self.assertIn("staging-infrastructure-bootstrap-plan", workflow)
 
         start = workflow.index("  infrastructure_plan:")

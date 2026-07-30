@@ -5,11 +5,21 @@ on:
     branches: [devel]
     paths:
       - '.github/workflows/staging-infrastructure-apply-review.yml'
+      - '.github/workflows/staging-infrastructure-apply.yml'
       - 'docs/approvals/staging-infrastructure-mutation-approval-record.example.json'
       - 'docs/runbooks/staging-infrastructure-bootstrap.md'
       - 'scripts/staging_infrastructure_apply_review.py'
       - 'scripts/staging_infrastructure_apply_review_paths.py'
       - 'scripts/staging_infrastructure_apply_review_policy.py'
+      - 'scripts/staging_infrastructure_apply_ready.py'
+      - 'scripts/staging_infrastructure_apply_approval.py'
+      - 'scripts/staging_infrastructure_apply_provenance.py'
+      - 'scripts/staging_infrastructure_apply_executor.py'
+      - 'scripts/staging_infrastructure_apply_safety.py'
+      - 'scripts/staging_infrastructure_operator_attestation.py'
+      - 'scripts/staging_infrastructure_operator_signature.py'
+      - 'scripts/staging_infrastructure_environment_attestation.py'
+      - 'scripts/staging_infrastructure_wif_attestation.py'
       - 'scripts/staging_infrastructure_synthetic_fixture.py'
       - 'scripts/staging_infrastructure_action_io.py'
       - 'scripts/staging_approval_packet.py'
@@ -20,6 +30,9 @@ on:
       - 'scripts/staging_infrastructure_validation.py'
       - 'scripts/tests/test_staging_infrastructure_apply_review.py'
       - 'scripts/tests/test_staging_infrastructure_apply_review_policy.py'
+      - 'scripts/tests/test_staging_infrastructure_apply_executor.py'
+      - 'scripts/tests/test_staging_infrastructure_apply_hardening.py'
+      - 'scripts/tests/test_staging_infrastructure_operator_attestations.py'
       - 'deploy/staging/staging-manifest.json'
   workflow_dispatch:
     inputs:
@@ -50,8 +63,8 @@ jobs:
           REVIEW_MODE: ${{ inputs.mode }}
         run: |
           test "${REVIEW_MODE}" = "review-package"
-      - name: Run apply review contract tests
-        run: python3 -m unittest scripts.tests.test_staging_infrastructure_apply_review scripts.tests.test_staging_infrastructure_apply_review_policy -v
+      - name: Run apply review and guarded-executor contract tests
+        run: python3 -m unittest scripts.tests.test_staging_infrastructure_apply_review scripts.tests.test_staging_infrastructure_apply_review_policy scripts.tests.test_staging_infrastructure_apply_executor scripts.tests.test_staging_infrastructure_apply_hardening scripts.tests.test_staging_infrastructure_operator_attestations -v
       - name: Prepare synthetic reviewed evidence
         run: |
           mkdir -p artifacts/apply-review
@@ -77,7 +90,7 @@ jobs:
           PY
       - name: Build non-mutating synthetic review package
         run: |
-          python3 scripts/staging_infrastructure_apply_review.py \
+          python3 -m scripts.staging_infrastructure_apply_review \
             --plan artifacts/apply-review/staging-infrastructure-plan.json \
             --approval-result artifacts/apply-review/infrastructure-approval-result.json \
             --execution-manifest artifacts/apply-review/staging-infrastructure-execution-manifest.json \
