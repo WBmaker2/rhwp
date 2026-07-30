@@ -1,5 +1,8 @@
 # Staging Infrastructure Deployment 작업 중단·재개 기록
 
+> 이 문서는 Task 3 진행 중 작성된 과거 기록이다. Task 3 완료 이후의 현재 재개 기준은
+> `docs/superpowers/reports/2026-07-30-staging-infrastructure-task3-handoff.md`를 따른다.
+
 **기록일:** 2026-07-27  
 **중단 사유:** 사용자가 현재 흐름의 안전한 중단점에서 멈추고 다음 작업에서 재개하도록 요청함  
 **현재 단계:** SDD Task 3 fix round 1 재리뷰 완료, fix round 2 대기
