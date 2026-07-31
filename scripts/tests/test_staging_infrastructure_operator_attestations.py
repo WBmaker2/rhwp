@@ -134,6 +134,49 @@ class WifOperatorAttestationTest(unittest.TestCase):
             attestation, project_id=PROJECT, workflow_sha=WORKFLOW_SHA, now=NOW
         )
 
+    def test_provider_optional_disabled_default_and_unsafe_values(self) -> None:
+        expected_condition = wif_expected_condition(REPOSITORY_ID, OWNER_ID, WORKFLOW_SHA)
+        expected_principal = wif_expected_principal(PROVIDER, REPOSITORY_ID)
+
+        def runner_for(disabled: object = "missing"):
+            provider = {
+                "name": PROVIDER,
+                "state": "ACTIVE",
+                "attributeMapping": wif_attribute_mapping(),
+                "attributeCondition": expected_condition,
+                "oidc": {"issuerUri": GITHUB_OIDC_ISSUER},
+            }
+            if disabled != "missing":
+                provider["disabled"] = disabled
+            responses = iter((
+                json.dumps(provider).encode(),
+                json.dumps({"bindings": [{
+                    "role": "roles/iam.workloadIdentityUser",
+                    "members": [expected_principal],
+                }]}).encode(),
+            ))
+            return lambda _: next(responses)
+
+        receipt = attest_wif(
+            project_id=PROJECT, provider_resource_name=PROVIDER,
+            service_account=SERVICE_ACCOUNT, repository_id=REPOSITORY_ID,
+            repository_owner_id=OWNER_ID, workflow_sha=WORKFLOW_SHA,
+            runner=runner_for(), now=NOW,
+        )
+        self.assertFalse(receipt.document["observed"]["providerDisabled"])
+
+        for value in (True, None, 0, "false"):
+            with self.subTest(value=value):
+                with self.assertRaises(WifAttestationError):
+                    attest_wif(
+                        project_id=PROJECT, provider_resource_name=PROVIDER,
+                        service_account=SERVICE_ACCOUNT,
+                        repository_id=REPOSITORY_ID,
+                        repository_owner_id=OWNER_ID,
+                        workflow_sha=WORKFLOW_SHA,
+                        runner=runner_for(value), now=NOW,
+                    )
+
     def test_wif_rejects_self_claimed_mapping_or_non_exact_binding_without_echo(self) -> None:
         expected_condition = wif_expected_condition(REPOSITORY_ID, OWNER_ID, WORKFLOW_SHA)
 

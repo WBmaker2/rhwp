@@ -161,16 +161,16 @@ infrastructure mutation은 실행하지 않았다.
 
 Task 5는 시작하지 않는다.
 
-## 8. 단일 운영자 및 admin-bypass 예외 구현 후 최종 package
+## 8. 단일 운영자 및 admin-bypass 예외 구현 후 승인 package
 
 승인된 단일 운영자와 official REST admin-bypass 관찰 예외를 구현하고 전체 195개 테스트를 통과했다.
 
-- executor commit: `97a83edf1a18dc8b1fe9c7a2f225532b24c190c1`
-- executor tree: `f65441f9cb1b6761ca675e08c5ef257425029cfc`
+- executor commit: `69b6d2061b4b356e745bea51637a14c3c6da82b8`
+- executor tree: `fcfaf6f201ce9626c88c250aafd0b7c7058698f4`
 - apply workflow content SHA-256:
   `3fafec57050c030eea8e1c03e049a73814d3fa17544a28f3a64611613cf3aa41`
-- corrected review package exact-byte SHA-256:
-  `c0ab4ef563b0374aa1c616557cc3a497cb91999fb2866ee96c4da71e3883c24c`
+- 승인된 review package exact-byte SHA-256:
+  `77d062c5ad2d2517cb764261bef189cb50ba846383120aaa021b750088d50546`
 - package 상태: `ready-for-apply-review`
 - canonical mutation count: 17
 - required reviewer minimum: 1
@@ -182,6 +182,24 @@ Task 5는 시작하지 않는다.
 - `deploymentApproved=false`
 - `mutationCommands=[]`
 
-이전 `e0df6ffa...`, `82e3d843...` package는 superseded다. 잘못 확장된 가짜 full SHA로 생성된
+이전 `e0df6ffa...`, `82e3d843...`, `c0ab4ef5...` package는 superseded다. 잘못 확장된 가짜 full SHA로 생성된
 중간 디렉터리는 `INVALID.md`로 명시적으로 폐기했으며 검토·승인·apply 입력으로 사용하지 않는다.
-현재 승인 요청 대상은 위 `c0ab4ef5...3c24c` 원문 바이트 하나뿐이다.
+사용자는 위 `77d062c5...50546` 원문 바이트와 17개 canonical subset 및 Environment/WIF/API/IAM
+설정 diff를 승인했다.
+
+## 9. WIF/API/IAM 적용 중 live attestation 보정
+
+사용자가 후속 최종 package와 Environment/WIF/API/IAM diff를 승인한 뒤 다음 설정을 적용했다.
+
+- `iam.googleapis.com`, `iamcredentials.googleapis.com`, `sts.googleapis.com` 활성화
+- deployer service account 생성, user-managed key 0개 확인
+- `rhwp-github-actions` pool과 `rhwp-staging-apply` GitHub OIDC provider 생성
+- immutable repository/owner/ref/workflow SHA CEL condition 적용
+- 승인된 custom role 네 개 생성 및 deployer service account에만 binding
+- repository-ID principal에 deployer account의 `roles/iam.workloadIdentityUser` 하나만 binding
+
+fixed WIF attestor 최초 실행은 실제 `gcloud --format=json`이 optional `disabled=false`를 생략하여 실패했다.
+Environment 설정과 canonical 17개 mutation은 즉시 중단했다. 공식 schema의 optional boolean과 실제 응답을
+맞추기 위해 `state=ACTIVE`이면서 필드가 없거나 정확히 `false`인 경우만 허용하는 최소 보정을 추가한다.
+다른 타입과 `true`는 계속 fail-closed한다. 이 보정으로 executor SHA와 package digest가 다시 변경되므로
+기존 package approval은 apply 권한으로 재사용하지 않는다.

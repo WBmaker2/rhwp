@@ -186,12 +186,17 @@ def _verify_provider(
     if (
         provider.get("name") != provider_resource_name
         or provider.get("state") != "ACTIVE"
-        or provider.get("disabled") is not False
+        or not _is_enabled_provider(provider)
         or provider.get("attributeMapping") != wif_attribute_mapping()
         or provider.get("attributeCondition") != expected_condition
         or not _is_exact_github_oidc_config(provider.get("oidc"))
     ):
         raise WifAttestationError("WIF provider mapping, condition, or identity is not exact")
+
+
+def _is_enabled_provider(provider: dict[str, Any]) -> bool:
+    """Accept the optional disabled field only when absent or exactly false."""
+    return "disabled" not in provider or provider["disabled"] is False
 
 
 def _is_exact_github_oidc_config(value: Any) -> bool:

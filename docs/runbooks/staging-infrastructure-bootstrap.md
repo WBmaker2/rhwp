@@ -140,6 +140,10 @@ GitHub official GET Environment response에 `can_admins_bypass` 필드가 정확
 `true`, `null`, 숫자 또는 문자열은 모두 거부합니다. 이는 사람이 `false`라고 진술한 것으로 기록하지 않으며
 GitHub UI에서 administrator bypass를 비활성화해야 한다는 운영 요구를 제거하지 않습니다.
 
+Google Cloud의 provider `disabled`는 optional boolean이며 `gcloud --format=json`이 기본값 `false`를 생략할
+수 있습니다. WIF attestor는 provider `state=ACTIVE`와 함께 이 필드가 없거나 정확히 `false`인 경우만 enabled로
+판정합니다. `true`, `null`, 숫자 또는 문자열은 모두 거부합니다.
+
 `TRUSTED_OPERATOR_KEY_REGISTRY`에는 별도 승인된 `rhwp-staging-operator-2026-07-31` Ed25519 public key와
 exact PEM SHA-256만 등록합니다. private key는 ignored operator-local 경로의 권한 `0600` 파일로만 보관하며
 tracked source, Environment variable, log 또는 artifact에 넣지 않습니다. protected Environment variable의

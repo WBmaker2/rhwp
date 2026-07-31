@@ -28,6 +28,9 @@ registry onboarding 및 official REST admin-bypass 관찰 예외를 명시적으
    다른 형태로 존재하면 fail-closed한다.
 8. Environment attestation/query schema를 새 버전으로 올리고 이전 schema를 apply-ready 입력으로
    재사용하지 않는다.
+9. Google Cloud의 optional provider `disabled` 필드를 `gcloud --format=json`이 기본값 `false`일 때
+   생략하는 실제 응답과 맞춘다. `state=ACTIVE`이면서 필드가 없거나 정확히 `false`인 경우만 허용하고,
+   `true`, `null`, 숫자 또는 문자열은 fail-closed한다.
 
 ## 유지하는 안전 경계
 
