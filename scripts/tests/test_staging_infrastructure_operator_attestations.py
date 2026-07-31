@@ -233,6 +233,7 @@ class WifOperatorAttestationTest(unittest.TestCase):
 class EnvironmentOperatorAttestationTest(unittest.TestCase):
     def _runner(
         self, *, include_admin_bypass: bool = True,
+        admin_bypass_value: object = False,
         prevent_self_review: bool = False,
     ):
         variable_names = [
@@ -264,7 +265,7 @@ class EnvironmentOperatorAttestationTest(unittest.TestCase):
                     },
                 }
                 if include_admin_bypass:
-                    value["can_admins_bypass"] = False
+                    value["can_admins_bypass"] = admin_bypass_value
                 return json.dumps(value).encode()
             if "deployment-branch-policies" in endpoint:
                 return b'{"total_count":1,"branch_policies":[{"id":1,"name":"feat/firebase-collaboration-mvp-v1","type":"branch"}]}'
@@ -296,10 +297,21 @@ class EnvironmentOperatorAttestationTest(unittest.TestCase):
         with self.assertRaises(OperatorAttestationError):
             issued_attestation_document(receipt)
 
-    def test_missing_admin_bypass_observation_fails_closed(self) -> None:
+    def test_missing_admin_bypass_uses_approved_rest_exception(self) -> None:
         runner, _ = self._runner(include_admin_bypass=False)
-        with self.assertRaises(EnvironmentAttestationError):
-            attest_environment(runner=runner, now=NOW)
+        attestation = attest_environment(runner=runner, now=NOW).document
+        self.assertEqual(
+            attestation["observed"]["canAdminsBypass"],
+            "unavailable-in-official-rest",
+        )
+        validate_environment_attestation(attestation, now=NOW)
+
+    def test_unsafe_or_malformed_admin_bypass_observation_fails_closed(self) -> None:
+        for value in (True, None, 0, "false"):
+            with self.subTest(value=value):
+                runner, _ = self._runner(admin_bypass_value=value)
+                with self.assertRaises(EnvironmentAttestationError):
+                    attest_environment(runner=runner, now=NOW)
 
     def test_single_operator_contract_rejects_prevent_self_review_true(self) -> None:
         runner, _ = self._runner(prevent_self_review=True)

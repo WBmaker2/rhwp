@@ -32,9 +32,9 @@ from scripts.staging_infrastructure_validation import (
     validate_json_domain,
 )
 
-ENVIRONMENT_ATTESTATION_SCHEMA = "rhwp.staging-infrastructure-environment-attestation/v2"
+ENVIRONMENT_ATTESTATION_SCHEMA = "rhwp.staging-infrastructure-environment-attestation/v3"
 WIF_ATTESTATION_SCHEMA = "rhwp.staging-infrastructure-wif-attestation/v2"
-ENVIRONMENT_QUERY_CONTRACT = "rhwp.staging-infrastructure-environment-read-query/v1"
+ENVIRONMENT_QUERY_CONTRACT = "rhwp.staging-infrastructure-environment-read-query/v2"
 WIF_QUERY_CONTRACT = "rhwp.staging-infrastructure-wif-read-query/v1"
 ATTESTATION_ENCODING = "canonical-json-indent-2/v1"
 MAX_ATTESTATION_TTL = timedelta(minutes=15)
@@ -121,6 +121,8 @@ def environment_required_contract() -> dict[str, Any]:
         "requiredReviewerCountMinimum": spec["requiredReviewerCountMinimum"],
         "preventSelfReview": spec["preventSelfReview"],
         "canAdminsBypass": spec["canAdminsBypass"],
+        "adminBypassUiConfigurationRequired": spec["adminBypassUiConfigurationRequired"],
+        "adminBypassRestObservationException": spec["adminBypassRestObservationException"],
         "deploymentBranchPolicy": spec["deploymentBranchPolicy"],
         "variableNames": sorted(spec["variableNames"]),
     }
@@ -158,7 +160,7 @@ def validate_environment_attestation(
     expected_observed = {
         "requiredReviewerCount": value.get("observed", {}).get("requiredReviewerCount") if isinstance(value.get("observed"), dict) else None,
         "preventSelfReview": False,
-        "canAdminsBypass": False,
+        "canAdminsBypass": value.get("observed", {}).get("canAdminsBypass") if isinstance(value.get("observed"), dict) else None,
         "deploymentBranchPolicy": environment_required_contract()["deploymentBranchPolicy"],
         "variableNames": environment_required_contract()["variableNames"],
     }
@@ -170,6 +172,10 @@ def validate_environment_attestation(
         or isinstance(observed["requiredReviewerCount"], bool)
         or not isinstance(observed["requiredReviewerCount"], int)
         or observed["requiredReviewerCount"] < 1
+        or not (
+            observed["canAdminsBypass"] is False
+            or observed["canAdminsBypass"] == "unavailable-in-official-rest"
+        )
     ):
         raise OperatorAttestationError("Environment observed policy is not apply-ready")
     _validate_response_digests(value.get("responseDigests"), {"repository", "environment", "branchPolicyPages", "variablePages"})

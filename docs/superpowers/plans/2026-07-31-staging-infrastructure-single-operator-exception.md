@@ -5,7 +5,7 @@
 **대상:** `staging-infrastructure-apply` protected Environment 계약
 
 **승인:** 사용자가 `WBmaker2`, `preventSelfReview=false` 단일 운영자 예외와 operator public-key
-registry onboarding을 명시적으로 승인함
+registry onboarding 및 official REST admin-bypass 관찰 예외를 명시적으로 승인함
 
 ## 목적
 
@@ -23,17 +23,24 @@ registry onboarding을 명시적으로 승인함
 4. 승인된 Ed25519 public key와 exact PEM SHA-256만 immutable source registry에 추가한다.
 5. private key는 ignored operator-local 경로에 권한 `0600`으로만 보관하고 Git·로그·artifact에 넣지 않는다.
 6. runbook과 Task 4 gate 문서에 단일 운영자 예외 및 잔여 위험을 기록한다.
+7. 실제 정책 목표 `canAdminsBypass=false`와 REST 관찰 결과를 분리한다. 공식 GET Environment 응답에서
+   필드가 정확히 누락된 경우에만 `unavailable-in-official-rest`를 기록하고, 값이 `true`, `null` 또는
+   다른 형태로 존재하면 fail-closed한다.
+8. Environment attestation/query schema를 새 버전으로 올리고 이전 schema를 apply-ready 입력으로
+   재사용하지 않는다.
 
 ## 유지하는 안전 경계
 
 - required reviewer 최소 1명
 - reviewer `WBmaker2`
-- `canAdminsBypass=false`
+- GitHub UI의 `canAdminsBypass=false` 설정 요구
+- REST가 값을 제공하면 정확히 `false`만 허용
+- REST 필드 누락 예외는 단일 운영자 계약에서만 허용하며 사람의 `false` 진술로 바꿔 기록하지 않음
 - protected branch policy는 feature branch 하나만 허용
 - secrets와 long-lived cloud credentials 없음
 - `cloudMutationApproved=false`, `deploymentApproved=false`, `mutationCommands=[]` 유지
 - Environment/WIF/IAM 변경과 workflow dispatch는 별도 승인 전 미실행
-- admin-bypass 상태를 기계적으로 관찰하지 못하면 promotion fail-closed
+- admin-bypass 외 모든 Environment/WIF 관찰 불가 상태는 promotion fail-closed
 
 ## 검증
 

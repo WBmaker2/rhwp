@@ -112,10 +112,7 @@ def _build_attestation(
     names = sorted(_variable_name(item) for item in variables)
     if names != expected["variableNames"] or len(set(names)) != len(names):
         raise EnvironmentAttestationError("GitHub Environment variable names are not exact")
-    # GitHub's documented GET Environment response does not promise this field.
-    # An absent/unknown field is a hard failure, never a human acknowledgement.
-    if environment.get("can_admins_bypass") is not False:
-        raise EnvironmentAttestationError("GitHub admin-bypass state is not supported by the read contract; fail closed")
+    admin_bypass = _admin_bypass_observation(environment)
     return {
         "schemaVersion": ENVIRONMENT_ATTESTATION_SCHEMA,
         "queryContractVersion": ENVIRONMENT_QUERY_CONTRACT,
@@ -131,7 +128,7 @@ def _build_attestation(
         "observed": {
             "requiredReviewerCount": required,
             "preventSelfReview": False,
-            "canAdminsBypass": False,
+            "canAdminsBypass": admin_bypass,
             "deploymentBranchPolicy": expected["deploymentBranchPolicy"],
             "variableNames": expected["variableNames"],
         },
@@ -153,6 +150,17 @@ def _required_reviewers(environment: dict[str, Any]) -> int:
     if rule.get("prevent_self_review") is not False or not isinstance(reviewers, list) or not reviewers:
         raise EnvironmentAttestationError("GitHub Environment reviewer or self-review policy is invalid")
     return len(reviewers)
+
+
+def _admin_bypass_observation(environment: dict[str, Any]) -> bool | str:
+    """Record only an exact false value or the approved official-REST omission."""
+    if "can_admins_bypass" not in environment:
+        return "unavailable-in-official-rest"
+    if environment["can_admins_bypass"] is False:
+        return False
+    raise EnvironmentAttestationError(
+        "GitHub admin-bypass state is unsafe or malformed"
+    )
 
 
 def _collect_pages(run: Runner, endpoint: str, key: str) -> tuple[list[bytes], list[dict[str, Any]]]:

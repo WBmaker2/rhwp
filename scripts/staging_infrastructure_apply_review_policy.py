@@ -18,6 +18,8 @@ def protected_environment_spec() -> dict[str, Any]:
         "requiredReviewerCountMinimum": 1,
         "preventSelfReview": False,
         "canAdminsBypass": False,
+        "adminBypassUiConfigurationRequired": True,
+        "adminBypassRestObservationException": "unavailable-in-official-rest-only",
         "supportVerificationStatus": "operator-read-only-attestation-required",
         "unsupportedOrUnverifiedBlocksApprovalApply": True,
         "deploymentBranchPolicy": {

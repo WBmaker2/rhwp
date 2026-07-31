@@ -135,7 +135,8 @@ live before/after IAM diff도 아직 생성하지 않았다.
 3. private key는 사용자 승인에 따라 ignored operator-local 경로의 권한 `0600` 파일로만 보관하며
    tracked source, log, screenshot 또는 artifact에 넣지 않는다.
 4. GitHub official GET Environment REST response에는 administrators bypass 상태가 포함되지 않는다.
-   현재 validator는 사람의 acknowledgement를 대체 증거로 허용하지 않는다.
+   승인된 단일 운영자 예외는 이 누락을 `unavailable-in-official-rest`로 기록하도록 구현하며, 관찰된
+   `false`로 위장하지 않는다. 필드가 제공될 때 `true` 또는 malformed 값이면 계속 fail-closed한다.
 5. required reviewer는 `WBmaker2`, `preventSelfReview=false` 단일 운영자 예외로 승인되었지만 실제
    Environment 설정은 아직 적용하지 않았다. WIF provider와 deployer service account도 승인되지 않았다.
 6. 최신 review package exact bytes, Environment diff, WIF/IAM live diff, signing key,
@@ -148,7 +149,8 @@ infrastructure mutation은 실행하지 않았다.
 
 1. Google Cloud CLI 설치 또는 기존 승인된 read-only operator 실행 환경을 제공한다.
 2. private key를 파일에 남기지 않는 signing backend와 immutable public-key onboarding 방식을 설계·승인한다.
-3. admin-bypass 상태를 기계적으로 관찰할 수 있는 GitHub 근거를 구현하거나 계약을 별도 검토한다.
+3. GitHub UI에서 administrator bypass가 비활성화되었는지 운영자가 확인하고, REST receipt에는 승인된
+   `unavailable-in-official-rest` 관찰 예외가 기록되는지 검증한다.
 4. required reviewer, WIF pool/provider ID, deployer service-account ID를 사용자가 결정한다.
 5. 최신 review package SHA-256과 canonical subset을 승인한다.
 6. 실제 Environment/WIF/IAM before/after diff를 생성해 별도로 승인한다.

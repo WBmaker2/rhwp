@@ -27,8 +27,9 @@
   deployer service-account IAM policy의 정확히 하나인 `roles/iam.workloadIdentityUser` principal binding과 raw
   response SHA-256을 검증합니다. response body, stderr, token, credential은 receipt에 남기지 않습니다.
 - Environment receipt는 required reviewer, rule 내부 `prevent_self_review`, paginated branch policy와 13개
-  protected variable name을 검증합니다. 현재 official `GET Environment` 응답이 admin-bypass state를 제공하지
-  않으면 사람 acknowledgement로 우회하지 않고 promotion을 fail-closed로 중단합니다.
+  protected variable name을 검증합니다. 후속 승인된 단일 운영자 예외에서는 official `GET Environment`
+  응답이 admin-bypass field를 제공하지 않을 때 이를 관찰된 `false`로 위장하지 않고
+  `unavailable-in-official-rest`로 기록합니다. 필드가 제공되면 정확히 `false`만 허용합니다.
 - `AIza...`, `ya29...`, `password=`, `api_key=`, OAuth client secret, service-account credential 형태까지 공통
   string-leaf detector가 review, promotion, approval 입력에서 값 원문을 출력하지 않고 거부합니다.
 - signed receipt는 raw response digest만 재계산해 위조할 수 없도록 immutable tracked-code Ed25519 public-key
