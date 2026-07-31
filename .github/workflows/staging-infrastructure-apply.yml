@@ -1,0 +1,134 @@
+name: Staging infrastructure apply
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  publish-approved-evidence:
+    # The run ID exists before this protected job is approved.  An operator
+    # writes the exact apply-ready package and run-bound approval into protected variables,
+    # then this job publishes the same-run, non-secret artifact for apply.
+    runs-on: ubuntu-latest
+    environment: staging-infrastructure-apply
+    permissions:
+      contents: read
+      actions: read
+      id-token: none
+    env:
+      APPROVED_APPLY_READY_PACKAGE_JSON: ${{ vars.STAGING_APPROVED_APPLY_READY_PACKAGE_JSON }}
+      APPROVED_MUTATION_APPROVAL_JSON: ${{ vars.STAGING_APPROVED_MUTATION_APPROVAL_JSON }}
+    steps:
+      # actions/checkout v4.2.2 commit.
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with: {fetch-depth: 0, show-progress: false}
+      - name: Validate and publish same-run approved evidence
+        env:
+          ACTUAL_RUN_ID: ${{ github.run_id }}
+          ACTUAL_RUN_ATTEMPT: ${{ github.run_attempt }}
+        run: |
+          set -euo pipefail
+          umask 077
+          mkdir -p .staging-approved-evidence
+          printf '%s' "$APPROVED_APPLY_READY_PACKAGE_JSON" > .staging-approved-evidence/staging-infrastructure-apply-ready-package.json
+          printf '%s' "$APPROVED_MUTATION_APPROVAL_JSON" > .staging-approved-evidence/staging-infrastructure-mutation-approval-record.json
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+          from scripts.staging_infrastructure_apply_approval import validate_mutation_approval
+          from scripts.staging_infrastructure_validation import read_bounded_json_file
+          root = Path('.staging-approved-evidence')
+          package, raw = read_bounded_json_file(root / 'staging-infrastructure-apply-ready-package.json', 'apply-ready package')
+          approval, _ = read_bounded_json_file(root / 'staging-infrastructure-mutation-approval-record.json', 'approval')
+          approved = validate_mutation_approval(package, raw, approval)
+          if approved['approvedRunId'] != os.environ['ACTUAL_RUN_ID'] or approved['approvedRunAttempt'] != int(os.environ['ACTUAL_RUN_ATTEMPT']):
+              raise SystemExit('approval is not bound to this already-created apply run')
+          PY
+      # actions/upload-artifact v4.3.3 commit.
+      - uses: actions/upload-artifact@65462800fd760344b1a7b4382951275a0abb4808
+        with:
+          name: staging-infrastructure-approved-evidence
+          path: .staging-approved-evidence/*.json
+          if-no-files-found: error
+          retention-days: 14
+  apply:
+    needs: publish-approved-evidence
+    runs-on: ubuntu-latest
+    environment: staging-infrastructure-apply
+    permissions:
+      contents: read
+      actions: read
+      id-token: write
+    env:
+      EXPECTED_REPOSITORY: ${{ vars.STAGING_APPROVED_REPOSITORY }}
+      EXPECTED_REPOSITORY_ID: ${{ vars.STAGING_APPROVED_REPOSITORY_ID }}
+      EXPECTED_REPOSITORY_OWNER_ID: ${{ vars.STAGING_APPROVED_REPOSITORY_OWNER_ID }}
+      EXPECTED_REF: ${{ vars.STAGING_APPROVED_REF }}
+      EXPECTED_WORKFLOW_REF: ${{ vars.STAGING_APPROVED_WORKFLOW_REF }}
+      EXPECTED_WORKFLOW_SHA: ${{ vars.STAGING_APPROVED_WORKFLOW_SHA }}
+      EXPECTED_WORKFLOW_CONTENT_SHA256: ${{ vars.STAGING_APPROVED_WORKFLOW_CONTENT_SHA256 }}
+      EXPECTED_EXECUTOR_TREE_SHA: ${{ vars.STAGING_APPROVED_EXECUTOR_TREE_SHA }}
+      EXPECTED_PROJECT_ID: ${{ vars.STAGING_PROJECT_ID }}
+      GCP_WORKLOAD_IDENTITY_PROVIDER: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+      GCP_DEPLOYER_SERVICE_ACCOUNT: ${{ vars.GCP_DEPLOYER_SERVICE_ACCOUNT }}
+    steps:
+      # actions/checkout v4.2.2 commit.
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with: {fetch-depth: 0, show-progress: false}
+      # actions/download-artifact v4.3.0 commit; this omits run-id so only the current run is readable.
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: staging-infrastructure-approved-evidence
+          path: .staging-approved-evidence
+      # actions/github-script v8.0.0 commit: read current-run artifact metadata.
+      - name: Read same-run artifact metadata
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd
+        with:
+          github-token: ${{ github.token }}
+          script: |
+            const artifacts = await github.rest.actions.listWorkflowRunArtifacts({owner: context.repo.owner, repo: context.repo.repo, run_id: context.runId});
+            const artifact = artifacts.data.artifacts.find(x => x.name === 'staging-infrastructure-approved-evidence' && !x.expired);
+            if (!artifact || !artifact.digest) core.setFailed('same-run approved evidence metadata is unavailable');
+            require('fs').writeFileSync('.approved-artifact-metadata.json', JSON.stringify({id:String(artifact.id),name:artifact.name,sourceRunId:String(context.runId),sourceCommitSha:context.sha,archiveSha256:artifact.digest.replace('sha256:','')}));
+      - name: Validate approval and immutable provenance before authentication
+        env:
+          ACTUAL_REPOSITORY: ${{ github.repository }}
+          ACTUAL_REPOSITORY_ID: ${{ github.repository_id }}
+          ACTUAL_REPOSITORY_OWNER_ID: ${{ github.repository_owner_id }}
+          ACTUAL_REF: ${{ github.ref }}
+          ACTUAL_WORKFLOW_REF: ${{ github.workflow_ref }}
+          ACTUAL_WORKFLOW_SHA: ${{ github.workflow_sha }}
+          ACTUAL_SHA: ${{ github.sha }}
+          ACTUAL_RUN_ID: ${{ github.run_id }}
+          ACTUAL_RUN_ATTEMPT: ${{ github.run_attempt }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib,json,os,subprocess
+          from pathlib import Path
+          from scripts.staging_infrastructure_apply_approval import validate_mutation_approval
+          from scripts.staging_infrastructure_apply_provenance import validate_auth_configuration, validate_checked_out_git_binding, validate_pre_auth_provenance
+          from scripts.staging_infrastructure_validation import read_bounded_json_file
+          root=Path('.staging-approved-evidence'); package,raw=read_bounded_json_file(root/'staging-infrastructure-apply-ready-package.json','apply-ready package'); approval,_=read_bounded_json_file(root/'staging-infrastructure-mutation-approval-record.json','approval')
+          approved=validate_mutation_approval(package,raw,approval)
+          commit=os.environ['ACTUAL_SHA']; tree=subprocess.check_output(['git','rev-parse',f'{commit}^{{tree}}'],text=True).strip(); content=Path('.github/workflows/staging-infrastructure-apply.yml').read_bytes(); meta=json.loads(Path('.approved-artifact-metadata.json').read_text())
+          claims={'packageSha256':hashlib.sha256(raw).hexdigest(),'executorCommitSha':commit,'executorTreeSha':tree,'expectedExecutorTreeSha':os.environ['EXPECTED_EXECUTOR_TREE_SHA'],'repository':os.environ['ACTUAL_REPOSITORY'],'expectedRepository':os.environ['EXPECTED_REPOSITORY'],'repositoryId':os.environ['ACTUAL_REPOSITORY_ID'],'expectedRepositoryId':os.environ['EXPECTED_REPOSITORY_ID'],'repositoryOwnerId':os.environ['ACTUAL_REPOSITORY_OWNER_ID'],'expectedRepositoryOwnerId':os.environ['EXPECTED_REPOSITORY_OWNER_ID'],'ref':os.environ['ACTUAL_REF'],'expectedRef':os.environ['EXPECTED_REF'],'workflowRef':os.environ['ACTUAL_WORKFLOW_REF'],'expectedWorkflowRef':os.environ['EXPECTED_WORKFLOW_REF'],'workflowSha':os.environ['ACTUAL_WORKFLOW_SHA'],'expectedWorkflowSha':os.environ['EXPECTED_WORKFLOW_SHA'],'workflowContentSha256':hashlib.sha256(content).hexdigest(),'expectedWorkflowContentSha256':os.environ['EXPECTED_WORKFLOW_CONTENT_SHA256'],'runId':os.environ['ACTUAL_RUN_ID'],'runAttempt':int(os.environ['ACTUAL_RUN_ATTEMPT']),'artifactSourceRunId':meta['sourceRunId'],'artifactId':meta['id'],'artifactName':meta['name'],'artifactArchiveSha256':meta['archiveSha256'],'artifactSourceCommitSha':meta['sourceCommitSha']}
+          validate_pre_auth_provenance(package,approved,claims); validate_checked_out_git_binding(package,claims); validate_auth_configuration(package,claims,os.environ['GCP_WORKLOAD_IDENTITY_PROVIDER'],os.environ['GCP_DEPLOYER_SERVICE_ACCOUNT']);
+          if os.environ['EXPECTED_PROJECT_ID'] != approved['projectId']: raise SystemExit('protected staging project variable differs from approved package')
+          (root/'provenance.json').write_text(json.dumps(claims))
+          PY
+      # google-github-actions/auth v2.1.11 commit, after all pre-auth checks.
+      - uses: google-github-actions/auth@140bb5113ffb6b65a7e9b937a81fa96cf5064462
+        with: {workload_identity_provider: '${{ env.GCP_WORKLOAD_IDENTITY_PROVIDER }}', service_account: '${{ env.GCP_DEPLOYER_SERVICE_ACCOUNT }}'}
+      # google-github-actions/setup-gcloud v2.1.5 commit.
+      - uses: google-github-actions/setup-gcloud@6a7c903a70c8625ed6700fa299f5ddb4ca6022e9
+      - name: Explicitly apply approved structured actions
+        run: python3 -m scripts.staging_infrastructure_apply_executor --package .staging-approved-evidence/staging-infrastructure-apply-ready-package.json --approval .staging-approved-evidence/staging-infrastructure-mutation-approval-record.json --provenance .staging-approved-evidence/provenance.json --plan-evidence artifacts/staging-infrastructure-apply/plan-evidence.json --post-evidence artifacts/staging-infrastructure-apply/post-evidence.json --apply
+      # actions/upload-artifact v4.3.3 commit.
+      - if: always()
+        uses: actions/upload-artifact@65462800fd760344b1a7b4382951275a0abb4808
+        with:
+          name: staging-infrastructure-apply-evidence
+          path: artifacts/staging-infrastructure-apply/*.json
+          if-no-files-found: error
+          retention-days: 14
