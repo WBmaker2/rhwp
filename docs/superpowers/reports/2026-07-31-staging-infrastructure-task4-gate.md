@@ -1,0 +1,152 @@
+# Staging Infrastructure Task 4 실행 게이트
+
+**기록일:** 2026-07-31
+
+**상태:** `blocked-before-external-configuration`
+
+**실제 cloud mutation:** 0건
+
+**실제 deployment:** 0건
+
+## 1. 완료한 준비 작업
+
+- Task 3 로컬 통합본 전체 unittest 193개를 다시 실행해 통과했다.
+- `scripts/validate_staging_config.py`와 `git diff --check`를 통과했다.
+- 기존 Draft PR #1 브랜치에 로컬 커밋을 push했다.
+- PR #1은 Draft, open, unmerged 상태를 유지한다.
+- 원격 PR HEAD는 `699272d1150b586e84b70a27373faf1028c93fe4`다.
+- 실제 repository ID는 `1311079356`, owner ID는 `103619091`로 read-only 확인했다.
+- `staging-infrastructure-apply` Environment는 존재하지 않는 것을 read-only 확인했다.
+- 실제 plan과 기존 non-mutation approval에서 최신 review package를 ignored 경로에 재생성했다.
+
+## 2. 최신 exact-byte review package
+
+경로:
+
+```text
+artifacts/actual-infrastructure-review/task4-2026-07-31/staging-infrastructure-apply-review-package.json
+```
+
+SHA-256:
+
+```text
+e0df6ffa8b45e2746937a08c1338717f7df0cbd3aa7ac6d6adf09c9abbd2b0d0
+```
+
+결합된 근거:
+
+- plan exact-byte SHA-256: `499f9fcfcc23d84518d244a060eaf8c164fbed9f2fc1a53585a7948a906bb93a`
+- executor commit: `699272d1150b586e84b70a27373faf1028c93fe4`
+- executor tree: `624870545868e8e8ddbdbca9b4803fd6049057e5`
+- apply workflow content SHA-256: `3fafec57050c030eea8e1c03e049a73814d3fa17544a28f3a64611613cf3aa41`
+- action set SHA-256: `37533885b8e3508cd2170194132fe673c224994f0ea1557f64af40c60899a7f1`
+- canonical action set SHA-256: `6b4050cdcf2c6d57447273fdcbf830c16a2d12ff9ee34eafefb0faa27e053f4a`
+- 상태: `ready-for-apply-review`
+- `cloudMutationApproved=false`
+- `deploymentApproved=false`
+- `mutationCommands=[]`
+
+이 package는 review evidence이며 apply authority가 아니다. formatter, key sort, pretty-print 또는
+재저장하지 않았고 원문 바이트로 digest를 계산했다. `artifacts/`는 Git ignored다.
+
+## 3. Canonical mutation subset
+
+승인 후보는 총 17개 action이다.
+
+- API enable-only 11개:
+  `serviceusage.googleapis.com`, `cloudbilling.googleapis.com`, `firebase.googleapis.com`,
+  `firestore.googleapis.com`, `firebasestorage.googleapis.com`, `run.googleapis.com`,
+  `cloudtasks.googleapis.com`, `artifactregistry.googleapis.com`, `secretmanager.googleapis.com`,
+  `iam.googleapis.com`, `iamcredentials.googleapis.com`
+- key 생성이 금지된 service account create-if-missing 4개:
+  `rhwp-collaboration-staging`, `rhwp-document-api-staging`,
+  `rhwp-document-worker-staging`, `rhwp-tasks-staging`
+- Artifact Registry repository create-if-missing 1개:
+  `asia-northeast3`, `rhwp-staging`, `DOCKER`
+- Secret Manager metadata container create-if-missing 1개:
+  `rhwp-collaboration-internal-token-staging`, automatic replication, secret version/value 생성 금지
+
+disable, delete, service-account key, secret version/value, build, push, deploy는 subset에 없다.
+
+## 4. 제안 Environment diff
+
+새 Environment `staging-infrastructure-apply`에 필요한 계약은 다음과 같다.
+
+- required reviewer: 최소 1명, 실제 계정은 아직 미결정
+- prevent self review: `true`
+- administrators bypass: `false`
+- protected branches: `false`
+- custom branch policies: `true`
+- 허용 branch: `feat/firebase-collaboration-mvp-v1` 하나
+- 허용 tag: 없음
+- secrets: 없음
+- long-lived cloud credentials: 없음
+- Environment variables: 정확히 13개
+
+```text
+GCP_WORKLOAD_IDENTITY_PROVIDER
+GCP_DEPLOYER_SERVICE_ACCOUNT
+STAGING_PROJECT_ID
+STAGING_APPROVED_REPOSITORY
+STAGING_APPROVED_REPOSITORY_ID
+STAGING_APPROVED_REPOSITORY_OWNER_ID
+STAGING_APPROVED_REF
+STAGING_APPROVED_WORKFLOW_REF
+STAGING_APPROVED_WORKFLOW_SHA
+STAGING_APPROVED_WORKFLOW_CONTENT_SHA256
+STAGING_APPROVED_EXECUTOR_TREE_SHA
+STAGING_APPROVED_APPLY_READY_PACKAGE_JSON
+STAGING_APPROVED_MUTATION_APPROVAL_JSON
+```
+
+package/approval JSON과 실제 WIF 식별자는 아직 승인되지 않았으므로 변수 값은 설정하지 않았다.
+
+## 5. WIF/IAM 제안 경계
+
+- OIDC issuer: GitHub Actions
+- default provider audience mode
+- repository: `WBmaker2/rhwp`
+- repository ID: `1311079356`
+- owner ID: `103619091`
+- ref: `refs/heads/feat/firebase-collaboration-mvp-v1`
+- workflow ref:
+  `WBmaker2/rhwp/.github/workflows/staging-infrastructure-apply.yml@refs/heads/feat/firebase-collaboration-mvp-v1`
+- workflow SHA: `699272d1150b586e84b70a27373faf1028c93fe4`
+- review workflow는 제외
+- deployer service account에만 `roles/iam.workloadIdentityUser`
+- broad predefined admin role은 금지
+- API enable, service-account create/read/list, Artifact Registry repository create/read,
+  Secret metadata create/read에 한정한 custom role 후보만 허용
+
+WIF pool/provider ID와 deployer service-account ID는 실제 운영값이므로 자동 결정하지 않았다.
+live before/after IAM diff도 아직 생성하지 않았다.
+
+## 6. Fail-closed 차단 사유
+
+1. 로컬에 `gcloud`가 설치되어 있지 않아 fixed read-only WIF/IAM attestation을 실행할 수 없다.
+2. immutable `TRUSTED_OPERATOR_KEY_REGISTRY`가 비어 있고 승인된 Ed25519 public key가 없다.
+3. 기존 안전 계약은 private key를 파일·로그·스크린샷에 남기지 않도록 요구하지만 현재 operator CLI는
+   권한 `0600`인 private-key 파일 경로를 요구한다. 이 계약 충돌을 별도 설계 승인 없이 우회하지 않는다.
+4. GitHub official GET Environment REST response에는 administrators bypass 상태가 포함되지 않는다.
+   현재 validator는 사람의 acknowledgement를 대체 증거로 허용하지 않는다.
+5. required reviewer 실제 계정, WIF provider, deployer service account가 승인되지 않았다.
+6. 최신 review package exact bytes, Environment diff, WIF/IAM live diff, signing key,
+   `cloudMutationApproved=true` record와 workflow dispatch는 각각 별도 승인이 필요하다.
+
+따라서 Environment 생성, variable 등록, WIF/IAM 변경, cloud 인증, workflow dispatch와 canonical
+infrastructure mutation은 실행하지 않았다.
+
+## 7. 다음 재개 순서
+
+1. Google Cloud CLI 설치 또는 기존 승인된 read-only operator 실행 환경을 제공한다.
+2. private key를 파일에 남기지 않는 signing backend와 immutable public-key onboarding 방식을 설계·승인한다.
+3. admin-bypass 상태를 기계적으로 관찰할 수 있는 GitHub 근거를 구현하거나 계약을 별도 검토한다.
+4. required reviewer, WIF pool/provider ID, deployer service-account ID를 사용자가 결정한다.
+5. 최신 review package SHA-256과 canonical subset을 승인한다.
+6. 실제 Environment/WIF/IAM before/after diff를 생성해 별도로 승인한다.
+7. 승인된 외부 설정만 적용하고 signed apply-ready v3 package를 생성한다.
+8. `cloudMutationApproved=true` record를 사람이 작성·승인한다.
+9. 실제 apply workflow dispatch 직전 별도 승인을 받은 뒤 canonical subset만 실행한다.
+10. postcondition 및 artifact exact-byte digest가 모두 일치할 때 Task 4를 완료 처리한다.
+
+Task 5는 시작하지 않는다.
