@@ -160,3 +160,28 @@ infrastructure mutation은 실행하지 않았다.
 10. postcondition 및 artifact exact-byte digest가 모두 일치할 때 Task 4를 완료 처리한다.
 
 Task 5는 시작하지 않는다.
+
+## 8. 단일 운영자 및 admin-bypass 예외 구현 후 최종 package
+
+승인된 단일 운영자와 official REST admin-bypass 관찰 예외를 구현하고 전체 195개 테스트를 통과했다.
+
+- executor commit: `97a83edf1a18dc8b1fe9c7a2f225532b24c190c1`
+- executor tree: `f65441f9cb1b6761ca675e08c5ef257425029cfc`
+- apply workflow content SHA-256:
+  `3fafec57050c030eea8e1c03e049a73814d3fa17544a28f3a64611613cf3aa41`
+- corrected review package exact-byte SHA-256:
+  `c0ab4ef563b0374aa1c616557cc3a497cb91999fb2866ee96c4da71e3883c24c`
+- package 상태: `ready-for-apply-review`
+- canonical mutation count: 17
+- required reviewer minimum: 1
+- reviewer: `WBmaker2`
+- prevent self review: `false`
+- GitHub UI admin bypass 목표: `false`
+- REST observation exception: `unavailable-in-official-rest-only`
+- `cloudMutationApproved=false`
+- `deploymentApproved=false`
+- `mutationCommands=[]`
+
+이전 `e0df6ffa...`, `82e3d843...` package는 superseded다. 잘못 확장된 가짜 full SHA로 생성된
+중간 디렉터리는 `INVALID.md`로 명시적으로 폐기했으며 검토·승인·apply 입력으로 사용하지 않는다.
+현재 승인 요청 대상은 위 `c0ab4ef5...3c24c` 원문 바이트 하나뿐이다.
