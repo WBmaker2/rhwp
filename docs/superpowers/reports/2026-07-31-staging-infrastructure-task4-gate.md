@@ -18,6 +18,11 @@
 - 실제 repository ID는 `1311079356`, owner ID는 `103619091`로 read-only 확인했다.
 - `staging-infrastructure-apply` Environment는 존재하지 않는 것을 read-only 확인했다.
 - 실제 plan과 기존 non-mutation approval에서 최신 review package를 ignored 경로에 재생성했다.
+- Google Cloud CLI 578.0.0을 설치하고 브라우저 인증을 완료했다.
+- 기본 project를 `rhwp-collaboration-staging-001`로 설정하고 project number `598693744358`,
+  lifecycle `ACTIVE`를 read-only 확인했다.
+- 관련 WIF pool은 현재 0개이며, `rhwp` workload service account는 아직 없음을 read-only 확인했다.
+  기존 Firebase 관리 service account는 변경하지 않는다.
 
 ## 2. 최신 exact-byte review package
 
@@ -123,13 +128,16 @@ live before/after IAM diff도 아직 생성하지 않았다.
 
 ## 6. Fail-closed 차단 사유
 
-1. 로컬에 `gcloud`가 설치되어 있지 않아 fixed read-only WIF/IAM attestation을 실행할 수 없다.
-2. immutable `TRUSTED_OPERATOR_KEY_REGISTRY`가 비어 있고 승인된 Ed25519 public key가 없다.
-3. 기존 안전 계약은 private key를 파일·로그·스크린샷에 남기지 않도록 요구하지만 현재 operator CLI는
-   권한 `0600`인 private-key 파일 경로를 요구한다. 이 계약 충돌을 별도 설계 승인 없이 우회하지 않는다.
+1. Google Cloud CLI 설치·인증은 완료했으나 WIF provider와 deployer service account가 아직 없어 fixed
+   read-only WIF/IAM attestation은 생성할 수 없다.
+2. 승인된 Ed25519 public key registry diff와 단일 운영자 예외는 구현·검증을 마쳤으며 원격 commit에
+   결합한 뒤 새 review package를 생성해야 한다.
+3. private key는 사용자 승인에 따라 ignored operator-local 경로의 권한 `0600` 파일로만 보관하며
+   tracked source, log, screenshot 또는 artifact에 넣지 않는다.
 4. GitHub official GET Environment REST response에는 administrators bypass 상태가 포함되지 않는다.
    현재 validator는 사람의 acknowledgement를 대체 증거로 허용하지 않는다.
-5. required reviewer 실제 계정, WIF provider, deployer service account가 승인되지 않았다.
+5. required reviewer는 `WBmaker2`, `preventSelfReview=false` 단일 운영자 예외로 승인되었지만 실제
+   Environment 설정은 아직 적용하지 않았다. WIF provider와 deployer service account도 승인되지 않았다.
 6. 최신 review package exact bytes, Environment diff, WIF/IAM live diff, signing key,
    `cloudMutationApproved=true` record와 workflow dispatch는 각각 별도 승인이 필요하다.
 

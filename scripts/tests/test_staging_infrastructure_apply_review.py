@@ -122,7 +122,7 @@ class ApplyReviewPackageTest(unittest.TestCase):
 
         self.assertEqual(environment["name"], "staging-infrastructure-apply")
         self.assertEqual(environment["requiredReviewerCountMinimum"], 1)
-        self.assertTrue(environment["preventSelfReview"])
+        self.assertFalse(environment["preventSelfReview"])
         branch_policy = environment["deploymentBranchPolicy"]
         self.assertFalse(branch_policy["protectedBranches"])
         self.assertTrue(branch_policy["customBranchPolicies"])

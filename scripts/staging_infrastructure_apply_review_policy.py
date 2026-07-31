@@ -16,7 +16,7 @@ def protected_environment_spec() -> dict[str, Any]:
         "name": "staging-infrastructure-apply",
         "configuredByThisPackage": False,
         "requiredReviewerCountMinimum": 1,
-        "preventSelfReview": True,
+        "preventSelfReview": False,
         "canAdminsBypass": False,
         "supportVerificationStatus": "operator-read-only-attestation-required",
         "unsupportedOrUnverifiedBlocksApprovalApply": True,

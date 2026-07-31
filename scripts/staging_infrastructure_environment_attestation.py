@@ -130,7 +130,7 @@ def _build_attestation(
         "requiredContract": expected,
         "observed": {
             "requiredReviewerCount": required,
-            "preventSelfReview": True,
+            "preventSelfReview": False,
             "canAdminsBypass": False,
             "deploymentBranchPolicy": expected["deploymentBranchPolicy"],
             "variableNames": expected["variableNames"],
@@ -150,7 +150,7 @@ def _required_reviewers(environment: dict[str, Any]) -> int:
         raise EnvironmentAttestationError("GitHub Environment required-reviewer rule is invalid")
     rule = matching[0]
     reviewers = rule.get("reviewers")
-    if rule.get("prevent_self_review") is not True or not isinstance(reviewers, list) or not reviewers:
+    if rule.get("prevent_self_review") is not False or not isinstance(reviewers, list) or not reviewers:
         raise EnvironmentAttestationError("GitHub Environment reviewer or self-review policy is invalid")
     return len(reviewers)
 

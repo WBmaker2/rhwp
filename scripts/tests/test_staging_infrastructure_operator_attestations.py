@@ -231,7 +231,10 @@ class WifOperatorAttestationTest(unittest.TestCase):
                     )
 
 class EnvironmentOperatorAttestationTest(unittest.TestCase):
-    def _runner(self, *, include_admin_bypass: bool = True):
+    def _runner(
+        self, *, include_admin_bypass: bool = True,
+        prevent_self_review: bool = False,
+    ):
         variable_names = [
             "GCP_WORKLOAD_IDENTITY_PROVIDER", "GCP_DEPLOYER_SERVICE_ACCOUNT",
             "STAGING_PROJECT_ID", "STAGING_APPROVED_REPOSITORY",
@@ -252,7 +255,8 @@ class EnvironmentOperatorAttestationTest(unittest.TestCase):
                 value = {
                     "id": 33, "name": "staging-infrastructure-apply",
                     "protection_rules": [{
-                        "type": "required_reviewers", "prevent_self_review": True,
+                        "type": "required_reviewers",
+                        "prevent_self_review": prevent_self_review,
                         "reviewers": [{"type": "User", "reviewer": {"login": "redacted"}}],
                     }],
                     "deployment_branch_policy": {
@@ -282,6 +286,7 @@ class EnvironmentOperatorAttestationTest(unittest.TestCase):
         self.assertIn("?per_page=30&page=1", calls[-1][-1])
         self.assertEqual(attestation["repositoryId"], "11")
         self.assertEqual(attestation["observed"]["requiredReviewerCount"], 1)
+        self.assertFalse(attestation["observed"]["preventSelfReview"])
         encoded = json.dumps(attestation)
         self.assertNotIn("redacted", encoded)
         self.assertNotIn("not-recorded", encoded)
@@ -293,6 +298,11 @@ class EnvironmentOperatorAttestationTest(unittest.TestCase):
 
     def test_missing_admin_bypass_observation_fails_closed(self) -> None:
         runner, _ = self._runner(include_admin_bypass=False)
+        with self.assertRaises(EnvironmentAttestationError):
+            attest_environment(runner=runner, now=NOW)
+
+    def test_single_operator_contract_rejects_prevent_self_review_true(self) -> None:
+        runner, _ = self._runner(prevent_self_review=True)
         with self.assertRaises(EnvironmentAttestationError):
             attest_environment(runner=runner, now=NOW)
 

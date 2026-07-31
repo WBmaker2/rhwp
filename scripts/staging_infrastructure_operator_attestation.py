@@ -157,7 +157,7 @@ def validate_environment_attestation(
         raise OperatorAttestationError("Environment required contract is not exact")
     expected_observed = {
         "requiredReviewerCount": value.get("observed", {}).get("requiredReviewerCount") if isinstance(value.get("observed"), dict) else None,
-        "preventSelfReview": True,
+        "preventSelfReview": False,
         "canAdminsBypass": False,
         "deploymentBranchPolicy": environment_required_contract()["deploymentBranchPolicy"],
         "variableNames": environment_required_contract()["variableNames"],

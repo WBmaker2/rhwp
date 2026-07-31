@@ -138,9 +138,10 @@ pagination 불완전, admin-bypass 미관측, registry key 부재/서명 불일�
 GitHub의 official GET Environment response가 admin bypass 상태를 제공하지 않는 현재 플랫폼에서는 이 명령이
 의도적으로 promotion을 중단합니다. 이는 사람이 수동 acknowledgement로 우회할 수 없습니다.
 
-`TRUSTED_OPERATOR_KEY_REGISTRY`는 현재 비어 있습니다. 따라서 위 CLI는 fixed query를 시작하기 전 signing-key
-configuration 오류로 중단합니다. 실제 public key onboarding은 별도 reviewed source change와 사용자 승인이
-필요하며, protected Environment variable의 public key를 trust root로 사용하지 않습니다.
+`TRUSTED_OPERATOR_KEY_REGISTRY`에는 별도 승인된 `rhwp-staging-operator-2026-07-31` Ed25519 public key와
+exact PEM SHA-256만 등록합니다. private key는 ignored operator-local 경로의 권한 `0600` 파일로만 보관하며
+tracked source, Environment variable, log 또는 artifact에 넣지 않습니다. protected Environment variable의
+public key를 trust root로 사용하지 않습니다.
 
 operator가 signed v3 package의 exact raw SHA-256, 두 receipt envelope digest 및 expiry를 확인한 뒤에만 v3 human approval을
 작성합니다. approval 시각과 protected apply run 시각은 두 receipt의 15분 이하 validity window 안에 있어야 합니다.
@@ -220,7 +221,8 @@ delete/disable, build/push/deploy는 executor allowlist 밖입니다.
 - Dry-run: exact canonical mutation subset에 대한 plan/post evidence를 산출하되, resource 변경은 하지 않아야 합니다.
 - Apply: protected environment 승인, caller-declared commit의 독립 membership/tree/workflow 검증, exact
   plan/approval/manifest digest 검증을 끝낸 뒤에만 허용됩니다.
-- `staging-infrastructure-apply` environment: required reviewer 최소 1명, prevent self-review 활성화,
+- `staging-infrastructure-apply` environment: required reviewer `WBmaker2` 최소 1명, 단일 운영자 예외로
+  prevent self-review 비활성화,
   `canAdminsBypass=false`를 요구합니다. operator는 official REST read contract가 이 값을 관측하지 못하면
   사람 acknowledgement로 대체하지 않고 attestation/promotion을 fail-closed로 중단합니다.
   deployment branch policy에서 protected branches는 `false`, custom branch policies는 `true`로 두고
@@ -228,6 +230,8 @@ delete/disable, build/push/deploy는 executor allowlist 밖입니다.
   long-lived cloud credential
   없음, WIF provider/audience/service-account identifier만 사용, least-privilege role diff가 필요합니다.
   이 environment의 생성·구성 자체도 별도 사용자 승인이 필요합니다.
+  이 예외는 승인 가능한 collaborator가 `WBmaker2` 한 명뿐인 현재 저장소에만 적용합니다. Required reviewer를
+  제거하지 않으며 administrator bypass 금지, exact-byte approval, run binding과 dispatch 별도 승인은 유지합니다.
 - WIF/IAM: subject는 `.github/workflows/staging-infrastructure-apply.yml`에만
   바인딩하고, 현재 review workflow는 명시적으로 제외합니다. mapping은 `google.subject=assertion.sub`,
   `attribute.repository=assertion.repository`, `attribute.ref=assertion.ref`,

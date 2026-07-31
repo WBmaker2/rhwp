@@ -34,7 +34,19 @@ BASE64URL = re.compile(r"^[A-Za-z0-9_-]{86}$")
 # Add a reviewed public key only through a separate approved source change.
 # A protected Environment variable is intentionally not a trust root because a
 # variable editor could otherwise replace both the key and the signed package.
-TRUSTED_OPERATOR_KEY_REGISTRY: Mapping[str, Mapping[str, str]] = MappingProxyType({})
+TRUSTED_OPERATOR_KEY_REGISTRY: Mapping[str, Mapping[str, str]] = MappingProxyType({
+    "rhwp-staging-operator-2026-07-31": MappingProxyType({
+        "algorithm": ALGORITHM,
+        "publicKeyPem": (
+            "-----BEGIN PUBLIC KEY-----\n"
+            "MCowBQYDK2VwAyEAdQ8VqFGYCqosU+3ZreXAzzDYjKng3u0EC9oyODubMlY=\n"
+            "-----END PUBLIC KEY-----\n"
+        ),
+        "publicKeySha256": (
+            "92e9423421408a5ab85b280dc12bb6d5cf41520621ec094c2ee77468f66be225"
+        ),
+    }),
+})
 
 
 class OperatorSignatureError(RuntimeError):
