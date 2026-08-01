@@ -46,6 +46,45 @@ class ApplyHardeningTest(unittest.TestCase):
         self.assertEqual(run.call_count, 2)
         self.assertIn("--managed-by=user", run.call_args_list[1].args[0])
 
+    def test_secret_observation_accepts_numeric_project_resource_name(self) -> None:
+        action = next(item for item in self.review["canonicalMutationSubset"] if item["resourceKind"] == "ensure-secret-container")
+        name = action["resourceIdentifier"]["name"]
+        result = _observe_records(
+            "ensure-secret-container",
+            self.review["projectId"],
+            action["resourceIdentifier"],
+            [{"name": f"projects/598693744358/secrets/{name}", "replication": {"automatic": {}}}],
+        )
+        self.assertEqual(result, {"state": "present", "resourceKind": "ensure-secret-container", "matchesDesired": True})
+
+    def test_secret_observation_requires_numeric_project_resource_and_exact_name(self) -> None:
+        action = next(item for item in self.review["canonicalMutationSubset"] if item["resourceKind"] == "ensure-secret-container")
+        name = action["resourceIdentifier"]["name"]
+        observations = [
+            {"name": f"projects/{self.review['projectId']}/secrets/{name}", "replication": {"automatic": {}}},
+            {"name": f"projects/598693744358/secrets/other-secret", "replication": {"automatic": {}}},
+            {"name": f"projects/598693744358/secrets/{name}", "replication": {"userManaged": {}}},
+        ]
+        for observation in observations:
+            with self.subTest(observation=observation):
+                result = _observe_records("ensure-secret-container", self.review["projectId"], action["resourceIdentifier"], [observation])
+                self.assertEqual(result["state"], "incompatible")
+                self.assertFalse(result["matchesDesired"])
+
+    def test_secret_observation_keeps_project_scoped_list_query(self) -> None:
+        action = next(item for item in self.review["canonicalMutationSubset"] if item["resourceKind"] == "ensure-secret-container")
+        name = action["resourceIdentifier"]["name"]
+        reply = SimpleNamespace(
+            returncode=0,
+            stdout='[{"name":"projects/598693744358/secrets/' + name + '","replication":{"automatic":{}}}]',
+        )
+        with patch("scripts.staging_infrastructure_apply_executor.subprocess.run", return_value=reply) as run:
+            observed = _observe_fixed(self.review["projectId"], action)
+        self.assertEqual(observed["state"], "present")
+        argv = run.call_args.args[0]
+        self.assertIn("--project", argv)
+        self.assertIn(self.review["projectId"], argv)
+
 
 if __name__ == "__main__":
     unittest.main()

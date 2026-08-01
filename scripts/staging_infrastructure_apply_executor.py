@@ -28,6 +28,7 @@ SA = re.compile(r"^[a-z][a-z0-9-]{5,28}[a-z0-9]$")
 REPOSITORY = re.compile(r"^[a-z][a-z0-9-]{0,62}$")
 LOCATION = re.compile(r"^[a-z][a-z0-9-]{1,31}$")
 SECRET = re.compile(r"^[A-Za-z][A-Za-z0-9_-]{0,254}$")
+SECRET_RESOURCE = re.compile(r"^projects/[0-9]+/secrets/([A-Za-z][A-Za-z0-9_-]{0,254})$")
 
 
 class ApplyExecutionError(RuntimeError):
@@ -239,7 +240,9 @@ def _observe_records(kind: str, project_id: str, resource: dict[str, Any], value
         match = value.get("name") == f"projects/{project_id}/locations/{resource['location']}/repositories/{resource['repository']}" and value.get("format") == "DOCKER"
     else:
         replication = value.get("replication")
-        match = value.get("name") == f"projects/{project_id}/secrets/{resource['name']}" and isinstance(replication, dict) and set(replication) == {"automatic"} and isinstance(replication["automatic"], dict) and not replication["automatic"]
+        resource_name = value.get("name")
+        parsed = SECRET_RESOURCE.fullmatch(resource_name) if isinstance(resource_name, str) else None
+        match = parsed is not None and parsed.group(1) == resource["name"] and isinstance(replication, dict) and set(replication) == {"automatic"} and isinstance(replication["automatic"], dict) and not replication["automatic"]
     return {"state": "present" if match else "incompatible", "resourceKind": kind, "matchesDesired": match}
 
 
