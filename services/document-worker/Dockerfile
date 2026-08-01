@@ -3,6 +3,7 @@ WORKDIR /src
 COPY Cargo.toml Cargo.lock rust-toolchain.toml ./
 COPY src ./src
 COPY examples ./examples
+COPY saved ./saved
 RUN cargo build --release --no-default-features --features collaboration-worker --bin rhwp-collaboration-worker
 
 FROM node:22-bookworm-slim AS node-build

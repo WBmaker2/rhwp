@@ -64,6 +64,7 @@ class StagingReleaseCandidateWorkflowTest(unittest.TestCase):
     def test_document_worker_docker_context_includes_declared_cargo_examples(self) -> None:
         dockerfile = DOCUMENT_WORKER_DOCKERFILE.read_text()
         self.assertIn("COPY examples ./examples", dockerfile)
+        self.assertIn("COPY saved ./saved", dockerfile)
 
 
 if __name__ == "__main__":
