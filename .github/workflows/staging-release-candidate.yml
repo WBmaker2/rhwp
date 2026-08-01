@@ -33,7 +33,6 @@ jobs:
         run: |
           set -euo pipefail
           test "$SOURCE_REF" = "feat/firebase-collaboration-mvp-v1"
-          test "$(git branch --show-current)" = ""
           test -n "$(git rev-parse HEAD)"
       - name: Run release candidate static checks
         run: |

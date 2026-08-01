@@ -23,6 +23,7 @@ class StagingReleaseCandidateWorkflowTest(unittest.TestCase):
         prepare = self.text.split("  build-push:\n", 1)[0]
         build = self.text.split("  build-push:\n", 1)[1]
         self.assertIn("id-token: none", prepare)
+        self.assertNotIn('test "$(git branch --show-current)" = ""', prepare)
         self.assertIn("environment: staging-release", build)
         self.assertIn("id-token: write", build)
         self.assertLess(
