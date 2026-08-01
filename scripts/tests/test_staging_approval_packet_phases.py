@@ -155,6 +155,20 @@ class DeploymentPhaseValidationTest(PhaseTestCase):
         self.assertEqual(packet["preflight"]["comparisonMode"], "live")
         self.assertEqual(packet["approval"]["packetIsDeploymentApproval"], False)
 
+    def test_initial_deployment_packet_preserves_no_previous_revision_state(self) -> None:
+        manifest = concrete_manifest()
+        manifest["operations"]["deploymentStage"] = "initial"
+        manifest["operations"]["rollbackRevisionIds"] = [None, None, None]
+
+        packet = self.build_for_phase(
+            manifest,
+            phase="deployment",
+            live=live_report(manifest),
+        )
+
+        self.assertEqual(packet["rollback"]["deploymentStage"], "initial")
+        self.assertEqual(packet["rollback"]["revisionIds"], [None, None, None])
+
     def test_deployment_live_review_status_requires_human_review(self) -> None:
         manifest = concrete_manifest()
         report = live_report(manifest)

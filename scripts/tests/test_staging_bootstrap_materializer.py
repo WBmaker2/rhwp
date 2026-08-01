@@ -421,6 +421,39 @@ class BootstrapWorkflowContractTest(unittest.TestCase):
             r"(?:gcloud|firebase)[^\n]*(?:\bcreate\b|\bdelete\b|\bdeploy\b|\benable\b|\bdisable\b|\bupdate\b|add-iam-policy-binding|set-iam-policy)",
         )
 
+    def test_live_deployment_preflight_materializes_environment_values_before_cloud_auth(self) -> None:
+        workflow = WORKFLOW_PATH.read_text()
+        live_section = workflow.split("\n  live:\n", 1)[1]
+
+        for marker in (
+            "environment: staging-preflight",
+            "id-token: write",
+            "STAGING_PROJECT_ID: ${{ vars.STAGING_PROJECT_ID }}",
+            "STAGING_BILLING_ACCOUNT: ${{ vars.STAGING_BILLING_ACCOUNT }}",
+            "STAGING_FORBIDDEN_PROJECT_IDS_JSON: ${{ vars.STAGING_FORBIDDEN_PROJECT_IDS_JSON }}",
+            "STAGING_STORAGE_BUCKET: ${{ vars.STAGING_STORAGE_BUCKET }}",
+            "STAGING_MONTHLY_BUDGET_KRW: ${{ vars.STAGING_MONTHLY_BUDGET_KRW }}",
+            "STAGING_BUDGET_NOTIFICATION_CHANNELS_JSON: ${{ vars.STAGING_BUDGET_NOTIFICATION_CHANNELS_JSON }}",
+            "STAGING_DATA_RETENTION_DAYS: ${{ vars.STAGING_DATA_RETENTION_DAYS }}",
+            "STAGING_APPROVAL_REFERENCE: ${{ vars.STAGING_APPROVAL_REFERENCE }}",
+            "STAGING_INTERNAL_FLUSH_DECISION: ${{ vars.STAGING_INTERNAL_FLUSH_DECISION }}",
+            "python3 scripts/staging_bootstrap_materializer.py",
+            "--from-environment",
+            "--output artifacts/staging-manifest-deployment-preflight.json",
+            "--manifest artifacts/staging-manifest-deployment-preflight.json",
+            "artifacts/staging-manifest-deployment-preflight.json",
+        ):
+            self.assertIn(marker, live_section)
+
+        self.assertLess(
+            live_section.index("Materialize approved deployment preflight manifest"),
+            live_section.index("Authenticate with Workload Identity Federation"),
+        )
+        self.assertLess(
+            live_section.index("Generate static preflight report for deployment approval"),
+            live_section.index("Authenticate with Workload Identity Federation"),
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

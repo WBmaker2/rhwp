@@ -20,6 +20,7 @@ on:
       - 'scripts/staging_bootstrap_readiness.py'
       - 'scripts/staging_bootstrap_approval_record.py'
       - 'scripts/staging_bootstrap_operator.py'
+      - 'scripts/staging_deployment_manifest.py'
       - 'scripts/staging_infrastructure_plan.py'
       - 'scripts/tests/**'
       - '.github/workflows/staging-config-validate.yml'
@@ -46,6 +47,11 @@ on:
         required: true
         type: string
         default: deploy/staging/staging-manifest.json
+      release_metadata_path:
+        description: Repository-relative source-commit-bound release metadata path for deployment preflight
+        required: false
+        type: string
+        default: deploy/staging/staging-release-metadata.json
       bootstrap_packet_path:
         description: Repository-relative reviewed bootstrap packet JSON path
         required: false
@@ -431,11 +437,73 @@ jobs:
     environment: staging-preflight
     permissions:
       contents: read
+      actions: read
       id-token: write
+    env:
+      STAGING_PROJECT_ID: ${{ vars.STAGING_PROJECT_ID }}
+      STAGING_BILLING_ACCOUNT: ${{ vars.STAGING_BILLING_ACCOUNT }}
+      STAGING_FORBIDDEN_PROJECT_IDS_JSON: ${{ vars.STAGING_FORBIDDEN_PROJECT_IDS_JSON }}
+      STAGING_STORAGE_BUCKET: ${{ vars.STAGING_STORAGE_BUCKET }}
+      STAGING_MONTHLY_BUDGET_KRW: ${{ vars.STAGING_MONTHLY_BUDGET_KRW }}
+      STAGING_BUDGET_NOTIFICATION_CHANNELS_JSON: ${{ vars.STAGING_BUDGET_NOTIFICATION_CHANNELS_JSON }}
+      STAGING_DATA_RETENTION_DAYS: ${{ vars.STAGING_DATA_RETENTION_DAYS }}
+      STAGING_APPROVAL_REFERENCE: ${{ vars.STAGING_APPROVAL_REFERENCE }}
+      STAGING_INTERNAL_FLUSH_DECISION: ${{ vars.STAGING_INTERNAL_FLUSH_DECISION }}
     steps:
       - uses: actions/checkout@v5
         with:
           show-progress: false
+      - name: Materialize approved deployment preflight manifest
+        run: |
+          mkdir -p artifacts
+          python3 scripts/staging_bootstrap_materializer.py \
+            --manifest "${{ inputs.manifest_path }}" \
+            --from-environment \
+            --output artifacts/staging-manifest-deployment-preflight-bootstrap.json
+      - name: Resolve immutable deployment manifest from release metadata
+        env:
+          RELEASE_METADATA_PATH: ${{ inputs.release_metadata_path }}
+        run: |
+          if [ ! -f "${RELEASE_METADATA_PATH}" ]; then
+            echo "source-commit-bound release metadata is required before deployment packet generation: ${RELEASE_METADATA_PATH}" >&2
+            exit 1
+          fi
+          python3 scripts/staging_deployment_manifest.py \
+            --bootstrap-manifest artifacts/staging-manifest-deployment-preflight-bootstrap.json \
+            --release-metadata "${RELEASE_METADATA_PATH}" \
+            --expected-source-commit "${GITHUB_SHA}" \
+            --output artifacts/staging-manifest-deployment-preflight.json
+      - name: Verify release workflow provenance
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_METADATA_PATH: ${{ inputs.release_metadata_path }}
+        run: |
+          RELEASE_RUN_ID="$(python3 -c 'import json, os; print(json.load(open(os.environ["RELEASE_METADATA_PATH"]))["workflowRunId"])')"
+          RELEASE_RUN_ATTEMPT="$(python3 -c 'import json, os; print(json.load(open(os.environ["RELEASE_METADATA_PATH"]))["workflowRunAttempt"])')"
+          RELEASE_RUN_JSON="$(gh run view "${RELEASE_RUN_ID}" --attempt "${RELEASE_RUN_ATTEMPT}" --repo "${GITHUB_REPOSITORY}" --json databaseId,headSha,status,conclusion,attempt)"
+          RELEASE_RUN_JSON="${RELEASE_RUN_JSON}" \
+            RELEASE_METADATA_PATH="${RELEASE_METADATA_PATH}" \
+            EXPECTED_SOURCE_COMMIT="${GITHUB_SHA}" \
+            python3 - <<'PY'
+          import json
+          import os
+
+          metadata = json.loads(open(os.environ["RELEASE_METADATA_PATH"]).read())
+          observed = json.loads(os.environ["RELEASE_RUN_JSON"])
+          if str(observed.get("databaseId")) != str(metadata.get("workflowRunId")):
+              raise SystemExit("release workflow run ID does not match GitHub observation")
+          if int(observed.get("attempt", 0)) != int(metadata.get("workflowRunAttempt", 0)):
+              raise SystemExit("release workflow attempt does not match GitHub observation")
+          if observed.get("headSha") != os.environ["EXPECTED_SOURCE_COMMIT"]:
+              raise SystemExit("release workflow head commit does not match checked-out commit")
+          if observed.get("status") != "completed" or observed.get("conclusion") != "success":
+              raise SystemExit("release workflow run is not a successful completed run")
+          PY
+      - name: Generate static preflight report for deployment approval
+        run: |
+          python3 scripts/staging_preflight.py \
+            --manifest artifacts/staging-manifest-deployment-preflight.json \
+            --report artifacts/staging-preflight-static.json
       - name: Authenticate with Workload Identity Federation
         uses: google-github-actions/auth@v3
         with:
@@ -445,23 +513,17 @@ jobs:
         uses: google-github-actions/setup-gcloud@v3
       - name: Install Firebase CLI
         run: npm install --global firebase-tools
-      - name: Generate static preflight report for deployment approval
-        run: |
-          mkdir -p artifacts
-          python3 scripts/staging_preflight.py \
-            --manifest "${{ inputs.manifest_path }}" \
-            --report artifacts/staging-preflight-static.json
       - name: Run live read-only preflight
         run: |
           python3 scripts/staging_preflight.py \
-            --manifest "${{ inputs.manifest_path }}" \
+            --manifest artifacts/staging-manifest-deployment-preflight.json \
             --live \
             --report artifacts/staging-preflight-live.json
       - name: Generate deployment staging approval packet
         run: |
           python3 scripts/staging_approval_packet.py \
             --phase deployment \
-            --manifest "${{ inputs.manifest_path }}" \
+            --manifest artifacts/staging-manifest-deployment-preflight.json \
             --static-report artifacts/staging-preflight-static.json \
             --live-report artifacts/staging-preflight-live.json \
             --json-output artifacts/staging-approval-packet.json \
@@ -480,6 +542,8 @@ jobs:
         with:
           name: staging-approval-packet-deployment
           path: |
+            artifacts/staging-manifest-deployment-preflight.json
+            artifacts/staging-manifest-deployment-preflight-bootstrap.json
             artifacts/staging-preflight-static.json
             artifacts/staging-preflight-live.json
             artifacts/staging-approval-packet.json

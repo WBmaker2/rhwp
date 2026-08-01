@@ -186,6 +186,7 @@ def build_approval_packet(
             "productionRecommendation": "split internal flush into a private service or private endpoint",
         },
         "rollback": {
+            "deploymentStage": operations.get("deploymentStage"),
             "revisionIds": operations.get("rollbackRevisionIds"),
             "dataRetentionDays": operations.get("dataRetentionDays"),
             "automaticDeletionAllowed": False,

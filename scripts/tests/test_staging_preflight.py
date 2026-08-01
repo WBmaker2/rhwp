@@ -71,6 +71,28 @@ class StagingManifestTest(unittest.TestCase):
         with self.assertRaisesRegex(PreflightError, "secret value"):
             validate_manifest(secret_value)
 
+    def test_manifest_distinguishes_initial_and_upgrade_rollback_contracts(self) -> None:
+        manifest = load_manifest(MANIFEST_PATH)
+
+        initial = copy.deepcopy(manifest)
+        initial["operations"]["deploymentStage"] = "initial"
+        initial["operations"]["rollbackRevisionIds"] = [None, None, None]
+        validate_manifest(initial)
+
+        upgrade = copy.deepcopy(manifest)
+        upgrade["operations"]["deploymentStage"] = "upgrade"
+        upgrade["operations"]["rollbackRevisionIds"] = [
+            "collaboration-revision-00002",
+            "document-api-revision-00002",
+            "document-worker-revision-00002",
+        ]
+        validate_manifest(upgrade)
+
+        mixed = copy.deepcopy(initial)
+        mixed["operations"]["rollbackRevisionIds"] = [None, "revision", None]
+        with self.assertRaisesRegex(PreflightError, "initial.*rollbackRevisionIds"):
+            validate_manifest(mixed)
+
 
 class ReadOnlyPreflightTest(unittest.TestCase):
     def test_read_only_runner_rejects_mutating_commands_before_execution(self) -> None:

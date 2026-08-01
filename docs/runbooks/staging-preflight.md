@@ -223,15 +223,58 @@ Live 조회가 승인된 경우에만 다음을 선택한다.
 ```text
 live_check=true
 manifest_path=deploy/staging/staging-manifest.json
+release_metadata_path=deploy/staging/staging-release-metadata.json
 ```
 
 이 경우 workflow는 `staging-preflight` environment를 사용하고 Workload Identity Federation으로 인증한다. 장기 service-account key는 사용하지 않는다.
+인증 전에 보호 Environment의 9개 승인 값을 `staging_bootstrap_materializer.py --from-environment`으로
+`artifacts/staging-manifest-deployment-preflight-bootstrap.json`에 materialize한다. 이어서 동일 source
+commit에 결합된 release metadata를 `scripts/staging_deployment_manifest.py`로 검증해
+`artifacts/staging-manifest-deployment-preflight.json`을 만든다. static preflight, live read-only
+preflight, deployment packet은 이 최종 manifest만 입력으로 사용한다. release metadata가 없으면
+packet을 만들지 않고 인증 전에 fail-closed한다. 이 단계에는 build, push, deploy 또는 cloud mutation
+command가 없다.
+
+단, bootstrap materializer가 남기는 image digest, Firebase Web App ID, worker URL과 rollback revision은
+배포 packet 전용 release metadata가 확정되기 전까지 미해결 상태다. 이 값을 임의로 채우지 않는다.
+`scripts/staging_deployment_manifest.py`는 동일 source commit에 결합된 release metadata만 받아
+승인된 Artifact Registry의 서비스별 canonical repository, lowercase SHA-256 digest, concrete task URL과
+rollback ID를 검증하고 최종 deployment manifest를 만든다. metadata가 없거나 placeholder가 남으면
+deployment packet 생성은 fail-closed로 중단된다.
+workflow는 metadata의 `workflowRunId`와 `workflowRunAttempt`를 GitHub Actions read-only API로 다시
+조회해 실제 성공한 run의 `headSha`가 현재 checkout의 `GITHUB_SHA`와 같은지도 확인한다. 이 관찰이
+일치하지 않으면 WIF 인증 전에 중단한다.
+
+`release metadata`는 이미지 build/push evidence가 확정된 뒤 별도 승인 경계에서 생성되어야 한다.
+deployment packet이 image digest를 요구하므로, deployment approval 뒤에 처음으로 build/push를 하는
+순서는 유효하지 않다. 먼저 immutable release-candidate evidence를 만들고, 그 source-commit-bound
+metadata를 이 live preflight에 입력한 뒤 packet을 사람에게 제시한다. 이 구현에서는 build/push와
+deployment를 실행하지 않는다.
+
+metadata의 root 계약은 `rhwp.staging-deployment-release/v1`이며 다음 키만 허용한다.
+
+```text
+schemaVersion, sourceCommitSha, workflowRunId, workflowRunAttempt, deploymentStage,
+project.number, firebase.webAppId, firebase.apiKeyReference,
+cloudRun.collaboration|documentApi|documentWorker.{image,digest},
+tasks.parse|export.targetUrl, rollbackRevisionIds[3]
+```
+
+`deploymentStage`는 `initial` 또는 `upgrade`다. 최초 배포인 `initial`에서는 이전 Cloud Run
+revision이 없을 수 있으므로 `rollbackRevisionIds`를 `[null, null, null]`로 명시한다. 기존 배포를
+교체하는 `upgrade`에서는 실제 revision ID 세 개를 요구하며 placeholder·임의 문자열·null을 허용하지
+않는다. 이 구분 없이 rollback ID를 추측해 metadata를 만드는 것은 금지한다.
+
+`apiKeyReference`는 참조 이름만 허용하고 Firebase API key 원문은 거부한다. metadata 원문은
+deployment packet artifact에 업로드하지 않으며, 검증된 최종 manifest만 artifact에 포함한다.
 
 생성 artifact:
 
 ```text
 staging-preflight-report-static
 staging-preflight-report-live
+staging-approval-packet-deployment
+staging-manifest-deployment-preflight
 ```
 
 Workflow에는 deploy 또는 cloud mutation job이 없다.

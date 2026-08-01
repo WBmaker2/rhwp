@@ -56,6 +56,7 @@ REQUIRED_APIS = {
     "secretmanager.googleapis.com",
     "storage.googleapis.com",
 }
+DEPLOYMENT_STAGES = frozenset({"initial", "upgrade"})
 
 
 class PreflightError(RuntimeError):
@@ -241,6 +242,21 @@ def validate_manifest(manifest: dict[str, Any]) -> None:
     rollback_ids = operations.get("rollbackRevisionIds")
     if not isinstance(rollback_ids, list) or len(rollback_ids) != 3:
         raise PreflightError("operations.rollbackRevisionIds must contain three entries")
+    deployment_stage = operations.get("deploymentStage")
+    if deployment_stage is not None:
+        if deployment_stage not in DEPLOYMENT_STAGES:
+            raise PreflightError("operations.deploymentStage must be initial or upgrade")
+        if deployment_stage == "initial" and rollback_ids != [None, None, None]:
+            raise PreflightError(
+                "initial deploymentStage requires three null rollbackRevisionIds"
+            )
+        if deployment_stage == "upgrade" and not all(
+            isinstance(item, str) and item.strip() and not is_placeholder(item)
+            for item in rollback_ids
+        ):
+            raise PreflightError(
+                "upgrade deploymentStage requires three concrete rollbackRevisionIds"
+            )
     if operations.get("cloudMutationApproved") is not False:
         raise PreflightError("operations.cloudMutationApproved must remain false")
 
