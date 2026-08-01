@@ -62,7 +62,7 @@ class ApplyExecutorTest(unittest.TestCase):
   with self.assertRaises(MutationApprovalError): validate_mutation_approval(self.package,self.raw,declaration,now=self.now)
  def test_prepare_cli_preserves_package_bytes_and_rejects_sha_mismatch(self):
   declaration=copy.deepcopy(self.approval); declaration.pop("approvedRunId"); declaration.pop("approvedRunAttempt"); declaration["schemaVersion"]=DECLARATION_SCHEMA
-  with tempfile.TemporaryDirectory(dir="/private/tmp") as directory:
+  with tempfile.TemporaryDirectory(dir=Path(__file__).resolve().parents[2]) as directory:
    root=Path(directory); package_b64=root/"package.b64"; declaration_b64=root/"declaration.b64"; package_out=root/"package.json"; approval_out=root/"approval.json"
    package_b64.write_bytes(base64.b64encode(self.raw)); declaration_b64.write_bytes(base64.b64encode(json.dumps(declaration,separators=(",", ":")).encode()))
    result=prepare_run_bound_evidence(package_b64,declaration_b64,expected_package_sha256=hashlib.sha256(self.raw).hexdigest(),run_id="456789",run_attempt=3,package_output=package_out,approval_output=approval_out,now=self.now)
