@@ -2,7 +2,7 @@
 
 **작성일:** 2026-08-01
 **대상 브랜치:** `feat/firebase-collaboration-mvp-v1`
-**상태:** 설계·검토 대기
+**상태:** Phase A 구현 완료, Phase B 승인 대기
 
 ## 왜 현재 일괄 배포가 성립하지 않는가
 
@@ -66,12 +66,15 @@ preflight를 실행하면, URL을 추측하거나 첫 배포 이후에야 알 �
 - 실제 URL·revision·digest를 추측하거나 임의로 채우지 않는다.
 - `cloudMutationApproved=false`, `deploymentApproved=false` 상태에서 workflow dispatch를 실행하지 않는다.
 
-## 현재 필요한 외부 준비
+## Phase A 현재 상태와 다음 외부 준비
 
-1. `staging-preflight` 전용 read-only WIF provider와 최소 권한 service account
-2. release-candidate push용 protected Environment와 OIDC identity
-3. Phase A/B/C/D 각각의 exact diff 승인
-4. 각 protected workflow dispatch 직전 별도 승인
+1. `staging-preflight` 전용 read-only WIF provider와 최소 권한 service account는 준비되었다.
+2. release-candidate workflow와 로컬 계약 테스트가 구현되었다.
+3. release-candidate push용 protected Environment와 OIDC identity의 exact diff를 read-back해야 한다.
+4. Phase A workflow dispatch와 artifact exact-byte SHA-256을 확인한 뒤, Phase B worker bootstrap의
+   exact diff와 별도 dispatch 승인을 받는다.
+5. Phase B 이후에만 최종 metadata, live preflight, runtime deployment을 진행한다.
 
-이 계획은 구조 충돌을 해결하기 위한 것이며, 작성 단계에서는 cloud mutation, image build/push,
-deployment, secret 변경을 수행하지 않는다.
+이 계획의 Phase A workflow는 Cloud Run/Cloud Tasks/Firebase deploy를 수행하지 않는다. protected
+release Environment 안에서만 immutable image build/push와 candidate evidence 생성을 수행하고,
+worker bootstrap 이후에 실제 runtime mutation을 별도 단계로 제한한다.

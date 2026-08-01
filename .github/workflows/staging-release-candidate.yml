@@ -1,0 +1,205 @@
+name: Staging release candidate
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_ref:
+        description: Feature branch ref to build
+        required: true
+        type: string
+        default: feat/firebase-collaboration-mvp-v1
+
+permissions:
+  contents: read
+
+jobs:
+  prepare:
+    name: Prepare release candidate evidence
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: none
+    outputs:
+      source_sha: ${{ steps.source.outputs.sha }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.source_ref }}
+          fetch-depth: 1
+          show-progress: false
+      - name: Verify approved source ref
+        env:
+          SOURCE_REF: ${{ inputs.source_ref }}
+        run: |
+          set -euo pipefail
+          test "$SOURCE_REF" = "feat/firebase-collaboration-mvp-v1"
+          test "$(git branch --show-current)" = ""
+          test -n "$(git rev-parse HEAD)"
+      - name: Run release candidate static checks
+        run: |
+          set -euo pipefail
+          python3 -m unittest scripts.tests.test_staging_deployment_manifest -v
+          python3 scripts/validate_staging_config.py
+      - name: Record source commit
+        id: source
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+  build-push:
+    name: Build and push immutable staging images
+    needs: prepare
+    runs-on: ubuntu-latest
+    environment: staging-release
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      STAGING_PROJECT_ID: ${{ vars.STAGING_PROJECT_ID }}
+      STAGING_ARTIFACT_LOCATION: ${{ vars.STAGING_ARTIFACT_LOCATION }}
+      STAGING_ARTIFACT_REPOSITORY: ${{ vars.STAGING_ARTIFACT_REPOSITORY }}
+      GCP_RELEASE_WORKLOAD_IDENTITY_PROVIDER: ${{ secrets.GCP_RELEASE_WORKLOAD_IDENTITY_PROVIDER }}
+      GCP_RELEASE_SERVICE_ACCOUNT: ${{ secrets.GCP_RELEASE_SERVICE_ACCOUNT }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.source_ref }}
+          fetch-depth: 1
+          show-progress: false
+      - name: Verify source commit binding before authentication
+        env:
+          EXPECTED_SOURCE_SHA: ${{ needs.prepare.outputs.source_sha }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SOURCE_SHA"
+          test "$GITHUB_SHA" = "$EXPECTED_SOURCE_SHA"
+      - name: Authenticate with Workload Identity Federation
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ secrets.GCP_RELEASE_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_RELEASE_SERVICE_ACCOUNT }}
+      - name: Set up Google Cloud CLI
+        uses: google-github-actions/setup-gcloud@v3
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Configure Artifact Registry authentication
+        run: gcloud auth configure-docker "${STAGING_ARTIFACT_LOCATION}-docker.pkg.dev" --quiet
+      - name: Build and push collaboration image
+        env:
+          REGISTRY: ${{ vars.STAGING_ARTIFACT_LOCATION }}-docker.pkg.dev/${{ vars.STAGING_PROJECT_ID }}/${{ vars.STAGING_ARTIFACT_REPOSITORY }}
+        run: |
+          set -euo pipefail
+          docker buildx build \
+            --file services/collaboration-server/Dockerfile \
+            --tag "${REGISTRY}/collaboration:${GITHUB_SHA}" \
+            --provenance=false \
+            --sbom=false \
+            --push \
+            services/collaboration-server
+      - name: Build and push document API image
+        env:
+          REGISTRY: ${{ vars.STAGING_ARTIFACT_LOCATION }}-docker.pkg.dev/${{ vars.STAGING_PROJECT_ID }}/${{ vars.STAGING_ARTIFACT_REPOSITORY }}
+        run: |
+          set -euo pipefail
+          docker buildx build \
+            --file services/document-api/Dockerfile \
+            --tag "${REGISTRY}/document-api:${GITHUB_SHA}" \
+            --provenance=false \
+            --sbom=false \
+            --push \
+            services/document-api
+      - name: Build and push document worker image
+        env:
+          REGISTRY: ${{ vars.STAGING_ARTIFACT_LOCATION }}-docker.pkg.dev/${{ vars.STAGING_PROJECT_ID }}/${{ vars.STAGING_ARTIFACT_REPOSITORY }}
+        run: |
+          set -euo pipefail
+          docker buildx build \
+            --file services/document-worker/Dockerfile \
+            --tag "${REGISTRY}/document-worker:${GITHUB_SHA}" \
+            --provenance=false \
+            --sbom=false \
+            --push \
+            .
+      - name: Resolve immutable image digests and Firebase app identity
+        env:
+          REGISTRY: ${{ vars.STAGING_ARTIFACT_LOCATION }}-docker.pkg.dev/${{ vars.STAGING_PROJECT_ID }}/${{ vars.STAGING_ARTIFACT_REPOSITORY }}
+        run: |
+          set -euo pipefail
+          umask 077
+          mkdir -p artifacts/staging-release-candidate
+          project_number="$(gcloud projects describe "$STAGING_PROJECT_ID" --format='value(projectNumber)')"
+          collaboration_digest="$(gcloud artifacts docker images describe "${REGISTRY}/collaboration:${GITHUB_SHA}" --format='value(image_summary.digest)')"
+          document_api_digest="$(gcloud artifacts docker images describe "${REGISTRY}/document-api:${GITHUB_SHA}" --format='value(image_summary.digest)')"
+          document_worker_digest="$(gcloud artifacts docker images describe "${REGISTRY}/document-worker:${GITHUB_SHA}" --format='value(image_summary.digest)')"
+          export PROJECT_NUMBER="$project_number"
+          export COLLABORATION_DIGEST="$collaboration_digest"
+          export DOCUMENT_API_DIGEST="$document_api_digest"
+          export DOCUMENT_WORKER_DIGEST="$document_worker_digest"
+          access_token="$(gcloud auth print-access-token)"
+          curl -fsS \
+            -H "Authorization: Bearer ${access_token}" \
+            -H "x-goog-user-project: ${STAGING_PROJECT_ID}" \
+            -H 'Accept: application/json' \
+            "https://firebase.googleapis.com/v1beta1/projects/${STAGING_PROJECT_ID}/webApps" \
+            > artifacts/staging-release-candidate/firebase-web-apps.json
+          python3 - <<'PY'
+          import json
+          import os
+          import re
+          from pathlib import Path
+
+          root = Path('artifacts/staging-release-candidate')
+          apps = json.loads((root / 'firebase-web-apps.json').read_text()).get('apps', [])
+          matching = [app for app in apps if app.get('displayName') == 'rhwp-staging']
+          if len(matching) != 1 or not matching[0].get('appId'):
+              raise SystemExit('exactly one rhwp-staging Firebase Web App is required')
+          values = {
+              'projectNumber': os.environ['PROJECT_NUMBER'],
+              'firebaseWebAppId': matching[0]['appId'],
+              'collaborationDigest': os.environ['COLLABORATION_DIGEST'],
+              'documentApiDigest': os.environ['DOCUMENT_API_DIGEST'],
+              'documentWorkerDigest': os.environ['DOCUMENT_WORKER_DIGEST'],
+          }
+          if not re.fullmatch(r'[0-9]{6,20}', values['projectNumber']):
+              raise SystemExit('project number is invalid')
+          for key in ('collaborationDigest', 'documentApiDigest', 'documentWorkerDigest'):
+              if not re.fullmatch(r'[a-f0-9]{64}', values[key]):
+                  raise SystemExit(f'{key} is not a lowercase SHA-256 digest')
+          if not values['firebaseWebAppId'].startswith('1:'):
+              raise SystemExit('Firebase Web App ID is invalid')
+          (root / 'staging-release-candidate-evidence.json').write_text(
+              json.dumps({
+                  'schemaVersion': 'rhwp.staging-release-candidate/v1',
+                  'sourceCommitSha': os.environ['GITHUB_SHA'],
+                  'workflowRunId': os.environ['GITHUB_RUN_ID'],
+                  'workflowRunAttempt': int(os.environ['GITHUB_RUN_ATTEMPT']),
+                  'deploymentStage': 'initial',
+                  'project': {'number': values['projectNumber']},
+                  'firebase': {
+                      'webAppId': values['firebaseWebAppId'],
+                      'apiKeyReference': 'firebase-web-config/staging',
+                  },
+                  'cloudRun': {
+                      'collaboration': {
+                          'image': os.environ['REGISTRY'] + '/collaboration',
+                          'digest': values['collaborationDigest'],
+                      },
+                      'documentApi': {
+                          'image': os.environ['REGISTRY'] + '/document-api',
+                          'digest': values['documentApiDigest'],
+                      },
+                      'documentWorker': {
+                          'image': os.environ['REGISTRY'] + '/document-worker',
+                          'digest': values['documentWorkerDigest'],
+                      },
+                  },
+                  'rollbackRevisionIds': [None, None, None],
+              }, ensure_ascii=False, indent=2) + '\n'
+          )
+          (root / 'firebase-web-apps.json').unlink()
+          PY
+      - name: Upload release candidate evidence
+        uses: actions/upload-artifact@v7
+        with:
+          name: staging-release-candidate-evidence
+          path: artifacts/staging-release-candidate/staging-release-candidate-evidence.json
+          if-no-files-found: error
+          retention-days: 30
