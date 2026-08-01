@@ -7,6 +7,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 WORKFLOW = ROOT / ".github/workflows/staging-release-candidate.yml"
+DOCUMENT_WORKER_DOCKERFILE = ROOT / "services/document-worker/Dockerfile"
 
 
 class StagingReleaseCandidateWorkflowTest(unittest.TestCase):
@@ -59,6 +60,10 @@ class StagingReleaseCandidateWorkflowTest(unittest.TestCase):
         self.assertNotIn("steps.resolve.outputs", resolve)
         self.assertIn("firebase-web-apps.json", resolve)
         self.assertIn(".get('apps', [])", resolve)
+
+    def test_document_worker_docker_context_includes_declared_cargo_examples(self) -> None:
+        dockerfile = DOCUMENT_WORKER_DOCKERFILE.read_text()
+        self.assertIn("COPY examples ./examples", dockerfile)
 
 
 if __name__ == "__main__":
