@@ -150,7 +150,9 @@ tracked source, Environment variable, log 또는 artifact에 넣지 않습니다
 public key를 trust root로 사용하지 않습니다.
 
 operator가 signed v3 package의 exact raw SHA-256, 두 receipt envelope digest 및 expiry를 확인한 뒤에만 v3 human approval을
-작성합니다. approval 시각과 protected apply run 시각은 두 receipt의 15분 이하 validity window 안에 있어야 합니다.
+작성합니다. approval 시각과 protected apply run 시각은 두 receipt의 **최대 60분** validity window 안에 있어야 합니다.
+60분은 source-level 고정 상한이며 workflow dispatch 입력이나 Repository/Environment 변수로 조정할 수 없습니다. window를
+넘긴 package, attestation 또는 approval은 재사용하지 않고 새 fixed-query attestation부터 재생성합니다.
 
 ### Completion marker와 strict blocked exit
 
@@ -268,10 +270,10 @@ checked-out source/executor commit object·tree·ancestor·approved-branch 관�
 
 ### Same-run evidence publication 순서
 
-1. immutable code registry에 별도 승인된 Ed25519 public key가 onboarding된 뒤에만 인증된 operator가 fixed `gh api` GET 및 fixed `gcloud` read-only argv로 Environment/WIF/IAM을 재조회합니다. 조회 원문 대신 response digest와 sanitized provenance를 canonical signed receipt에 넣어 15분 이하 ignored apply-ready v3 package를 생성하고, 그 raw SHA-256과 canonical subset을 검토합니다.
+1. immutable code registry에 별도 승인된 Ed25519 public key가 onboarding된 뒤에만 인증된 operator가 fixed `gh api` GET 및 fixed `gcloud` read-only argv로 Environment/WIF/IAM을 재조회합니다. 조회 원문 대신 response digest와 sanitized provenance를 canonical signed receipt에 넣어 최대 60분의 ignored apply-ready v3 package를 생성하고, 그 raw SHA-256과 canonical subset을 검토합니다.
 2. 사람 승인은 run ID가 없는 declaration으로 기록합니다. exact package bytes와 declaration은 repository-level base64 변수(`STAGING_APPLY_READY_PACKAGE_B64`, `STAGING_MUTATION_APPROVAL_DECLARATION_B64`)에만 반영하며, protected Environment 변수에는 넣지 않습니다.
 3. actual apply workflow를 dispatch합니다. 비보호 `prepare` job이 먼저 실행되고, `github.run_id`/`github.run_attempt`를 declaration에 추가해 full v3 approval record를 만든 뒤 package raw bytes와 record를 `staging-infrastructure-approved-evidence` 같은-run artifact로 게시합니다. 이 job은 `contents: read`, `actions: read`, `id-token: none`이며 cloud auth·mutation을 수행하지 않습니다.
-4. protected `apply` job은 `needs: prepare`와 `environment: staging-infrastructure-apply`를 모두 요구합니다. 같은 run artifact만 다운로드하고 exact attestation digest·15분 expiry·repository/owner/ref/workflow runtime context, artifact provenance와 Git object/tree를 검증합니다. 어느 하나라도 불일치·만료·unknown이면 WIF auth와 write 단계 전에 중단합니다.
+4. protected `apply` job은 `needs: prepare`와 `environment: staging-infrastructure-apply`를 모두 요구합니다. 같은 run artifact만 다운로드하고 exact attestation digest·최대 60분 expiry·repository/owner/ref/workflow runtime context, artifact provenance와 Git object/tree를 검증합니다. 어느 하나라도 불일치·만료·unknown이면 WIF auth와 write 단계 전에 중단합니다.
 5. `apply` job의 보호 승인 이후에만 `id-token: write`, WIF auth, gcloud setup, executor mutation을 순서대로 시작합니다.
 
 Protected Environment 변수는 `GCP_WORKLOAD_IDENTITY_PROVIDER`, `GCP_DEPLOYER_SERVICE_ACCOUNT`,

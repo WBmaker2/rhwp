@@ -151,9 +151,12 @@ reason is a circular run-binding dependency:
 4. GitHub may start the protected job as soon as the deployment is approved, so
    updating the Environment variables after dispatch is a race and does not
    affect the already-started job.
-5. The 15-minute attestation TTL makes the race unavoidable in a manual UI
-   flow. Runs `30679968730` and `30681110172` demonstrated stale/expired input
-   consumption; both stopped before `apply`.
+5. At the time of these historical runs, the 15-minute attestation TTL made
+   the race unavoidable in a manual UI flow. Runs `30679968730` and
+   `30681110172` demonstrated stale/expired input consumption; both stopped
+   before `apply`. The source contract was later changed to a fixed 60-minute
+   TTL; the run evidence and failure diagnosis in this section remain
+   historical and are not being reused.
 
 This is not a cloud permission or operator error. The fail-closed behavior is
 working, but the current workflow contract cannot reliably reach the mutation

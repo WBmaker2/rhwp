@@ -7,7 +7,7 @@ import subprocess
 import tempfile
 import unittest
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
 from types import MappingProxyType
@@ -38,6 +38,7 @@ from scripts.staging_infrastructure_environment_attestation import (
     attest_environment,
 )
 from scripts.staging_infrastructure_operator_attestation import (
+    MAX_ATTESTATION_TTL,
     OperatorAttestationError,
     canonical_attestation_bytes,
     issued_attestation_document,
@@ -128,7 +129,7 @@ class WifOperatorAttestationTest(unittest.TestCase):
         self.assertEqual(attestation["expected"]["attributeCondition"], expected_condition)
         self.assertEqual(attestation["expected"]["workloadIdentityUserPrincipal"], expected_principal)
         self.assertEqual(attestation["observedAt"], "2026-07-30T12:00:00Z")
-        self.assertEqual(attestation["expiresAt"], "2026-07-30T12:15:00Z")
+        self.assertEqual(attestation["expiresAt"], "2026-07-30T13:00:00Z")
         self.assertNotIn("bindings", attestation)
         self.assertNotIn("ya29.", json.dumps(attestation).lower())
         validate_wif_attestation(
@@ -333,6 +334,7 @@ class EnvironmentOperatorAttestationTest(unittest.TestCase):
         self.assertEqual(attestation["repositoryId"], "11")
         self.assertEqual(attestation["observed"]["requiredReviewerCount"], 1)
         self.assertFalse(attestation["observed"]["preventSelfReview"])
+        self.assertEqual(attestation["expiresAt"], "2026-07-30T13:00:00Z")
         encoded = json.dumps(attestation)
         self.assertNotIn("redacted", encoded)
         self.assertNotIn("not-recorded", encoded)
@@ -393,10 +395,14 @@ class CredentialLeafSafetyTest(unittest.TestCase):
                     reject_sensitive_string_leaves({"safeNamedLeaf": value}, "test data")
                 self.assertNotIn(value, str(caught.exception))
 
-    def test_attestation_expiry_is_fail_closed(self) -> None:
+    def test_attestation_60_minute_window_boundary_is_fail_closed(self) -> None:
         runner, _ = EnvironmentOperatorAttestationTest()._runner()
         attestation = attest_environment(runner=runner, now=NOW).document
-        attestation["expiresAt"] = "2026-07-30T12:16:00Z"
+        self.assertEqual(MAX_ATTESTATION_TTL, timedelta(minutes=60))
+        validate_environment_attestation(
+            attestation, now=NOW + timedelta(minutes=59, seconds=59)
+        )
+        attestation["expiresAt"] = "2026-07-30T13:01:00Z"
         with self.assertRaises(OperatorAttestationError):
             validate_environment_attestation(attestation, now=NOW)
 

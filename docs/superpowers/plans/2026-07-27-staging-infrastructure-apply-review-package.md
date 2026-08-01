@@ -194,7 +194,7 @@ review package는 검토 전용이며 apply authority가 아니다. 실제 apply
 promotion CLI는 caller-provided observation JSON을 받지 않는다. authenticated operator의 fixed GitHub
 Environment GET/paginated-list query와 fixed `gcloud` provider/service-account IAM-policy query를 직접 실행해
 GitHub OIDC issuer/default audience, mapping, CEL condition, exact `roles/iam.workloadIdentityUser` binding,
-response digest, 15분 이하 expiry를 strict하게 검증한다. 이후 payload와 response digest를 immutable tracked-code
+response digest, source-level 최대 60분 expiry를 strict하게 검증한다. 이후 payload와 response digest를 immutable tracked-code
 registry의 Ed25519 public key로 검증 가능한 signed receipt에 넣는다. registry는 현재 비어 있으므로 key onboarding은
 별도 사용자 승인과 source review 없이는 불가능하고 promotion도 fail-closed이다. private signing key는 operator-local
 경로에서만 읽으며 tracked file, Environment variable, artifact에 넣지 않는다. tracked example은 `decision=pending`,

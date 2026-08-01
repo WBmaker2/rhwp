@@ -37,7 +37,11 @@ WIF_ATTESTATION_SCHEMA = "rhwp.staging-infrastructure-wif-attestation/v2"
 ENVIRONMENT_QUERY_CONTRACT = "rhwp.staging-infrastructure-environment-read-query/v2"
 WIF_QUERY_CONTRACT = "rhwp.staging-infrastructure-wif-read-query/v1"
 ATTESTATION_ENCODING = "canonical-json-indent-2/v1"
-MAX_ATTESTATION_TTL = timedelta(minutes=15)
+# A fixed source-level limit keeps dispatch inputs and repository variables from
+# weakening the freshness policy.  Sixty minutes leaves enough time for a
+# human-protected Environment review while still requiring regeneration after
+# a bounded observation window.
+MAX_ATTESTATION_TTL = timedelta(minutes=60)
 UTC = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$")
 SHA256 = re.compile(r"^[0-9a-f]{64}$")
 NUMERIC_ID = re.compile(r"^[1-9][0-9]{0,19}$")
