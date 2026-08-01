@@ -40,9 +40,9 @@ GITHUB_HOST = "github.com"
 PAGE_SIZE = 30
 MAX_PAGES = 100
 Runner = Callable[[tuple[str, ...]], bytes]
-# Environment variable values can contain the apply-ready package and are not
-# part of this attestation.  Keep the fixed API query but project the response
-# to the bounded, non-sensitive fields required by the contract.
+# Environment variable values are projected to names only.  The apply-ready
+# package and run-bound approval are repository-level inputs, not protected
+# Environment values, and are therefore never part of this attestation.
 VARIABLES_PROJECTION = ". | {total_count, variables: [.variables[] | {name}]}"
 
 

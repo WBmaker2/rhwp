@@ -22,6 +22,7 @@ from scripts.staging_infrastructure_operator_signature import (
 )
 
 SCHEMA = "rhwp.staging-infrastructure-mutation-approval/v3"
+DECLARATION_SCHEMA = "rhwp.staging-infrastructure-mutation-approval-declaration/v1"
 REVIEW_SCHEMA = "rhwp.staging-infrastructure-apply-review/v2"
 APPLY_READY_SCHEMA = "rhwp.staging-infrastructure-apply-ready/v3"
 SHA256 = re.compile(r"^[0-9a-f]{64}$")
@@ -41,13 +42,69 @@ KINDS = {"api-baseline": "ensure-api-enabled", "service-accounts": "ensure-servi
 REVIEW_PACKAGE_KEYS = frozenset({"schemaVersion", "status", "projectId", "executorCommit", "sourceEvidence", "mutationArchitecture", "evidenceTransport", "canonicalMutationSubset", "executorActionAllowlistEnforcement", "protectedEnvironmentSpec", "wifIdentityAndIamDiff", "requiredApprovalRecordSchema", "requiredApprovals", "cloudMutationApproved", "deploymentApproved", "mutationCommands"})
 APPLY_READY_KEYS = frozenset({"schemaVersion", "status", "reviewPackageSha256", "reviewPackage", "environmentAttestation", "environmentAttestationSha256", "wifAttestation", "wifAttestationSha256", "requiredApprovalRecordSchema", "cloudMutationApproved", "deploymentApproved", "mutationCommands"})
 APPROVAL_KEYS = frozenset({"schemaVersion", "decision", "approvedAt", "approvedBy", "expiresAt", "approvalNonce", "approvedRunId", "approvedRunAttempt", "applyReadyPackageSha256", "environmentAttestationSha256", "wifAttestationSha256", "planSha256", "planObjectSha256", "executorCommitSha", "projectId", "approvedStageIds", "approvedActionIds", "environmentSpecReviewed", "wifIdentityReviewed", "leastPrivilegeIamDiffReviewed", "rollbackReviewed", "cloudMutationApproved", "deploymentApproved"})
+APPROVAL_DECLARATION_KEYS = APPROVAL_KEYS - {"approvedRunId", "approvedRunAttempt"}
 FORBIDDEN = ("command", "argv", "shell", "authorization", "token", "password", "privatekey", "apikey", "secret", "credential", "idtoken")
-MUTATION_ARCHITECTURE = {"authenticationBeforeValidationAllowed": False, "exactEvidenceBindingRequired": True, "firstFailureStopsExecution": True, "automaticDeleteRollbackAllowed": False, "futureExecutorImplemented": True}
-EVIDENCE_TRANSPORT = {"artifactName": "staging-infrastructure-approved-evidence", "actualEvidenceTrackedInGit": False, "exactByteDigestRequired": True, "sameProtectedRunPublicationImplemented": True, "publicationBeforeCloudAuthentication": True, "operatorReceiptSignatureRequired": True, "operatorSigningKeyRegistry": "immutable-tracked-code", "containsCredentials": False, "containsSecretValues": False}
+MUTATION_ARCHITECTURE = {"authenticationBeforeValidationAllowed": False, "exactEvidenceBindingRequired": True, "firstFailureStopsExecution": True, "automaticDeleteRollbackAllowed": False, "futureExecutorImplemented": True, "prepareJobMayAuthenticateCloud": False, "prepareJobMayMutateCloud": False, "protectedApplyJobRequired": True}
+EVIDENCE_TRANSPORT = {"artifactName": "staging-infrastructure-approved-evidence", "actualEvidenceTrackedInGit": False, "exactByteDigestRequired": True, "prepareJobCreatesRunBoundRecord": True, "sameRunArtifactOnly": True, "publicationBeforeCloudAuthentication": True, "operatorReceiptSignatureRequired": True, "operatorSigningKeyRegistry": "immutable-tracked-code", "packageSource": "repository-variable-base64", "environmentCarriesRunBoundJson": False, "containsCredentials": False, "containsSecretValues": False}
 REQUIRED_APPROVALS = ["actual-review-package", "actual-environment-settings", "actual-wif-identity", "actual-live-iam-before-after-diff", "operator-attestation-signing-key", "cloud-mutation-approval-record", "apply-workflow-diff", "apply-workflow-dispatch"]
 
 
 class MutationApprovalError(RuntimeError): pass
+
+
+def validate_mutation_approval_declaration(
+    package: dict[str, Any], package_bytes: bytes, declaration: dict[str, Any], *,
+    now: datetime | None = None,
+) -> dict[str, Any]:
+    """Validate a human-approved declaration before a run ID exists.
+
+    The declaration has the same exact package, attestation, plan, action, and
+    safety bindings as the v3 approval record, but intentionally omits the
+    run-specific identity. Only the prepare job may bind that identity.
+    """
+    try:
+        validate_json_domain(package); validate_json_domain(declaration)
+        reject_sensitive_string_leaves(package, "apply-ready package")
+        reject_sensitive_string_leaves(declaration, "approval declaration")
+    except (StrictJsonError, ApplySafetyError) as error:
+        raise MutationApprovalError("approval declaration inputs contain invalid or credential-shaped data") from error
+    if not isinstance(package_bytes, bytes) or len(package_bytes) > 1_000_000:
+        raise MutationApprovalError("review package bytes are invalid")
+    current = now or datetime.now(timezone.utc)
+    review = validate_apply_ready_package(package, now=current)
+    if set(declaration) != APPROVAL_DECLARATION_KEYS:
+        raise MutationApprovalError("approval declaration keys must exactly match v1 schema")
+    _reject_forbidden(declaration, "approval declaration")
+    if declaration["schemaVersion"] != DECLARATION_SCHEMA or declaration["decision"] != "approved":
+        raise MutationApprovalError("approval declaration is not an approved v1 declaration")
+    _validate_approval_bindings(package, package_bytes, review, declaration, current)
+    return {
+        key: declaration[key]
+        for key in (
+            "schemaVersion", "applyReadyPackageSha256", "environmentAttestationSha256",
+            "wifAttestationSha256", "planSha256", "planObjectSha256", "executorCommitSha",
+            "projectId", "approvedStageIds", "approvedActionIds", "approvalNonce",
+            "expiresAt", "cloudMutationApproved", "deploymentApproved",
+        )
+    }
+
+
+def bind_run_approval(
+    package: dict[str, Any], package_bytes: bytes, declaration: dict[str, Any], *,
+    run_id: str, run_attempt: int, now: datetime | None = None,
+) -> dict[str, Any]:
+    """Add only the current GitHub run identity and revalidate the full record."""
+    if not isinstance(run_id, str) or not RUN_ID.fullmatch(run_id):
+        raise MutationApprovalError("current run identity is invalid")
+    if isinstance(run_attempt, bool) or not isinstance(run_attempt, int) or run_attempt <= 0:
+        raise MutationApprovalError("current run attempt is invalid")
+    validate_mutation_approval_declaration(package, package_bytes, declaration, now=now)
+    approval = dict(declaration)
+    approval["schemaVersion"] = SCHEMA
+    approval["approvedRunId"] = run_id
+    approval["approvedRunAttempt"] = run_attempt
+    validate_mutation_approval(package, package_bytes, approval, now=now)
+    return approval
 
 
 def validate_mutation_approval(package: dict[str, Any], package_bytes: bytes, approval: dict[str, Any], *, now: datetime | None = None) -> dict[str, Any]:
@@ -62,13 +119,7 @@ def validate_mutation_approval(package: dict[str, Any], package_bytes: bytes, ap
     if set(approval) != APPROVAL_KEYS: raise MutationApprovalError("approval record keys must exactly match v3 schema")
     _reject_forbidden(approval, "approval")
     if approval["schemaVersion"] != SCHEMA or approval["decision"] != "approved": raise MutationApprovalError("approval record is not an approved v3 record")
-    for key in ("applyReadyPackageSha256", "environmentAttestationSha256", "wifAttestationSha256", "planSha256", "planObjectSha256"):_digest(approval[key], key)
-    if approval["applyReadyPackageSha256"] != hashlib.sha256(package_bytes).hexdigest(): raise MutationApprovalError("apply-ready package exact-byte digest does not match approval")
-    if approval["environmentAttestationSha256"] != package["environmentAttestationSha256"] or approval["wifAttestationSha256"] != package["wifAttestationSha256"]: raise MutationApprovalError("approval does not bind live readiness attestations")
-    source = review["sourceEvidence"]
-    if approval["planSha256"] != source["planSha256"] or approval["planObjectSha256"] != source["planObjectSha256"]: raise MutationApprovalError("plan digests do not match package")
-    approved_at, _ = _approvers_and_expiry(approval, current)
-    _validate_attestation_approval_window(package, approved_at, current)
+    _validate_approval_bindings(package, package_bytes, review, approval, current)
     if not isinstance(approval["approvalNonce"], str) or not NONCE.fullmatch(approval["approvalNonce"]): raise MutationApprovalError("approval nonce is invalid")
     if not isinstance(approval["approvedRunId"], str) or not RUN_ID.fullmatch(approval["approvedRunId"]): raise MutationApprovalError("approved run identity is invalid")
     if isinstance(approval["approvedRunAttempt"], bool) or not isinstance(approval["approvedRunAttempt"], int) or approval["approvedRunAttempt"] <= 0: raise MutationApprovalError("approved run attempt is invalid")
@@ -80,6 +131,37 @@ def validate_mutation_approval(package: dict[str, Any], package_bytes: bytes, ap
         if approval[key] is not True: raise MutationApprovalError(f"approval {key} must be true")
     if approval["deploymentApproved"] is not False: raise MutationApprovalError("infrastructure approval cannot authorize deployment")
     return {key: approval[key] for key in ("schemaVersion", "applyReadyPackageSha256", "environmentAttestationSha256", "wifAttestationSha256", "planSha256", "planObjectSha256", "executorCommitSha", "projectId", "approvedStageIds", "approvedActionIds", "approvedRunId", "approvedRunAttempt", "approvalNonce", "expiresAt", "cloudMutationApproved", "deploymentApproved")}
+
+
+def _validate_approval_bindings(
+    package: dict[str, Any], package_bytes: bytes, review: dict[str, Any],
+    approval: dict[str, Any], current: datetime,
+) -> None:
+    for key in ("applyReadyPackageSha256", "environmentAttestationSha256", "wifAttestationSha256", "planSha256", "planObjectSha256"):
+        _digest(approval[key], key)
+    if approval["applyReadyPackageSha256"] != hashlib.sha256(package_bytes).hexdigest():
+        raise MutationApprovalError("apply-ready package exact-byte digest does not match approval")
+    if approval["environmentAttestationSha256"] != package["environmentAttestationSha256"] or approval["wifAttestationSha256"] != package["wifAttestationSha256"]:
+        raise MutationApprovalError("approval does not bind live readiness attestations")
+    source = review["sourceEvidence"]
+    if approval["planSha256"] != source["planSha256"] or approval["planObjectSha256"] != source["planObjectSha256"]:
+        raise MutationApprovalError("plan digests do not match package")
+    approved_at, _ = _approvers_and_expiry(approval, current)
+    _validate_attestation_approval_window(package, approved_at, current)
+    if not isinstance(approval["approvalNonce"], str) or not NONCE.fullmatch(approval["approvalNonce"]):
+        raise MutationApprovalError("approval nonce is invalid")
+    if approval["executorCommitSha"] != review["executorCommit"]["sha"] or not isinstance(approval["executorCommitSha"], str) or not COMMIT.fullmatch(approval["executorCommitSha"]):
+        raise MutationApprovalError("executor commit does not match package")
+    if approval["projectId"] != review["projectId"] or _production_like(approval["projectId"]):
+        raise MutationApprovalError("approval project is not staging-only")
+    stages, ids = _actions(review)
+    if approval["approvedStageIds"] != stages or approval["approvedActionIds"] != ids:
+        raise MutationApprovalError("approved stages/actions must be complete, ordered, and exactly once")
+    for key in ("environmentSpecReviewed", "wifIdentityReviewed", "leastPrivilegeIamDiffReviewed", "rollbackReviewed", "cloudMutationApproved"):
+        if approval[key] is not True:
+            raise MutationApprovalError(f"approval {key} must be true")
+    if approval["deploymentApproved"] is not False:
+        raise MutationApprovalError("infrastructure approval cannot authorize deployment")
 
 
 def _validate_review_package(p: dict[str, Any]) -> None:

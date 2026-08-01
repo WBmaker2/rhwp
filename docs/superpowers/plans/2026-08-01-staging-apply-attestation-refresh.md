@@ -93,3 +93,138 @@ fresh package and record before the attestation window expires.
   for reviewer `WBmaker2`; `apply` has not started.
 - No cloud mutation, deployment, API activation, Secret change, or IAM change
   occurred in this recovery run.
+
+## Remote-head WIF contract stop
+
+- Remote source commit is now `a627262f27e76de22fce5ee54315f4bda40e432c`.
+- The live WIF provider remains `ACTIVE`, but its exact `attributeCondition`
+  still binds `attribute.workflow_sha` to the prior commit
+  `d220b456f2f8acd5a93ab175ebf2e09ba4f9f4bd`.
+- The required condition changes only that immutable workflow SHA to
+  `a627262f27e76de22fce5ee54315f4bda40e432c`; repository, repository IDs,
+  branch ref, workflow ref, mapping, issuer, audience mode, and principal stay
+  unchanged.
+- Read-only WIF attestation correctly rejected the mismatch. No provider,
+  IAM, API, Secret, resource, or deployment mutation was attempted.
+- The next external action requires explicit approval of this exact WIF
+  `attributeCondition` update. Only after that update is read-back verified can
+  a fresh attestation and apply-ready SHA be generated.
+
+## WIF correction and fresh package
+
+- User approved the exact WIF condition update.
+- Provider read-back is `ACTIVE` and `attributeCondition` now matches the
+  remote workflow SHA `a627262f27e76de22fce5ee54315f4bda40e432c`; all other
+  identity, mapping, issuer, branch, and principal fields remain unchanged.
+- Fresh review package SHA-256:
+  `bcb2a77590fc597dfa335ee26b3e19c51b8ade678d0436e2d4f4d4ad97e29f12`
+- Fresh apply-ready package:
+  `artifacts/actual-infrastructure-review/task4-apply-ready-2026-08-01-remote-fix/staging-infrastructure-apply-ready-package.json`
+- Fresh apply-ready exact-byte SHA-256:
+  `118d9548db513914f71ba43a273cbc3dddec94b36d3917b447591f1bd2f31690`
+- Fresh attestation window: `2026-08-01T02:46:34Z`–`2026-08-01T03:01:37Z`.
+- Package remains inert: `cloudMutationApproved=false`,
+  `deploymentApproved=false`, `mutationCommands=[]`.
+- A pending approval record was created under the same ignored directory; no
+  workflow dispatch or Environment variable update has been made for this
+  package.
+
+## Incorrect main-branch dispatch
+
+- The browser-created run `30681072981` used `main` at commit
+  `881ad7414da2a233ed82e44a06c9b1db936557ec`, not the approved PR branch.
+- Its `publish-approved-evidence` job failed immediately and `apply` was
+  skipped; it is not evidence for the PR apply flow and must not be retried.
+- No pending deployment, authentication, executor action, or cloud mutation
+  occurred in that run.
+
+## Feasibility assessment and stop decision
+
+The current implementation is not operationally completable as designed. The
+reason is a circular run-binding dependency:
+
+1. `STAGING_APPROVED_APPLY_READY_PACKAGE_JSON` and
+   `STAGING_APPROVED_MUTATION_APPROVAL_JSON` are Environment variables whose
+   values are snapshotted when the protected job starts.
+2. The approval record must contain the exact `approvedRunId` and attempt.
+3. That run ID exists only after workflow dispatch.
+4. GitHub may start the protected job as soon as the deployment is approved, so
+   updating the Environment variables after dispatch is a race and does not
+   affect the already-started job.
+5. The 15-minute attestation TTL makes the race unavoidable in a manual UI
+   flow. Runs `30679968730` and `30681110172` demonstrated stale/expired input
+   consumption; both stopped before `apply`.
+
+This is not a cloud permission or operator error. The fail-closed behavior is
+working, but the current workflow contract cannot reliably reach the mutation
+stage. Do not repeat dispatches or approve another SHA under this design.
+
+The program can become implementable only after an architecture change, for
+example: an unprotected non-mutating prepare job creates the run-bound record
+and same-run artifact, followed by a protected apply job that consumes that
+artifact; or an equivalent atomic run-scoped input mechanism. Environment
+variables must not be the transport for run-bound JSON.
+
+## Prepare/apply architecture redesign implementation plan
+
+The recovery stop above is now converted into an implementation change. The
+workflow will no longer use protected Environment variables for either the
+apply-ready package or the run-bound approval record.
+
+### Contract
+
+1. A repository-level, non-secret base64 variable carries the exact approved
+   apply-ready package bytes. A separate repository-level base64 variable carries
+   a human-approved declaration that deliberately omits `approvedRunId` and
+   `approvedRunAttempt`. Neither value is a protected Environment variable.
+2. A non-protected `prepare` job runs first with `contents: read`, `actions: read`,
+   and no `id-token` permission. After GitHub has assigned `github.run_id` and
+   `github.run_attempt`, the job decodes the bytes, validates their exact-byte
+   digest and inert flags, binds the declaration to the current run, and emits
+   `staging-infrastructure-approved-evidence` from that same run.
+3. The protected `apply` job has `needs: prepare`, enters
+   `staging-infrastructure-apply`, and is the only job with `id-token: write`.
+   It downloads only the same-run artifact, validates its run binding and
+   immutable provenance, then authenticates and executes the approved actions.
+   It never reads package or approval JSON from Environment variables.
+4. The declaration is a review input, not execution authority. The prepare
+   binder is the only code allowed to add the current run identity; the executor
+   still requires the complete v3 approval record and exact package bytes.
+5. Migration of the live Environment removes the two legacy package/approval
+   variables after this source contract is reviewed. The existing immutable
+   identity and cloud configuration variables remain Environment-scoped.
+
+### Implementation sequence
+
+- Add declaration validation and run-binding helpers to
+  `scripts/staging_infrastructure_apply_approval.py`.
+- Add a small prepare/binder CLI with strict base64 decoding, exact-byte
+  preservation, bounded input sizes, and atomic JSON outputs.
+- Update the review-policy transport and protected Environment specification to
+  describe the two-job contract and exclude run-bound JSON variables.
+- Rewrite `staging-infrastructure-apply.yml` as `prepare` then protected
+  `apply`; keep cloud authentication and mutation after the protected gate.
+- Update unit tests for declaration binding, same-run rejection, exact-byte
+  mismatch, no-credential prepare permissions, and the new workflow contract.
+- Run the focused apply tests and the full Python test suite plus static config
+  validation. Do not push or dispatch until a separate user approval covers the
+  changed workflow/WIF binding and the live Environment migration.
+
+### Safety and stop conditions
+
+- No cloud API, IAM, WIF, secret, resource, build, push, or deployment action is
+  part of this local implementation.
+- A missing repository variable, invalid base64, stale attestation, mismatched
+  package SHA, wrong run ID/attempt, or failed pre-auth validation stops the
+  workflow before authentication.
+- Existing ignored local artifacts and the unrelated `.chatgpt2codex/` path are
+  not added to Git.
+
+## User delivery priority
+
+The user explicitly requested that the workflow stop repeating known-failing
+attempts and prioritize a fast, verifiable MVP path. From this point forward,
+known stale-attestation/Environment-variable dispatches are not retried. Work
+should favor small local implementation steps, focused tests, and a clear
+browser-verifiable deployment handoff. Any external mutation or deployment gate
+remains explicit and is reported with a direct link when it is actually ready.

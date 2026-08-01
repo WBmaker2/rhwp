@@ -1,5 +1,5 @@
 from __future__ import annotations
-import copy, hashlib, json, os, subprocess, tempfile, unittest
+import base64, copy, hashlib, json, os, subprocess, tempfile, unittest
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from types import MappingProxyType
@@ -15,9 +15,10 @@ from scripts.staging_infrastructure_operator_attestation import (
     ENVIRONMENT_QUERY_CONTRACT, WIF_ATTESTATION_SCHEMA, WIF_QUERY_CONTRACT,
     _issue_fixed_query_attestation, environment_required_contract, utc_text,
 )
-from scripts.staging_infrastructure_apply_approval import MutationApprovalError, validate_apply_ready_package, validate_mutation_approval
+from scripts.staging_infrastructure_apply_approval import DECLARATION_SCHEMA, MutationApprovalError, bind_run_approval, validate_apply_ready_package, validate_mutation_approval, validate_mutation_approval_declaration
 from scripts.staging_infrastructure_apply_executor import ApplyExecutionError, execute_approved_actions
 from scripts.staging_infrastructure_apply_provenance import ProvenanceError, validate_pre_auth_provenance
+from scripts.staging_infrastructure_apply_prepare import ApplyPrepareError, prepare_run_bound_evidence
 from scripts.staging_infrastructure_synthetic_fixture import canonical_plan_and_approval
 from scripts.staging_infrastructure_operator_attestation import canonical_attestation_bytes
 from scripts.staging_infrastructure_operator_signature import signed_attestation_sha256
@@ -51,6 +52,24 @@ class ApplyExecutorTest(unittest.TestCase):
   self.raw = json.dumps(self.package, ensure_ascii=False, indent=2).encode()+b"\n"
   self.approval = {"schemaVersion":"rhwp.staging-infrastructure-mutation-approval/v3","decision":"approved","approvedAt":utc_text(self.now),"approvedBy":["synthetic-human"],"expiresAt":utc_text(self.now+timedelta(minutes=10)),"approvalNonce":"N"*24,"approvedRunId":"123456","approvedRunAttempt":1,"applyReadyPackageSha256":hashlib.sha256(self.raw).hexdigest(),"environmentAttestationSha256":self.package["environmentAttestationSha256"],"wifAttestationSha256":self.package["wifAttestationSha256"],"planSha256":self.review["sourceEvidence"]["planSha256"],"planObjectSha256":self.review["sourceEvidence"]["planObjectSha256"],"executorCommitSha":COMMIT,"projectId":self.review["projectId"],"approvedStageIds":["api-baseline","service-accounts","artifact-registry","secret-metadata"],"approvedActionIds":[x["actionId"] for x in self.review["canonicalMutationSubset"]],"environmentSpecReviewed":True,"wifIdentityReviewed":True,"leastPrivilegeIamDiffReviewed":True,"rollbackReviewed":True,"cloudMutationApproved":True,"deploymentApproved":False}
  def approved(self): return validate_mutation_approval(self.package,self.raw,self.approval,now=self.now)
+ def test_prepare_declaration_binds_only_current_run(self):
+  declaration=copy.deepcopy(self.approval); declaration.pop("approvedRunId"); declaration.pop("approvedRunAttempt"); declaration["schemaVersion"]=DECLARATION_SCHEMA
+  self.assertEqual(validate_mutation_approval_declaration(self.package,self.raw,declaration,now=self.now)["schemaVersion"],DECLARATION_SCHEMA)
+  bound=bind_run_approval(self.package,self.raw,declaration,run_id="777777",run_attempt=2,now=self.now)
+  self.assertEqual(bound["approvedRunId"],"777777"); self.assertEqual(bound["approvedRunAttempt"],2)
+  with self.assertRaises(MutationApprovalError): bind_run_approval(self.package,self.raw,declaration,run_id="0",run_attempt=2,now=self.now)
+  with self.assertRaises(MutationApprovalError): validate_mutation_approval(self.package,self.raw,declaration,now=self.now)
+ def test_prepare_cli_preserves_package_bytes_and_rejects_sha_mismatch(self):
+  declaration=copy.deepcopy(self.approval); declaration.pop("approvedRunId"); declaration.pop("approvedRunAttempt"); declaration["schemaVersion"]=DECLARATION_SCHEMA
+  with tempfile.TemporaryDirectory(dir="/private/tmp") as directory:
+   root=Path(directory); package_b64=root/"package.b64"; declaration_b64=root/"declaration.b64"; package_out=root/"package.json"; approval_out=root/"approval.json"
+   package_b64.write_bytes(base64.b64encode(self.raw)); declaration_b64.write_bytes(base64.b64encode(json.dumps(declaration,separators=(",", ":")).encode()))
+   result=prepare_run_bound_evidence(package_b64,declaration_b64,expected_package_sha256=hashlib.sha256(self.raw).hexdigest(),run_id="456789",run_attempt=3,package_output=package_out,approval_output=approval_out,now=self.now)
+   self.assertEqual(result["runId"],"456789"); self.assertEqual(package_out.read_bytes(),self.raw)
+   bound=json.loads(approval_out.read_text()); self.assertEqual(bound["approvedRunId"],"456789"); self.assertEqual(bound["approvedRunAttempt"],3)
+   bad_out=root/"bad-package.json"
+   with self.assertRaises(ApplyPrepareError): prepare_run_bound_evidence(package_b64,declaration_b64,expected_package_sha256="0"*64,run_id="456789",run_attempt=3,package_output=bad_out,approval_output=root/"bad-approval.json",now=self.now)
+   self.assertFalse(bad_out.exists())
  def claims(self):
   return {"packageSha256":hashlib.sha256(self.raw).hexdigest(),"executorCommitSha":COMMIT,"executorTreeSha":TREE,"expectedExecutorTreeSha":TREE,"repository":"WBmaker2/rhwp","expectedRepository":"WBmaker2/rhwp","repositoryId":"11","expectedRepositoryId":"11","repositoryOwnerId":"22","expectedRepositoryOwnerId":"22","ref":"refs/heads/feat/firebase-collaboration-mvp-v1","expectedRef":"refs/heads/feat/firebase-collaboration-mvp-v1","workflowRef":"WBmaker2/rhwp/.github/workflows/staging-infrastructure-apply.yml@refs/heads/feat/firebase-collaboration-mvp-v1","expectedWorkflowRef":"WBmaker2/rhwp/.github/workflows/staging-infrastructure-apply.yml@refs/heads/feat/firebase-collaboration-mvp-v1","workflowSha":COMMIT,"expectedWorkflowSha":COMMIT,"workflowContentSha256":CONTENT,"expectedWorkflowContentSha256":CONTENT,"runId":"123456","runAttempt":1,"artifactSourceRunId":"123456","artifactId":"666","artifactName":"staging-infrastructure-approved-evidence","artifactArchiveSha256":CONTENT,"artifactSourceCommitSha":COMMIT}
  def test_review_package_cannot_be_approved_without_apply_ready_promotion(self):
@@ -91,6 +110,8 @@ class ApplyExecutorTest(unittest.TestCase):
    evidence=json.loads((root/"post").read_text()); self.assertEqual(evidence["writeAttemptedActionId"],self.review["canonicalMutationSubset"][0]["actionId"]); self.assertTrue(evidence["writeReturnedSuccess"]); self.assertEqual(evidence["postconditionStatus"],"incompatible")
  def test_workflow_contract_uses_live_attestation_and_pinned_actions(self):
   text=(Path(__file__).resolve().parents[2]/".github/workflows/staging-infrastructure-apply.yml").read_text()
-  self.assertNotIn("getEnvironment",text); self.assertNotIn("/environments/{environment_name}/variables",text); self.assertIn("STAGING_APPROVED_APPLY_READY_PACKAGE_JSON",text); self.assertIn("EXPECTED_PROJECT_ID",text); self.assertNotIn("--provenance-validated",text); self.assertNotIn("--environment-attestation",text)
+  self.assertNotIn("getEnvironment",text); self.assertNotIn("/environments/{environment_name}/variables",text); self.assertNotIn("STAGING_APPROVED_APPLY_READY_PACKAGE_JSON",text); self.assertNotIn("STAGING_APPROVED_MUTATION_APPROVAL_JSON",text); self.assertIn("STAGING_APPLY_READY_PACKAGE_B64",text); self.assertIn("STAGING_MUTATION_APPROVAL_DECLARATION_B64",text); self.assertIn("needs: prepare",text); self.assertIn("EXPECTED_PROJECT_ID",text); self.assertNotIn("--provenance-validated",text); self.assertNotIn("--environment-attestation",text)
+  prepare=text.split("  apply:",1)[0]; apply=text.split("  apply:",1)[1]
+  self.assertNotIn("environment: staging-infrastructure-apply",prepare); self.assertIn("id-token: none",prepare); self.assertIn("id-token: write",apply); self.assertLess(text.index("Prepare exact run-bound evidence"),text.index("google-github-actions/auth@")); self.assertNotIn("STAGING_APPLY_READY_PACKAGE_B64",apply)
   for pin in ("actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093","actions/upload-artifact@65462800fd760344b1a7b4382951275a0abb4808","actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd","google-github-actions/setup-gcloud@6a7c903a70c8625ed6700fa299f5ddb4ca6022e9"):
    self.assertIn(pin,text)

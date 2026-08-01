@@ -44,8 +44,10 @@ def protected_environment_spec() -> dict[str, Any]:
             "STAGING_APPROVED_WORKFLOW_SHA",
             "STAGING_APPROVED_WORKFLOW_CONTENT_SHA256",
             "STAGING_APPROVED_EXECUTOR_TREE_SHA",
-            "STAGING_APPROVED_APPLY_READY_PACKAGE_JSON",
-            "STAGING_APPROVED_MUTATION_APPROVAL_JSON",
+        ],
+        "repositoryVariableNames": [
+            "STAGING_APPLY_READY_PACKAGE_B64",
+            "STAGING_MUTATION_APPROVAL_DECLARATION_B64",
         ],
         "currentReviewJobPermissions": {
             "contents": "read",

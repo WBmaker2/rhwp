@@ -156,8 +156,13 @@ class ApplyReviewPackageTest(unittest.TestCase):
                 "STAGING_APPROVED_WORKFLOW_SHA",
                 "STAGING_APPROVED_WORKFLOW_CONTENT_SHA256",
                 "STAGING_APPROVED_EXECUTOR_TREE_SHA",
-                "STAGING_APPROVED_APPLY_READY_PACKAGE_JSON",
-                "STAGING_APPROVED_MUTATION_APPROVAL_JSON",
+            ],
+        )
+        self.assertEqual(
+            environment["repositoryVariableNames"],
+            [
+                "STAGING_APPLY_READY_PACKAGE_B64",
+                "STAGING_MUTATION_APPROVAL_DECLARATION_B64",
             ],
         )
         self.assertEqual(identity["status"], "proposed-diff-requires-live-review")

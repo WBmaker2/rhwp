@@ -1,49 +1,51 @@
 name: Staging infrastructure apply
 on:
   workflow_dispatch:
+    inputs:
+      apply_ready_package_sha256:
+        description: "Exact SHA-256 of the approved apply-ready package"
+        required: true
+        type: string
 permissions:
   contents: read
   actions: read
 jobs:
-  publish-approved-evidence:
-    # The run ID exists before this protected job is approved.  An operator
-    # writes the exact apply-ready package and run-bound approval into protected variables,
-    # then this job publishes the same-run, non-secret artifact for apply.
+  prepare:
+    # This job is intentionally unprotected and non-mutating.  Repository
+    # variables carry only the reviewed, non-secret source bytes; the run-bound
+    # approval is created after GitHub assigns this run ID.
     runs-on: ubuntu-latest
-    environment: staging-infrastructure-apply
     permissions:
       contents: read
       actions: read
       id-token: none
     env:
-      APPROVED_APPLY_READY_PACKAGE_JSON: ${{ vars.STAGING_APPROVED_APPLY_READY_PACKAGE_JSON }}
-      APPROVED_MUTATION_APPROVAL_JSON: ${{ vars.STAGING_APPROVED_MUTATION_APPROVAL_JSON }}
+      APPLY_READY_PACKAGE_B64: ${{ vars.STAGING_APPLY_READY_PACKAGE_B64 }}
+      MUTATION_APPROVAL_DECLARATION_B64: ${{ vars.STAGING_MUTATION_APPROVAL_DECLARATION_B64 }}
+      EXPECTED_PACKAGE_SHA256: ${{ inputs.apply_ready_package_sha256 }}
+      ACTUAL_RUN_ID: ${{ github.run_id }}
+      ACTUAL_RUN_ATTEMPT: ${{ github.run_attempt }}
     steps:
       # actions/checkout v4.2.2 commit.
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with: {fetch-depth: 0, show-progress: false}
-      - name: Validate and publish same-run approved evidence
-        env:
-          ACTUAL_RUN_ID: ${{ github.run_id }}
-          ACTUAL_RUN_ATTEMPT: ${{ github.run_attempt }}
+      - name: Prepare exact run-bound evidence before protected apply
         run: |
           set -euo pipefail
           umask 077
-          mkdir -p .staging-approved-evidence
-          printf '%s' "$APPROVED_APPLY_READY_PACKAGE_JSON" > .staging-approved-evidence/staging-infrastructure-apply-ready-package.json
-          printf '%s' "$APPROVED_MUTATION_APPROVAL_JSON" > .staging-approved-evidence/staging-infrastructure-mutation-approval-record.json
-          python3 - <<'PY'
-          import os
-          from pathlib import Path
-          from scripts.staging_infrastructure_apply_approval import validate_mutation_approval
-          from scripts.staging_infrastructure_validation import read_bounded_json_file
-          root = Path('.staging-approved-evidence')
-          package, raw = read_bounded_json_file(root / 'staging-infrastructure-apply-ready-package.json', 'apply-ready package')
-          approval, _ = read_bounded_json_file(root / 'staging-infrastructure-mutation-approval-record.json', 'approval')
-          approved = validate_mutation_approval(package, raw, approval)
-          if approved['approvedRunId'] != os.environ['ACTUAL_RUN_ID'] or approved['approvedRunAttempt'] != int(os.environ['ACTUAL_RUN_ATTEMPT']):
-              raise SystemExit('approval is not bound to this already-created apply run')
-          PY
+          test -n "$APPLY_READY_PACKAGE_B64"
+          test -n "$MUTATION_APPROVAL_DECLARATION_B64"
+          mkdir -p .staging-approved-evidence .staging-prepare-inputs
+          printf '%s' "$APPLY_READY_PACKAGE_B64" > .staging-prepare-inputs/apply-ready-package.b64
+          printf '%s' "$MUTATION_APPROVAL_DECLARATION_B64" > .staging-prepare-inputs/approval-declaration.b64
+          python3 -m scripts.staging_infrastructure_apply_prepare \
+            --package-b64-file .staging-prepare-inputs/apply-ready-package.b64 \
+            --approval-declaration-b64-file .staging-prepare-inputs/approval-declaration.b64 \
+            --expected-package-sha256 "$EXPECTED_PACKAGE_SHA256" \
+            --run-id "$ACTUAL_RUN_ID" \
+            --run-attempt "$ACTUAL_RUN_ATTEMPT" \
+            --package-output .staging-approved-evidence/staging-infrastructure-apply-ready-package.json \
+            --approval-output .staging-approved-evidence/staging-infrastructure-mutation-approval-record.json
       # actions/upload-artifact v4.3.3 commit.
       - uses: actions/upload-artifact@65462800fd760344b1a7b4382951275a0abb4808
         with:
@@ -52,7 +54,7 @@ jobs:
           if-no-files-found: error
           retention-days: 14
   apply:
-    needs: publish-approved-evidence
+    needs: prepare
     runs-on: ubuntu-latest
     environment: staging-infrastructure-apply
     permissions:
@@ -75,7 +77,8 @@ jobs:
       # actions/checkout v4.2.2 commit.
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with: {fetch-depth: 0, show-progress: false}
-      # actions/download-artifact v4.3.0 commit; this omits run-id so only the current run is readable.
+      # No run-id is supplied: the action can download only the same-run artifact.
+      # actions/download-artifact v4.3.0 commit.
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           name: staging-infrastructure-approved-evidence
@@ -90,7 +93,7 @@ jobs:
             const artifact = artifacts.data.artifacts.find(x => x.name === 'staging-infrastructure-approved-evidence' && !x.expired);
             if (!artifact || !artifact.digest) core.setFailed('same-run approved evidence metadata is unavailable');
             require('fs').writeFileSync('.approved-artifact-metadata.json', JSON.stringify({id:String(artifact.id),name:artifact.name,sourceRunId:String(context.runId),sourceCommitSha:context.sha,archiveSha256:artifact.digest.replace('sha256:','')}));
-      - name: Validate approval and immutable provenance before authentication
+      - name: Validate same-run approval and immutable provenance before authentication
         env:
           ACTUAL_REPOSITORY: ${{ github.repository }}
           ACTUAL_REPOSITORY_ID: ${{ github.repository_id }}
@@ -109,7 +112,9 @@ jobs:
           from scripts.staging_infrastructure_apply_approval import validate_mutation_approval
           from scripts.staging_infrastructure_apply_provenance import validate_auth_configuration, validate_checked_out_git_binding, validate_pre_auth_provenance
           from scripts.staging_infrastructure_validation import read_bounded_json_file
-          root=Path('.staging-approved-evidence'); package,raw=read_bounded_json_file(root/'staging-infrastructure-apply-ready-package.json','apply-ready package'); approval,_=read_bounded_json_file(root/'staging-infrastructure-mutation-approval-record.json','approval')
+          root=Path('.staging-approved-evidence')
+          package,raw=read_bounded_json_file(root/'staging-infrastructure-apply-ready-package.json','apply-ready package')
+          approval,_=read_bounded_json_file(root/'staging-infrastructure-mutation-approval-record.json','approval')
           approved=validate_mutation_approval(package,raw,approval)
           commit=os.environ['ACTUAL_SHA']; tree=subprocess.check_output(['git','rev-parse',f'{commit}^{{tree}}'],text=True).strip(); content=Path('.github/workflows/staging-infrastructure-apply.yml').read_bytes(); meta=json.loads(Path('.approved-artifact-metadata.json').read_text())
           claims={'packageSha256':hashlib.sha256(raw).hexdigest(),'executorCommitSha':commit,'executorTreeSha':tree,'expectedExecutorTreeSha':os.environ['EXPECTED_EXECUTOR_TREE_SHA'],'repository':os.environ['ACTUAL_REPOSITORY'],'expectedRepository':os.environ['EXPECTED_REPOSITORY'],'repositoryId':os.environ['ACTUAL_REPOSITORY_ID'],'expectedRepositoryId':os.environ['EXPECTED_REPOSITORY_ID'],'repositoryOwnerId':os.environ['ACTUAL_REPOSITORY_OWNER_ID'],'expectedRepositoryOwnerId':os.environ['EXPECTED_REPOSITORY_OWNER_ID'],'ref':os.environ['ACTUAL_REF'],'expectedRef':os.environ['EXPECTED_REF'],'workflowRef':os.environ['ACTUAL_WORKFLOW_REF'],'expectedWorkflowRef':os.environ['EXPECTED_WORKFLOW_REF'],'workflowSha':os.environ['ACTUAL_WORKFLOW_SHA'],'expectedWorkflowSha':os.environ['EXPECTED_WORKFLOW_SHA'],'workflowContentSha256':hashlib.sha256(content).hexdigest(),'expectedWorkflowContentSha256':os.environ['EXPECTED_WORKFLOW_CONTENT_SHA256'],'runId':os.environ['ACTUAL_RUN_ID'],'runAttempt':int(os.environ['ACTUAL_RUN_ATTEMPT']),'artifactSourceRunId':meta['sourceRunId'],'artifactId':meta['id'],'artifactName':meta['name'],'artifactArchiveSha256':meta['archiveSha256'],'artifactSourceCommitSha':meta['sourceCommitSha']}

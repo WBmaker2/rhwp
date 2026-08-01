@@ -205,17 +205,18 @@ review package와 caller-supplied attestation dict는 apply-ready가 아니므�
 실제 apply는 `--apply`와 embedded attestation의 digest·expiry·runtime context 검증을 요구합니다. package 안의
 command, argv, shell, credential, token, secret value는 지원하지 않습니다.
 
-`.github/workflows/staging-infrastructure-apply.yml`은 `workflow_dispatch` 전용입니다. dispatch가 run
-ID/attempt를 만든 뒤, 사람이 그 값에 결합한 v3 approval과 exact apply-ready package를 protected Environment 변수에
-넣고 `publish-approved-evidence` job을 승인합니다. 이 job은 cloud auth와 `id-token` 없이 같은 run의
-artifact만 게시합니다. apply job은 그 artifact만 download하고 exact approval digest, source commit에서
-checked-out executor commit까지의 Git object/ancestor/approved-branch 관계, repository/owner immutable ID,
-workflow path/content SHA와 OIDC `workflow_ref`/`workflow_sha` claim을 검증한 뒤에만 WIF 인증을 요청합니다.
-실제 ID/SHA, package, approval, WIF 값은 tracked workflow나 dispatch input이 아니라 protected Environment
-변수 또는 ignored artifact에만 둡니다.
+`.github/workflows/staging-infrastructure-apply.yml`은 `workflow_dispatch` 전용입니다. repository-level base64
+package/declaration을 비보호 `prepare` job이 읽고, dispatch로 생성된 run ID/attempt를 declaration에 결합해
+v3 approval과 exact apply-ready package를 같은 run artifact로 게시합니다. `prepare`는 cloud auth와 `id-token` 없이
+실행됩니다. protected `apply` job은 `needs: prepare`와 Environment 승인을 모두 통과한 뒤 그 artifact만 download하고
+exact approval digest, source commit에서 checked-out executor commit까지의 Git object/ancestor/approved-branch
+관계, repository/owner immutable ID, workflow path/content SHA와 OIDC `workflow_ref`/`workflow_sha` claim을 검증한
+뒤에만 WIF 인증을 요청합니다. 실제 ID/SHA와 cloud 설정만 protected Environment 변수에 두며, package/declaration은
+Environment 변수나 dispatch input에 두지 않습니다.
 
-성공/실패와 무관하게 artifact에는 sanitized plan/post evidence만 올립니다. package, approval, provenance
-temporary file과 credential은 artifact에 포함하지 않습니다. API enable, service-account create, Artifact
+성공/실패와 무관하게 apply evidence artifact에는 sanitized plan/post evidence만 올립니다. prepare가 만든
+`staging-infrastructure-approved-evidence`에는 검증된 exact package와 run-bound approval이 포함되지만 credential은
+포함하지 않습니다. package/declaration 입력값과 provenance temporary file은 별도 artifact로 올리지 않습니다. API enable, service-account create, Artifact
 Registry create, secret metadata create 외 stage와 secret version/value, service-account key, broad IAM,
 delete/disable, build/push/deploy는 executor allowlist 밖입니다.
 
@@ -259,26 +260,27 @@ delete/disable, build/push/deploy는 executor allowlist 밖입니다.
 - Rollback: 자동 delete rollback을 하지 않습니다. executor는 first-error에서 즉시 멈추고, 이미 관찰·변경된 상태와 evidence를 보존하여 사람이 후속 결정을 내리게 합니다.
 
 현재 review workflow의 artifact `staging-infrastructure-apply-review`는 합성 계약 증거입니다. actual apply는
-cross-run 입력을 사용하지 않습니다. 같은 protected run의 publication job이 package/approval artifact를 먼저
-게시하고, apply job은 현재 run REST metadata의 artifact ID/digest/head SHA와 download 결과를 결합합니다.
-package raw digest, actual GitHub repository/ID/owner/ref/workflow claims, artifact source commit, checked-out
-source/executor commit object·tree·ancestor·approved-branch 관계, approval run ID/attempt/nonce/expiry가 모두
-맞아야 하며, 검증이 끝나기 전에는 OIDC token을 요청하지 않습니다.
+cross-run 입력을 사용하지 않습니다. 비보호 `prepare` job이 GitHub가 부여한 현재 run ID/attempt로 package와
+승인 declaration을 검증·바인딩한 뒤 같은 run의 artifact를 게시하고, protected `apply` job은 그 artifact만
+소비합니다. package raw digest, actual GitHub repository/ID/owner/ref/workflow claims, artifact source commit,
+checked-out source/executor commit object·tree·ancestor·approved-branch 관계, approval run ID/attempt/nonce/expiry가
+모두 맞아야 하며, 검증이 끝나기 전에는 OIDC token을 요청하지 않습니다.
 
 ### Same-run evidence publication 순서
 
-1. 실제 apply workflow를 dispatch하여 GitHub가 run ID와 attempt를 생성하게 합니다. 이 시점에는 cloud auth와 mutation이 없습니다.
-2. immutable code registry에 별도 승인된 Ed25519 public key가 onboarding된 뒤에만 인증된 operator가 fixed `gh api` GET 및 fixed `gcloud` read-only argv로 Environment/WIF/IAM을 재조회합니다. 조회 원문 대신 response digest와 sanitized provenance를 canonical signed receipt에 넣어 15분 이하 ignored apply-ready v3 package를 생성하고, 그 raw SHA-256과 canonical subset을 검토합니다.
-3. 생성된 run ID/attempt를 v3 approval record에 기록하고, apply-ready package JSON과 approved record JSON을 protected `staging-infrastructure-apply` Environment의 전용 변수에만 설정합니다. 실제 값은 tracked file, dispatch input, report에 넣지 않습니다.
-4. `publish-approved-evidence` protected job을 승인합니다. 이 job은 `contents: read`, `actions: read`, `id-token: none`이며 non-cloud artifact만 만들고 approval의 run binding을 검증합니다.
-5. `apply` job은 publication 성공을 `needs`로 요구하고 같은 run artifact만 다운로드합니다. in-workflow Environment REST 조회를 하지 않으며, 승인된 package의 exact attestation digest·15분 expiry·repository/owner/ref/workflow runtime context, artifact provenance와 Git object/tree를 검증합니다. 어느 하나라도 불일치·만료·unknown이면 WIF auth와 write 단계 전에 중단합니다. 두 job의 `environment: staging-infrastructure-apply`는 추가 플랫폼 gate입니다.
+1. immutable code registry에 별도 승인된 Ed25519 public key가 onboarding된 뒤에만 인증된 operator가 fixed `gh api` GET 및 fixed `gcloud` read-only argv로 Environment/WIF/IAM을 재조회합니다. 조회 원문 대신 response digest와 sanitized provenance를 canonical signed receipt에 넣어 15분 이하 ignored apply-ready v3 package를 생성하고, 그 raw SHA-256과 canonical subset을 검토합니다.
+2. 사람 승인은 run ID가 없는 declaration으로 기록합니다. exact package bytes와 declaration은 repository-level base64 변수(`STAGING_APPLY_READY_PACKAGE_B64`, `STAGING_MUTATION_APPROVAL_DECLARATION_B64`)에만 반영하며, protected Environment 변수에는 넣지 않습니다.
+3. actual apply workflow를 dispatch합니다. 비보호 `prepare` job이 먼저 실행되고, `github.run_id`/`github.run_attempt`를 declaration에 추가해 full v3 approval record를 만든 뒤 package raw bytes와 record를 `staging-infrastructure-approved-evidence` 같은-run artifact로 게시합니다. 이 job은 `contents: read`, `actions: read`, `id-token: none`이며 cloud auth·mutation을 수행하지 않습니다.
+4. protected `apply` job은 `needs: prepare`와 `environment: staging-infrastructure-apply`를 모두 요구합니다. 같은 run artifact만 다운로드하고 exact attestation digest·15분 expiry·repository/owner/ref/workflow runtime context, artifact provenance와 Git object/tree를 검증합니다. 어느 하나라도 불일치·만료·unknown이면 WIF auth와 write 단계 전에 중단합니다.
+5. `apply` job의 보호 승인 이후에만 `id-token: write`, WIF auth, gcloud setup, executor mutation을 순서대로 시작합니다.
 
 Protected Environment 변수는 `GCP_WORKLOAD_IDENTITY_PROVIDER`, `GCP_DEPLOYER_SERVICE_ACCOUNT`,
 `STAGING_PROJECT_ID`, `STAGING_APPROVED_REPOSITORY`, `STAGING_APPROVED_REPOSITORY_ID`,
 `STAGING_APPROVED_REPOSITORY_OWNER_ID`, `STAGING_APPROVED_REF`, `STAGING_APPROVED_WORKFLOW_REF`,
 `STAGING_APPROVED_WORKFLOW_SHA`, `STAGING_APPROVED_WORKFLOW_CONTENT_SHA256`,
-`STAGING_APPROVED_EXECUTOR_TREE_SHA`, `STAGING_APPROVED_APPLY_READY_PACKAGE_JSON`,
-`STAGING_APPROVED_MUTATION_APPROVAL_JSON`만 사용합니다. repo-level fallback은 허용하지 않습니다.
+`STAGING_APPROVED_EXECUTOR_TREE_SHA`만 사용합니다. package/approval JSON은 Environment 변수가 아니며,
+repository-level base64 변수 `STAGING_APPLY_READY_PACKAGE_B64`,
+`STAGING_MUTATION_APPROVAL_DECLARATION_B64`에서 prepare job으로만 전달됩니다.
 
 GitHub Environment 변수 설정과 job 승인은 실제 GitHub 변경이므로 별도 사용자 승인 없이는 수행하지 않습니다.
 
@@ -315,6 +317,7 @@ python3 -m py_compile \
   scripts/staging_infrastructure_wif_attestation.py \
   scripts/staging_infrastructure_apply_ready.py \
   scripts/staging_infrastructure_apply_approval.py \
+  scripts/staging_infrastructure_apply_prepare.py \
   scripts/staging_infrastructure_apply_provenance.py \
   scripts/staging_infrastructure_apply_executor.py \
   scripts/staging_infrastructure_synthetic_fixture.py \
