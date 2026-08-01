@@ -40,6 +40,10 @@ GITHUB_HOST = "github.com"
 PAGE_SIZE = 30
 MAX_PAGES = 100
 Runner = Callable[[tuple[str, ...]], bytes]
+# Environment variable values can contain the apply-ready package and are not
+# part of this attestation.  Keep the fixed API query but project the response
+# to the bounded, non-sensitive fields required by the contract.
+VARIABLES_PROJECTION = ". | {total_count, variables: [.variables[] | {name}]}"
 
 
 class EnvironmentAttestationError(RuntimeError):
@@ -65,6 +69,7 @@ def attest_environment(
             run,
             f"/repos/{OWNER}/{REPO}/environments/{ENVIRONMENT}/variables",
             "variables",
+            jq=VARIABLES_PROJECTION,
         )
         result = _build_attestation(
             repository,
@@ -163,12 +168,14 @@ def _admin_bypass_observation(environment: dict[str, Any]) -> bool | str:
     )
 
 
-def _collect_pages(run: Runner, endpoint: str, key: str) -> tuple[list[bytes], list[dict[str, Any]]]:
+def _collect_pages(
+    run: Runner, endpoint: str, key: str, *, jq: str | None = None,
+) -> tuple[list[bytes], list[dict[str, Any]]]:
     pages: list[bytes] = []
     entries: list[dict[str, Any]] = []
     expected_total: int | None = None
     for page in range(1, MAX_PAGES + 1):
-        raw = run(_gh_argv(f"{endpoint}?per_page={PAGE_SIZE}&page={page}"))
+        raw = run(_gh_argv(f"{endpoint}?per_page={PAGE_SIZE}&page={page}", jq=jq))
         body = _json_object(raw, "GitHub pagination response")
         total = body.get("total_count")
         items = body.get(key)
@@ -191,12 +198,18 @@ def _collect_pages(run: Runner, endpoint: str, key: str) -> tuple[list[bytes], l
     raise EnvironmentAttestationError("GitHub pagination exceeds the fixed safety limit")
 
 
-def _gh_argv(endpoint: str) -> tuple[str, ...]:
-    return (
+def _gh_argv(endpoint: str, *, jq: str | None = None) -> tuple[str, ...]:
+    argv = [
         "gh", "api", "--hostname", GITHUB_HOST, "--method", "GET",
         "--header", "Accept: application/vnd.github+json",
-        "--header", f"X-GitHub-Api-Version: {API_VERSION}", endpoint,
-    )
+        "--header", f"X-GitHub-Api-Version: {API_VERSION}",
+    ]
+    if jq is not None:
+        if jq != VARIABLES_PROJECTION:
+            raise EnvironmentAttestationError("GitHub jq projection is not fixed")
+        argv.extend(("--jq", jq))
+    argv.append(endpoint)
+    return tuple(argv)
 
 
 def _run_fixed_gh(argv: tuple[str, ...]) -> bytes:

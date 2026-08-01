@@ -32,6 +32,7 @@ from scripts.staging_infrastructure_apply_ready import (
 )
 from scripts.staging_infrastructure_environment_attestation import (
     EnvironmentAttestationError,
+    VARIABLES_PROJECTION,
     _collect_pages,
     _run_fixed_gh,
     attest_environment,
@@ -328,6 +329,8 @@ class EnvironmentOperatorAttestationTest(unittest.TestCase):
         self.assertTrue(all(call[:4] == ("gh", "api", "--hostname", "github.com") for call in calls))
         self.assertTrue(all("--method" in call and "GET" in call for call in calls))
         self.assertIn("?per_page=30&page=1", calls[-1][-1])
+        self.assertEqual(calls[-1][calls[-1].index("--jq") + 1], VARIABLES_PROJECTION)
+        self.assertNotIn("--jq", calls[-2])
         self.assertEqual(attestation["repositoryId"], "11")
         self.assertEqual(attestation["observed"]["requiredReviewerCount"], 1)
         self.assertFalse(attestation["observed"]["preventSelfReview"])

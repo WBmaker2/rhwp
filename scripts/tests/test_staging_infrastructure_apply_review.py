@@ -200,7 +200,7 @@ class ApplyReviewPackageTest(unittest.TestCase):
         permissions = {
             role["roleId"]: role["includedPermissions"] for role in custom_roles
         }
-        self.assertEqual(permissions["stagingApiEnableOnly"], ["serviceusage.services.enable"])
+        self.assertEqual(permissions["stagingApiEnableOnly"], ["serviceusage.services.enable", "serviceusage.services.list"])
         self.assertEqual(permissions["stagingServiceAccountCreateReadList"], ["iam.serviceAccounts.create", "iam.serviceAccounts.get", "iam.serviceAccounts.list", "iam.serviceAccountKeys.list"])
         self.assertEqual(
             permissions["stagingArtifactRegistryRepositoryCreateRead"],

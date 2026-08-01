@@ -152,7 +152,7 @@ def wif_expected_principal(provider_resource_name: str, repository_id: str) -> s
 
 def _custom_roles() -> list[dict[str, Any]]:
     return [
-        _role("stagingApiEnableOnly", ["serviceusage.services.enable"], ["serviceusage.services.disable"]),
+        _role("stagingApiEnableOnly", ["serviceusage.services.enable", "serviceusage.services.list"], ["serviceusage.services.disable"]),
         _role("stagingServiceAccountCreateReadList", ["iam.serviceAccounts.create", "iam.serviceAccounts.get", "iam.serviceAccounts.list", "iam.serviceAccountKeys.list"], ["iam.serviceAccountKeys.create", "iam.serviceAccountKeys.delete", "iam.serviceAccounts.delete", "iam.serviceAccounts.getAccessToken"]),
         _role("stagingArtifactRegistryRepositoryCreateRead", ["artifactregistry.repositories.create", "artifactregistry.repositories.get", "artifactregistry.repositories.list"], ["artifactregistry.repositories.delete"]),
         _role("stagingSecretManagerMetadataCreateReadList", ["secretmanager.secrets.create", "secretmanager.secrets.get", "secretmanager.secrets.list"], ["secretmanager.secrets.delete", "secretmanager.versions.access", "secretmanager.versions.add", "secretmanager.versions.destroy"]),
