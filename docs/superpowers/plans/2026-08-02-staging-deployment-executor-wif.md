@@ -2,7 +2,7 @@
 
 작성일: 2026-08-02 (Asia/Seoul)
 대상 브랜치: `feat/firebase-collaboration-mvp-v1`
-상태: 설계·로컬 구현 시작, 외부 Cloud mutation 미실행
+상태: 로컬 구현·WIF/IAM/Environment 준비 완료, 실제 Cloud mutation 미실행
 
 ## 목적
 
@@ -27,17 +27,17 @@
 - 현재 승인 packet의 `mutationCommands`: `[]`
 - 현재 승인 packet의 13개 IAM diff: packet 원문과 approval record의 exact binding으로만 소비
 
-## 제안 외부 identity diff (아직 적용하지 않음)
+## 외부 identity diff 및 적용 상태
 
 | 항목 | 제안값 | 적용 조건 |
 | --- | --- | --- |
 | WIF pool | `projects/598693744358/locations/global/workloadIdentityPools/rhwp-github-actions` | 기존 pool 유지 |
-| WIF provider | `rhwp-staging-deployment` | OIDC provider 신규 생성, 기존 provider 재사용 금지 |
+| WIF provider | `rhwp-staging-deployment` | OIDC provider 신규 생성 완료, mapping·condition·ACTIVE 상태 read-back 완료 |
 | provider mapping | `google.subject=assertion.sub`, `attribute.repository=assertion.repository`, `attribute.repository_id=assertion.repository_id`, `attribute.repository_owner_id=assertion.repository_owner_id`, `attribute.ref=assertion.ref`, `attribute.workflow_ref=assertion.workflow_ref`, `attribute.workflow_sha=assertion.workflow_sha` | mapping·condition read-back이 정확히 일치해야 함 |
 | provider condition | `repository`, repository/owner IDs, `refs/heads/feat/firebase-collaboration-mvp-v1`, `WBmaker2/rhwp/.github/workflows/staging-deployment.yml@refs/heads/feat/firebase-collaboration-mvp-v1`, 최종 workflow commit SHA | 최종 workflow commit을 push한 뒤 SHA를 확정하고 provider를 원자적으로 갱신 |
-| executor service account | `rhwp-staging-deploy-executor@rhwp-collaboration-staging-001.iam.gserviceaccount.com` | GCP account ID 30자 제한을 만족하는 신규 계정인지 먼저 확인 |
-| GitHub Environment secret | `GCP_DEPLOY_WORKLOAD_IDENTITY_PROVIDER` | provider resource name만 저장, token/key 원문 금지 |
-| GitHub Environment secret | `GCP_DEPLOY_SERVICE_ACCOUNT` | service-account email만 저장, key 원문 금지 |
+| executor service account | `rhwp-staging-deploy-executor@rhwp-collaboration-staging-001.iam.gserviceaccount.com` | 생성 완료, custom role 및 WIF 사용자 바인딩 read-back 완료 |
+| GitHub Environment secret | `GCP_DEPLOY_WORKLOAD_IDENTITY_PROVIDER` | provider resource name만 저장, token/key 원문 금지, 등록 완료 |
+| GitHub Environment secret | `GCP_DEPLOY_SERVICE_ACCOUNT` | service-account email만 저장, key 원문 금지, 등록 완료 |
 
 ## 최소 권한 설계
 
@@ -71,14 +71,15 @@ raw secret read, Firebase API key read는 허용하지 않는다. 실제 permiss
 3. executor spec·WIF/IAM diff·workflow contract 테스트를 추가한다.
 4. 전체 테스트와 실제 packet을 이용한 `execute_mutation=false` 검증을 수행한다.
 
-## 외부 적용 순서
+## 외부 적용 순서 및 현재 경계
 
 1. 최종 workflow commit SHA를 확인한다.
-2. WIF provider와 executor service account 생성 diff를 사용자에게 제시하고 승인받는다.
-3. custom role/IAM binding을 적용하고 모든 provider mapping, condition, role, principal을
-   read-back한다.
+2. WIF provider와 executor service account를 생성하고 provider mapping, condition,
+   principal을 read-back한다. **완료**
+3. 승인된 custom role/IAM binding을 적용하고 role 권한과 project/service IAM을 read-back한다.
+   **완료**
 4. `staging-deployment` Environment에 두 공개 식별자만 secret으로 등록하고 값은 로그에
-   출력하지 않는다.
+   출력하지 않는다. **완료**
 5. 새 same-run packet/approval artifact로 `execute_mutation=false` workflow를 먼저 실행한다.
 6. 사용자가 실제 mutation과 deployment를 별도로 승인한 경우에만 `execute_mutation=true`를
    실행한다.
@@ -96,4 +97,5 @@ raw secret read, Firebase API key read는 허용하지 않는다. 실제 permiss
 - postcondition 또는 acceptance evidence가 없음
 
 이 기준을 만족하지 못하면 cloud credential, mutation, deployment를 실행하지 않고 보고서와
-다음 승인 지점만 남긴다.
+다음 승인 지점만 남긴다. 현재는 identity 준비가 완료되었지만 fresh same-run dry-run과
+실제 acceptance/rollback evidence가 아직 남아 있다.
