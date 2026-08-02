@@ -52,7 +52,7 @@ git diff --check
 
 결과:
 
-- 전체 회귀 테스트: **251 passed**
+- 전체 회귀 테스트: **252 passed**
 - workflow YAML parse: 통과
 - whitespace check: 통과
 - 새 executor contract 테스트: 통과
