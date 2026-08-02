@@ -224,6 +224,28 @@ jobs:
           name: staging-worker-bootstrap-input
           path: artifacts/worker-bootstrap-input
 
+      - name: Normalize same-run input paths without rewriting bytes
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          root = Path("artifacts/worker-bootstrap-input")
+          evidence = sorted(root.rglob("staging-release-candidate-evidence.json"))
+          bindings = sorted(root.rglob("release-binding.json"))
+          if len(evidence) != 1 or len(bindings) != 1:
+              raise SystemExit("same-run artifact must contain exactly one evidence and one binding file")
+
+          canonical_evidence = root / "staging-release-candidate-evidence.json"
+          canonical_binding = root / "release-binding.json"
+          if evidence[0] != canonical_evidence:
+              canonical_evidence.write_bytes(evidence[0].read_bytes())
+          if bindings[0] != canonical_binding:
+              canonical_binding.write_bytes(bindings[0].read_bytes())
+          PY
+          test -f artifacts/worker-bootstrap-input/staging-release-candidate-evidence.json
+          test -f artifacts/worker-bootstrap-input/release-binding.json
+
       - name: Verify same-run input before authentication
         env:
           RELEASE_RUN_ID: ${{ inputs.release_run_id }}
