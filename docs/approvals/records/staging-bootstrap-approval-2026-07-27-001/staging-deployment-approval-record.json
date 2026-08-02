@@ -1,0 +1,47 @@
+{
+  "schemaVersion": "rhwp.staging-deployment-approval/v1",
+  "decision": "approved",
+  "approvedAt": "2026-08-02T08:06:09Z",
+  "approvedBy": [
+    "WBmaker2"
+  ],
+  "commitSha": "29c4c037b2a307a056f4801e248558311337b979",
+  "workflowRunId": 30738684540,
+  "workflowRunAttempt": 1,
+  "artifactName": "staging-approval-packet-deployment",
+  "deploymentPacketSha256": "54a54e80b49d6c5693ed08cc34cf7a6c6f75a005afe4779004620575c7de0858",
+  "approvalReference": "staging-bootstrap-approval-2026-07-27-001",
+  "projectId": "rhwp-collaboration-staging-001",
+  "approvedImageDigests": [
+    "asia-northeast3-docker.pkg.dev/rhwp-collaboration-staging-001/rhwp-staging/collaboration@sha256:45ccfbbe83ab5b35e561420d9e5e691403e7f9bb53da942623a1e5cf4201d1bf",
+    "asia-northeast3-docker.pkg.dev/rhwp-collaboration-staging-001/rhwp-staging/document-api@sha256:b08206d577f0d34332c661e84e82e7094329d8921ab6aecfb9d37a3e6ad374c3",
+    "asia-northeast3-docker.pkg.dev/rhwp-collaboration-staging-001/rhwp-staging/document-worker@sha256:7b13fbda2657ebe656db315f80ee9cd72d15d81bc0d88840cc13a69af15fe690"
+  ],
+  "acceptedIamDiffSha256": "08ceed7da13b412d42ee78fd21d10d754d2eb985bc21d83fd056d9ab158df46f",
+  "acceptanceEvidence": {
+    "status": "pending",
+    "sha256": "019f020e888fc61cb7285d58743b82a8737303dc29d69043b0e4076a1c02ede9"
+  },
+  "rollbackEvidence": {
+    "status": "not-applicable-initial",
+    "sha256": "1454d8c7d1598008d954bf5874b7d532c3b4433950fc5fefb661cfa57b401e4c",
+    "revisionIds": [
+      null,
+      null,
+      null
+    ]
+  },
+  "reviewed": {
+    "packetReviewed": true,
+    "imageDigestsReviewed": true,
+    "iamDiffReviewed": true,
+    "acceptanceEvidenceReviewed": true,
+    "rollbackEvidenceReviewed": true,
+    "initialRollbackStateAcknowledged": true,
+    "deploymentApprovalExplicit": true,
+    "cloudMutationApprovalExplicit": true
+  },
+  "deploymentApproved": true,
+  "cloudMutationApproved": true,
+  "mutationCommands": []
+}

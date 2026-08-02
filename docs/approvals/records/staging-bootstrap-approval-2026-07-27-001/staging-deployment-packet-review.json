@@ -1,0 +1,33 @@
+{
+  "schemaVersion": "rhwp.staging-deployment-packet-review/v1",
+  "decision": "approved",
+  "approvedAt": "2026-08-02T08:06:09Z",
+  "approvedBy": ["WBmaker2"],
+  "commitSha": "29c4c037b2a307a056f4801e248558311337b979",
+  "workflowRunId": 30738684540,
+  "workflowRunAttempt": 1,
+  "artifactName": "staging-approval-packet-deployment",
+  "expectedPacketSha256": "54a54e80b49d6c5693ed08cc34cf7a6c6f75a005afe4779004620575c7de0858",
+  "expectedApprovalReference": "staging-bootstrap-approval-2026-07-27-001",
+  "expectedIamDiffSha256": "08ceed7da13b412d42ee78fd21d10d754d2eb985bc21d83fd056d9ab158df46f",
+  "acceptanceEvidenceSha256": "019f020e888fc61cb7285d58743b82a8737303dc29d69043b0e4076a1c02ede9",
+  "rollbackEvidenceSha256": "1454d8c7d1598008d954bf5874b7d532c3b4433950fc5fefb661cfa57b401e4c",
+  "acknowledgements": {
+    "packetReviewed": true,
+    "imageDigestsReviewed": true,
+    "iamDiffReviewed": true,
+    "acceptanceEvidenceReviewed": true,
+    "rollbackEvidenceReviewed": true,
+    "initialRollbackStateAcknowledged": true,
+    "deploymentApprovalExplicit": true,
+    "cloudMutationApprovalExplicit": true
+  },
+  "deploymentApproved": true,
+  "cloudMutationApproved": true,
+  "notes": [
+    "User explicitly approved the exact deployment packet SHA-256.",
+    "Acceptance evidence remains pending until post-deployment verification.",
+    "Initial rollback evidence is not-applicable-initial with null prior revisions.",
+    "Mutation commands remain empty in this record; protected deployment workflow is still required."
+  ]
+}
