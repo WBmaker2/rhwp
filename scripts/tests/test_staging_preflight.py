@@ -11,6 +11,7 @@ from pathlib import Path
 from scripts.staging_preflight import (
     PreflightError,
     _collect_resource_names,
+    _expected_resource_names,
     build_preflight_report,
     load_manifest,
     run_read_only,
@@ -150,6 +151,24 @@ class ReadOnlyPreflightTest(unittest.TestCase):
             "rhwp-parse-staging",
             "rhwp-tasks-staging@demo.iam.gserviceaccount.com",
         })
+
+    def test_platform_service_accounts_are_classified_as_expected_resources(self) -> None:
+        manifest = load_manifest(MANIFEST_PATH)
+        expected = _expected_resource_names(manifest)
+
+        self.assertEqual(len(manifest["iam"]["platformServiceAccounts"]), 5)
+        self.assertTrue(
+            set(manifest["iam"]["platformServiceAccounts"]).issubset(
+                expected["serviceAccounts"]
+            )
+        )
+
+        duplicate = copy.deepcopy(manifest)
+        duplicate["iam"]["platformServiceAccounts"].append(
+            duplicate["iam"]["platformServiceAccounts"][0]
+        )
+        with self.assertRaisesRegex(PreflightError, "duplicates"):
+            validate_manifest(duplicate)
 
 
 class StagingWorkflowTest(unittest.TestCase):

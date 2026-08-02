@@ -116,6 +116,13 @@
     }
   },
   "iam": {
+    "platformServiceAccounts": [
+      "firebase-adminsdk-fbsvc@${FIREBASE_STAGING_PROJECT_ID}.iam.gserviceaccount.com",
+      "rhwp-infra-deployer-staging@${FIREBASE_STAGING_PROJECT_ID}.iam.gserviceaccount.com",
+      "rhwp-staging-preflight-reader@${FIREBASE_STAGING_PROJECT_ID}.iam.gserviceaccount.com",
+      "rhwp-staging-release-pusher@${FIREBASE_STAGING_PROJECT_ID}.iam.gserviceaccount.com",
+      "rhwp-staging-runtime-bootstrap@${FIREBASE_STAGING_PROJECT_ID}.iam.gserviceaccount.com"
+    ],
     "bindings": [
       {
         "principal": "serviceAccount:${COLLABORATION_SERVICE_ACCOUNT}",

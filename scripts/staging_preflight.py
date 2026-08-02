@@ -213,7 +213,17 @@ def validate_manifest(manifest: dict[str, Any]) -> None:
         raise PreflightError("collaboration internal secret name is invalid")
     _string(internal, "version")
 
-    bindings = _mapping(manifest, "iam").get("bindings")
+    iam = _mapping(manifest, "iam")
+    platform_accounts = iam.get("platformServiceAccounts")
+    if platform_accounts is not None:
+        if not isinstance(platform_accounts, list) or not platform_accounts:
+            raise PreflightError("iam.platformServiceAccounts must be a non-empty string array")
+        if any(not isinstance(item, str) or not item.strip() for item in platform_accounts):
+            raise PreflightError("iam.platformServiceAccounts must contain non-empty strings")
+        if len(set(platform_accounts)) != len(platform_accounts):
+            raise PreflightError("iam.platformServiceAccounts must not contain duplicates")
+
+    bindings = iam.get("bindings")
     if not isinstance(bindings, list) or not bindings:
         raise PreflightError("iam.bindings must be a non-empty array")
     for index, binding in enumerate(bindings):
@@ -451,6 +461,10 @@ def _expected_resource_names(manifest: dict[str, Any]) -> dict[str, set[str]]:
     cloud_run = _mapping(manifest, "cloudRun")
     tasks = _mapping(manifest, "tasks")
     secrets = _mapping(manifest, "secrets")
+    iam = _mapping(manifest, "iam")
+    platform_accounts = iam.get("platformServiceAccounts", [])
+    if not isinstance(platform_accounts, list):
+        platform_accounts = []
     return {
         "cloudRun": {
             _string(_mapping(cloud_run, key), "name")
@@ -465,7 +479,8 @@ def _expected_resource_names(manifest: dict[str, Any]) -> dict[str, set[str]]:
             _string(_mapping(cloud_run, key), "serviceAccount")
             for key in ("collaboration", "documentApi", "documentWorker")
         }
-        | {_string(tasks, "callerServiceAccount")},
+        | {_string(tasks, "callerServiceAccount")}
+        | {item for item in platform_accounts if isinstance(item, str) and item.strip()},
         "artifactRegistry": {_string(_mapping(manifest, "artifactRegistry"), "repository")},
     }
 

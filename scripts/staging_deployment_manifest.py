@@ -12,7 +12,10 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from scripts.staging_preflight import validate_manifest
+if __package__:
+    from scripts.staging_preflight import validate_manifest
+else:
+    from staging_preflight import validate_manifest
 
 SCHEMA = "rhwp.staging-deployment-release/v1"
 PLACEHOLDER_PATTERN = re.compile(r"\$\{[A-Z0-9_]+\}")

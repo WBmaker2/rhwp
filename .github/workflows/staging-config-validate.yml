@@ -48,10 +48,46 @@ on:
         type: string
         default: deploy/staging/staging-manifest.json
       release_metadata_path:
-        description: Repository-relative source-commit-bound release metadata path for deployment preflight
+        description: Deprecated compatibility input; deployment preflight derives metadata from same-run artifacts
         required: false
         type: string
         default: deploy/staging/staging-release-metadata.json
+      release_run_id:
+        description: Successful staging release candidate workflow run ID for deployment preflight
+        required: false
+        type: string
+      release_run_attempt:
+        description: Release candidate run attempt
+        required: false
+        type: string
+        default: "1"
+      release_artifact_name:
+        description: Exact release candidate artifact name
+        required: false
+        type: string
+        default: staging-release-candidate-evidence
+      release_artifact_digest:
+        description: Exact release artifact server digest (sha256:...)
+        required: false
+        type: string
+      worker_run_id:
+        description: Successful staging runtime worker bootstrap workflow run ID for deployment preflight
+        required: false
+        type: string
+      worker_run_attempt:
+        description: Worker bootstrap run attempt
+        required: false
+        type: string
+        default: "1"
+      worker_artifact_name:
+        description: Exact worker bootstrap artifact name
+        required: false
+        type: string
+        default: staging-worker-bootstrap-evidence
+      worker_artifact_digest:
+        description: Exact worker artifact server digest (sha256:...)
+        required: false
+        type: string
       bootstrap_packet_path:
         description: Repository-relative reviewed bootstrap packet JSON path
         required: false
@@ -453,6 +489,180 @@ jobs:
       - uses: actions/checkout@v5
         with:
           show-progress: false
+      - name: Validate same-run deployment evidence inputs
+        env:
+          RELEASE_RUN_ID: ${{ inputs.release_run_id }}
+          RELEASE_RUN_ATTEMPT: ${{ inputs.release_run_attempt }}
+          RELEASE_ARTIFACT_NAME: ${{ inputs.release_artifact_name }}
+          RELEASE_ARTIFACT_DIGEST: ${{ inputs.release_artifact_digest }}
+          WORKER_RUN_ID: ${{ inputs.worker_run_id }}
+          WORKER_RUN_ATTEMPT: ${{ inputs.worker_run_attempt }}
+          WORKER_ARTIFACT_NAME: ${{ inputs.worker_artifact_name }}
+          WORKER_ARTIFACT_DIGEST: ${{ inputs.worker_artifact_digest }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os
+          import re
+
+          run_fields = (
+              ("RELEASE_RUN_ID", os.environ["RELEASE_RUN_ID"]),
+              ("RELEASE_RUN_ATTEMPT", os.environ["RELEASE_RUN_ATTEMPT"]),
+              ("WORKER_RUN_ID", os.environ["WORKER_RUN_ID"]),
+              ("WORKER_RUN_ATTEMPT", os.environ["WORKER_RUN_ATTEMPT"]),
+          )
+          for name, value in run_fields:
+              if not re.fullmatch(r"[0-9]{1,20}", value or "") or int(value) < 1:
+                  raise SystemExit(f"{name} must be a positive decimal value")
+          for name in ("RELEASE_ARTIFACT_NAME", "WORKER_ARTIFACT_NAME"):
+              if not os.environ[name].strip():
+                  raise SystemExit(f"{name} must not be empty")
+          for name in ("RELEASE_ARTIFACT_DIGEST", "WORKER_ARTIFACT_DIGEST"):
+              if not re.fullmatch(r"sha256:[a-f0-9]{64}", os.environ[name] or ""):
+                  raise SystemExit(f"{name} must be sha256:<64 lowercase hex>")
+          PY
+      - name: Download same-run release and worker evidence
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_RUN_ID: ${{ inputs.release_run_id }}
+          RELEASE_RUN_ATTEMPT: ${{ inputs.release_run_attempt }}
+          RELEASE_ARTIFACT_NAME: ${{ inputs.release_artifact_name }}
+          RELEASE_ARTIFACT_DIGEST: ${{ inputs.release_artifact_digest }}
+          WORKER_RUN_ID: ${{ inputs.worker_run_id }}
+          WORKER_RUN_ATTEMPT: ${{ inputs.worker_run_attempt }}
+          WORKER_ARTIFACT_NAME: ${{ inputs.worker_artifact_name }}
+          WORKER_ARTIFACT_DIGEST: ${{ inputs.worker_artifact_digest }}
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/same-run/release artifacts/same-run/worker
+          gh run view "$RELEASE_RUN_ID" \
+            --attempt "$RELEASE_RUN_ATTEMPT" \
+            --repo "$GITHUB_REPOSITORY" \
+            --json databaseId,headSha,status,conclusion,attempt \
+            > artifacts/same-run/release-run.json
+          gh run view "$WORKER_RUN_ID" \
+            --attempt "$WORKER_RUN_ATTEMPT" \
+            --repo "$GITHUB_REPOSITORY" \
+            --json databaseId,headSha,status,conclusion,attempt \
+            > artifacts/same-run/worker-run.json
+          gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${RELEASE_RUN_ID}/artifacts" \
+            > artifacts/same-run/release-artifacts-index.json
+          gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${WORKER_RUN_ID}/artifacts" \
+            > artifacts/same-run/worker-artifacts-index.json
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          source_sha = os.environ["GITHUB_SHA"]
+          checks = (
+              ("release", "release-run.json", "release-artifacts-index.json", "RELEASE_RUN_ID", "RELEASE_RUN_ATTEMPT", "RELEASE_ARTIFACT_NAME", "RELEASE_ARTIFACT_DIGEST"),
+              ("worker", "worker-run.json", "worker-artifacts-index.json", "WORKER_RUN_ID", "WORKER_RUN_ATTEMPT", "WORKER_ARTIFACT_NAME", "WORKER_ARTIFACT_DIGEST"),
+          )
+          for label, run_file, index_file, run_key, attempt_key, name_key, digest_key in checks:
+              run = json.loads(Path("artifacts/same-run", run_file).read_text())
+              if str(run.get("databaseId")) != os.environ[run_key]:
+                  raise SystemExit(f"{label} workflow run ID does not match")
+              if int(run.get("attempt", 0)) != int(os.environ[attempt_key]):
+                  raise SystemExit(f"{label} workflow run attempt does not match")
+              if run.get("headSha") != source_sha:
+                  raise SystemExit(f"{label} workflow head SHA does not match this checkout")
+              if run.get("status") != "completed" or run.get("conclusion") != "success":
+                  raise SystemExit(f"{label} workflow run is not a successful completed run")
+              index = json.loads(Path("artifacts/same-run", index_file).read_text())
+              matches = [
+                  item for item in index.get("artifacts", [])
+                  if item.get("name") == os.environ[name_key]
+                  and str(item.get("workflow_run", {}).get("id")) == os.environ[run_key]
+              ]
+              if len(matches) != 1:
+                  raise SystemExit(f"exactly one {label} artifact bound to the requested run is required")
+              item = matches[0]
+              if item.get("digest") != os.environ[digest_key]:
+                  raise SystemExit(f"{label} artifact server digest does not match the dispatch input")
+              if item.get("expired") is True:
+                  raise SystemExit(f"{label} artifact is expired")
+              if item.get("workflow_run", {}).get("head_sha") != source_sha:
+                  raise SystemExit(f"{label} artifact source commit does not match this checkout")
+          PY
+          gh run download "$RELEASE_RUN_ID" \
+            --repo "$GITHUB_REPOSITORY" \
+            --name "$RELEASE_ARTIFACT_NAME" \
+            --dir artifacts/same-run/release/downloaded
+          gh run download "$WORKER_RUN_ID" \
+            --repo "$GITHUB_REPOSITORY" \
+            --name "$WORKER_ARTIFACT_NAME" \
+            --dir artifacts/same-run/worker/downloaded
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          release_matches = sorted(
+              Path("artifacts/same-run/release/downloaded").rglob(
+                  "staging-release-candidate-evidence.json"
+              )
+          )
+          worker_matches = sorted(
+              Path("artifacts/same-run/worker/downloaded").rglob(
+                  "staging-worker-bootstrap-evidence.json"
+              )
+          )
+          if len(release_matches) != 1:
+              raise SystemExit("release artifact must contain exactly one release evidence JSON")
+          if len(worker_matches) != 1:
+              raise SystemExit("worker artifact must contain exactly one worker evidence JSON")
+          Path("artifacts/same-run/evidence-paths.json").write_text(
+              json.dumps(
+                  {
+                      "release": str(release_matches[0]),
+                      "worker": str(worker_matches[0]),
+                  },
+                  indent=2,
+              )
+              + "\n"
+          )
+          PY
+          release_path="$(python3 -c 'import json; print(json.load(open("artifacts/same-run/evidence-paths.json"))["release"])')"
+          worker_path="$(python3 -c 'import json; print(json.load(open("artifacts/same-run/evidence-paths.json"))["worker"])')"
+          {
+            printf 'RELEASE_EVIDENCE_PATH=%s\n' "$release_path"
+            printf 'WORKER_EVIDENCE_PATH=%s\n' "$worker_path"
+            printf 'RELEASE_EVIDENCE_SHA256=%s\n' "$(shasum -a 256 "$release_path" | awk '{print $1}')"
+            printf 'WORKER_EVIDENCE_SHA256=%s\n' "$(shasum -a 256 "$worker_path" | awk '{print $1}')"
+          } >> "$GITHUB_ENV"
+      - name: Derive source-bound release metadata from same-run evidence
+        env:
+          RELEASE_ARTIFACT_DIGEST: ${{ inputs.release_artifact_digest }}
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/same-run
+          python3 scripts/staging_runtime_release_metadata.py \
+            --release-evidence "$RELEASE_EVIDENCE_PATH" \
+            --worker-evidence "$WORKER_EVIDENCE_PATH" \
+            --expected-source-commit "$GITHUB_SHA" \
+            --expected-release-evidence-sha256 "$RELEASE_EVIDENCE_SHA256" \
+            --expected-worker-evidence-sha256 "$WORKER_EVIDENCE_SHA256" \
+            --expected-release-artifact-digest "$RELEASE_ARTIFACT_DIGEST" \
+            --output artifacts/same-run/staging-release-metadata-derived.json
+      - name: Verify release workflow provenance (same-run artifact binding)
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          paths = json.loads(Path("artifacts/same-run/evidence-paths.json").read_text())
+          for label in ("release", "worker"):
+              path = Path(paths[label])
+              if not path.is_file():
+                  raise SystemExit(f"same-run {label} evidence path is missing")
+          metadata = json.loads(
+              Path("artifacts/same-run/staging-release-metadata-derived.json").read_text()
+          )
+          if metadata.get("sourceCommitSha") != os.environ["GITHUB_SHA"]:
+              raise SystemExit("derived release metadata source commit does not match")
+          PY
       - name: Materialize approved deployment preflight manifest
         run: |
           mkdir -p artifacts
@@ -462,7 +672,7 @@ jobs:
             --output artifacts/staging-manifest-deployment-preflight-bootstrap.json
       - name: Resolve immutable deployment manifest from release metadata
         env:
-          RELEASE_METADATA_PATH: ${{ inputs.release_metadata_path }}
+          RELEASE_METADATA_PATH: artifacts/same-run/staging-release-metadata-derived.json
         run: |
           if [ ! -f "${RELEASE_METADATA_PATH}" ]; then
             echo "source-commit-bound release metadata is required before deployment packet generation: ${RELEASE_METADATA_PATH}" >&2
@@ -473,32 +683,6 @@ jobs:
             --release-metadata "${RELEASE_METADATA_PATH}" \
             --expected-source-commit "${GITHUB_SHA}" \
             --output artifacts/staging-manifest-deployment-preflight.json
-      - name: Verify release workflow provenance
-        env:
-          GH_TOKEN: ${{ github.token }}
-          RELEASE_METADATA_PATH: ${{ inputs.release_metadata_path }}
-        run: |
-          RELEASE_RUN_ID="$(python3 -c 'import json, os; print(json.load(open(os.environ["RELEASE_METADATA_PATH"]))["workflowRunId"])')"
-          RELEASE_RUN_ATTEMPT="$(python3 -c 'import json, os; print(json.load(open(os.environ["RELEASE_METADATA_PATH"]))["workflowRunAttempt"])')"
-          RELEASE_RUN_JSON="$(gh run view "${RELEASE_RUN_ID}" --attempt "${RELEASE_RUN_ATTEMPT}" --repo "${GITHUB_REPOSITORY}" --json databaseId,headSha,status,conclusion,attempt)"
-          RELEASE_RUN_JSON="${RELEASE_RUN_JSON}" \
-            RELEASE_METADATA_PATH="${RELEASE_METADATA_PATH}" \
-            EXPECTED_SOURCE_COMMIT="${GITHUB_SHA}" \
-            python3 - <<'PY'
-          import json
-          import os
-
-          metadata = json.loads(open(os.environ["RELEASE_METADATA_PATH"]).read())
-          observed = json.loads(os.environ["RELEASE_RUN_JSON"])
-          if str(observed.get("databaseId")) != str(metadata.get("workflowRunId")):
-              raise SystemExit("release workflow run ID does not match GitHub observation")
-          if int(observed.get("attempt", 0)) != int(metadata.get("workflowRunAttempt", 0)):
-              raise SystemExit("release workflow attempt does not match GitHub observation")
-          if observed.get("headSha") != os.environ["EXPECTED_SOURCE_COMMIT"]:
-              raise SystemExit("release workflow head commit does not match checked-out commit")
-          if observed.get("status") != "completed" or observed.get("conclusion") != "success":
-              raise SystemExit("release workflow run is not a successful completed run")
-          PY
       - name: Generate static preflight report for deployment approval
         run: |
           python3 scripts/staging_preflight.py \
