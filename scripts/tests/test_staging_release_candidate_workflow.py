@@ -61,6 +61,13 @@ class StagingReleaseCandidateWorkflowTest(unittest.TestCase):
         self.assertIn("firebase-web-apps.json", resolve)
         self.assertIn(".get('apps', [])", resolve)
 
+    def test_artifact_registry_digest_prefix_is_normalized_before_strict_validation(self) -> None:
+        resolve = self.text.split("Resolve immutable image digests and Firebase app identity", 1)[1]
+        self.assertIn("normalize_sha256_digest()", resolve)
+        self.assertIn('sha256:*) digest="${digest#sha256:}"', resolve)
+        self.assertEqual(resolve.count("$(normalize_sha256_digest \"$(gcloud artifacts docker images describe"), 3)
+        self.assertIn("re.fullmatch(r'[a-f0-9]{64}', values[key])", resolve)
+
     def test_document_worker_docker_context_includes_declared_cargo_examples(self) -> None:
         dockerfile = DOCUMENT_WORKER_DOCKERFILE.read_text()
         self.assertIn("COPY examples ./examples", dockerfile)

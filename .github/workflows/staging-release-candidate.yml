@@ -125,9 +125,16 @@ jobs:
           umask 077
           mkdir -p artifacts/staging-release-candidate
           project_number="$(gcloud projects describe "$STAGING_PROJECT_ID" --format='value(projectNumber)')"
-          collaboration_digest="$(gcloud artifacts docker images describe "${REGISTRY}/collaboration:${GITHUB_SHA}" --format='value(image_summary.digest)')"
-          document_api_digest="$(gcloud artifacts docker images describe "${REGISTRY}/document-api:${GITHUB_SHA}" --format='value(image_summary.digest)')"
-          document_worker_digest="$(gcloud artifacts docker images describe "${REGISTRY}/document-worker:${GITHUB_SHA}" --format='value(image_summary.digest)')"
+          normalize_sha256_digest() {
+            local digest="$1"
+            case "$digest" in
+              sha256:*) digest="${digest#sha256:}" ;;
+            esac
+            printf '%s\n' "$digest"
+          }
+          collaboration_digest="$(normalize_sha256_digest "$(gcloud artifacts docker images describe "${REGISTRY}/collaboration:${GITHUB_SHA}" --format='value(image_summary.digest)')")"
+          document_api_digest="$(normalize_sha256_digest "$(gcloud artifacts docker images describe "${REGISTRY}/document-api:${GITHUB_SHA}" --format='value(image_summary.digest)')")"
+          document_worker_digest="$(normalize_sha256_digest "$(gcloud artifacts docker images describe "${REGISTRY}/document-worker:${GITHUB_SHA}" --format='value(image_summary.digest)')")"
           export PROJECT_NUMBER="$project_number"
           export COLLABORATION_DIGEST="$collaboration_digest"
           export DOCUMENT_API_DIGEST="$document_api_digest"
