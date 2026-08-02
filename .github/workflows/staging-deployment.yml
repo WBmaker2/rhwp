@@ -181,6 +181,12 @@ jobs:
       actions: read
       id-token: write
     steps:
+      - name: Checkout protected executor source
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 1
+          show-progress: false
+
       - name: Download only the same-run approved input
         uses: actions/download-artifact@v8
         with:

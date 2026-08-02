@@ -38,6 +38,8 @@ class StagingDeploymentWorkflowContractTest(unittest.TestCase):
         deploy = self.workflow.split("  deploy:\n", 1)[1].split("  verify:\n", 1)[0]
         self.assertIn("environment: staging-deployment", deploy)
         self.assertIn("id-token: write", deploy)
+        self.assertIn("Checkout protected executor source", deploy)
+        self.assertIn("uses: actions/checkout@v5", deploy)
         self.assertIn("Validate same-run approval before any credential step", deploy)
         self.assertIn("scripts.staging_deployment_executor", deploy)
         self.assertIn("Generate bounded deployment plan before authentication", deploy)
