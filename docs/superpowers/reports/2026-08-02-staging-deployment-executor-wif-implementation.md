@@ -123,6 +123,18 @@ deploy job에 보호 executor source checkout과 계약 테스트를 추가해 �
 `90ddf598f6e0f63cfe850eb92c3dd5d27efc40d5`로 push했고, 그 결과 WIF provider condition도
 동일 SHA로 갱신·read-back했습니다. 다음 dispatch는 이 새 workflow SHA를 사용해야 합니다.
 
+수정 후 재실행한 보호 dry-run [run 30744264388](https://github.com/WBmaker2/rhwp/actions/runs/30744264388)은
+prepare와 보호 Environment 승인, same-run packet 검증 및 bounded plan 생성에 성공했습니다.
+`execute_mutation=false`이므로 WIF auth와 apply 단계는 `skipped`였고, Cloud mutation은
+없었습니다. execution evidence artifact의 exact-byte SHA-256은 다음과 같습니다.
+
+- `plan-evidence.json`: `0fa324214aaf075a0b968d1b66e20e2e5b8fec631f536bacfa03052f74aa05aa`
+- `post-evidence.json`: `1b0238c2dc1b9c79e170f75e8fde68151b53d5a0d47ff94c50543a3a24d198c3`
+- 두 evidence 모두 packet SHA `54a54e80b49d6c5693ed08cc34cf7a6c6f75a005afe4779004620575c7de0858`,
+  source commit `29c4c037b2a307a056f4801e248558311337b979`, approval reference
+  `staging-bootstrap-approval-2026-07-27-001`에 묶여 있습니다.
+- 계획된 canonical action은 19개이며 `mutationCommands=[]`, `executedActionIds=[]`입니다.
+
 workflow 파일이 새 commit으로 바뀌면 provider condition의 workflow SHA도 바뀌므로, 현재
 제안값을 바로 외부에 적용하면 fail-closed가 깨질 수 있습니다. 따라서 다음 순서는
 의도한 파일의 커밋·push 후 새 workflow SHA를 read-back하고, 그 SHA를 포함한 WIF/IAM/
@@ -190,7 +202,7 @@ Environment에는 secret 이름 2개가 존재하고 secret 원문은 출력하�
 로컬 구현과 외부 identity 준비가 완료되었습니다. 외부 실행을 계속하려면 다음 두 단계가
 분리되어야 합니다.
 
-1. fresh packet/preflight artifact로 `execute_mutation=false` 보호 workflow를 실행합니다.
+1. **완료:** fresh packet/preflight artifact로 `execute_mutation=false` 보호 workflow를 실행했습니다.
 2. acceptance/rollback evidence가 준비되고 별도 명시 승인된 경우에만
    `execute_mutation=true`를 실행합니다.
 

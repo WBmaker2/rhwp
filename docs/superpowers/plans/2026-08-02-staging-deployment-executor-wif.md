@@ -80,7 +80,7 @@ raw secret read, Firebase API key read는 허용하지 않는다. 실제 permiss
    **완료**
 4. `staging-deployment` Environment에 두 공개 식별자만 secret으로 등록하고 값은 로그에
    출력하지 않는다. **완료**
-5. 새 same-run packet/approval artifact로 `execute_mutation=false` workflow를 먼저 실행한다.
+5. 새 same-run packet/approval artifact로 `execute_mutation=false` workflow를 먼저 실행한다. **run 30744264388 성공**
 6. 사용자가 실제 mutation과 deployment를 별도로 승인한 경우에만 `execute_mutation=true`를
    실행한다.
 7. Cloud Run revision, Tasks queue, IAM before/after, acceptance/rollback evidence를 생성하고
@@ -97,5 +97,5 @@ raw secret read, Firebase API key read는 허용하지 않는다. 실제 permiss
 - postcondition 또는 acceptance evidence가 없음
 
 이 기준을 만족하지 못하면 cloud credential, mutation, deployment를 실행하지 않고 보고서와
-다음 승인 지점만 남긴다. 현재는 identity 준비가 완료되었지만 fresh same-run dry-run과
-실제 acceptance/rollback evidence가 아직 남아 있다.
+다음 승인 지점만 남긴다. 현재 identity 준비와 fresh same-run dry-run이 완료되었지만 실제
+acceptance/rollback evidence 및 별도 `execute_mutation=true` 실행 승인은 남아 있다.
