@@ -34,7 +34,7 @@
 | WIF pool | `projects/598693744358/locations/global/workloadIdentityPools/rhwp-github-actions` | 기존 pool 유지 |
 | WIF provider | `rhwp-staging-deployment` | OIDC provider 신규 생성 완료, mapping·condition·ACTIVE 상태 read-back 완료 |
 | provider mapping | `google.subject=assertion.sub`, `attribute.repository=assertion.repository`, `attribute.repository_id=assertion.repository_id`, `attribute.repository_owner_id=assertion.repository_owner_id`, `attribute.ref=assertion.ref`, `attribute.workflow_ref=assertion.workflow_ref`, `attribute.workflow_sha=assertion.workflow_sha` | mapping·condition read-back이 정확히 일치해야 함 |
-| provider condition | `repository`, repository/owner IDs, `refs/heads/feat/firebase-collaboration-mvp-v1`, `WBmaker2/rhwp/.github/workflows/staging-deployment.yml@refs/heads/feat/firebase-collaboration-mvp-v1`, `90ddf598f6e0f63cfe850eb92c3dd5d27efc40d5` | deploy checkout 보완 후 provider condition을 새 workflow SHA로 갱신·read-back 완료 |
+| provider condition | `repository`, repository/owner IDs, `refs/heads/feat/firebase-collaboration-mvp-v1`, `WBmaker2/rhwp/.github/workflows/staging-deployment.yml@refs/heads/feat/firebase-collaboration-mvp-v1`, `90ddf598ff3b1f0fc100cfde17cdcbde9a6a3043` | deploy checkout 보완 후 provider condition을 실제 workflow SHA로 갱신·read-back 완료 |
 | executor service account | `rhwp-staging-deploy-executor@rhwp-collaboration-staging-001.iam.gserviceaccount.com` | 생성 완료, custom role 및 WIF 사용자 바인딩 read-back 완료 |
 | GitHub Environment secret | `GCP_DEPLOY_WORKLOAD_IDENTITY_PROVIDER` | provider resource name만 저장, token/key 원문 금지, 등록 완료 |
 | GitHub Environment secret | `GCP_DEPLOY_SERVICE_ACCOUNT` | service-account email만 저장, key 원문 금지, 등록 완료 |
