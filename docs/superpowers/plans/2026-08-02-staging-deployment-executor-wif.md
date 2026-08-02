@@ -35,7 +35,7 @@
 | WIF provider | `rhwp-staging-deployment` | OIDC provider 신규 생성, 기존 provider 재사용 금지 |
 | provider mapping | `google.subject=assertion.sub`, `attribute.repository=assertion.repository`, `attribute.repository_id=assertion.repository_id`, `attribute.repository_owner_id=assertion.repository_owner_id`, `attribute.ref=assertion.ref`, `attribute.workflow_ref=assertion.workflow_ref`, `attribute.workflow_sha=assertion.workflow_sha` | mapping·condition read-back이 정확히 일치해야 함 |
 | provider condition | `repository`, repository/owner IDs, `refs/heads/feat/firebase-collaboration-mvp-v1`, `WBmaker2/rhwp/.github/workflows/staging-deployment.yml@refs/heads/feat/firebase-collaboration-mvp-v1`, 최종 workflow commit SHA | 최종 workflow commit을 push한 뒤 SHA를 확정하고 provider를 원자적으로 갱신 |
-| executor service account | `rhwp-staging-deployment-executor@rhwp-collaboration-staging-001.iam.gserviceaccount.com` | 신규 생성 또는 기존 계정과 충돌 여부를 먼저 확인 |
+| executor service account | `rhwp-staging-deploy-executor@rhwp-collaboration-staging-001.iam.gserviceaccount.com` | GCP account ID 30자 제한을 만족하는 신규 계정인지 먼저 확인 |
 | GitHub Environment secret | `GCP_DEPLOY_WORKLOAD_IDENTITY_PROVIDER` | provider resource name만 저장, token/key 원문 금지 |
 | GitHub Environment secret | `GCP_DEPLOY_SERVICE_ACCOUNT` | service-account email만 저장, key 원문 금지 |
 

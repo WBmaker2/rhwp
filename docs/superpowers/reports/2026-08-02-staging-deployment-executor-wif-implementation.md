@@ -78,7 +78,7 @@ git diff --check
 - 기존 WIF provider를 재사용하지 않고 deployment 전용 provider `rhwp-staging-deployment`를
   사용합니다.
 - executor 전용 service account
-  `rhwp-staging-deployment-executor@rhwp-collaboration-staging-001.iam.gserviceaccount.com`를
+  `rhwp-staging-deploy-executor@rhwp-collaboration-staging-001.iam.gserviceaccount.com`를
   사용합니다.
 - GitHub Environment에는 token/key가 아닌 두 공개 식별자만 secret으로 등록합니다.
   - `GCP_DEPLOY_WORKLOAD_IDENTITY_PROVIDER`
