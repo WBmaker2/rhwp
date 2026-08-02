@@ -285,3 +285,47 @@ workflow commit부터는 실패 evidence를 보존합니다.
 
 현재는 로컬 수정과 문서 기록까지만 진행하고, push·WIF 갱신·새 실제 mutation dispatch는
 사용자의 새 명시 승인 전에는 실행하지 않습니다.
+
+## 최신 실제 실행: 부분 Cloud Run 변경 후 fail-closed 중단
+
+이전 수정 commit `23cfc84eda9ce6ebb68c7b43225651bdd13acfbd`를 push하고 WIF provider의
+`attribute.workflow_sha`를 같은 SHA로 read-back한 뒤, 사용자가 승인한 `execute_mutation=true`
+dispatch [run 30745736401](https://github.com/WBmaker2/rhwp/actions/runs/30745736401)을 실행했습니다.
+
+다음 단계는 모두 성공했습니다.
+
+- prepare job과 same-run packet/artifact/source binding 검증
+- `staging-deployment` protected Environment 승인
+- bounded dry-run plan
+- WIF 인증과 gcloud setup
+- 실패 이후 execution evidence artifact 업로드
+
+그러나 첫 실제 action `cloud-run-collaboration`에서 `gcloud run deploy`가 비정상 종료했습니다.
+이 실패는 단순한 precondition 실패가 아니며, read-only reconcile 결과 Cloud Run에 다음 부분
+변경이 남아 있습니다.
+
+- 서비스 `rhwp-collaboration-staging` 생성
+- revision `rhwp-collaboration-staging-00001-z6l` 생성
+- image digest `sha256:45ccfbbe83ab5b35e561420d9e5e691403e7f9bb53da942623a1e5cf4201d1bf`
+- revision 상태 `HealthCheckContainerError`: `PORT=8080` listen 실패
+- `rhwp-document-api-staging` 서비스는 없음
+- Cloud Tasks queue는 없음
+- 후속 IAM binding action은 실행되지 않음
+
+실행 evidence는 다음을 기록합니다.
+
+- apply plan: `mode=apply`, `status=planned`, `mutationCommands=[]`
+- apply post: `status=failed-first-error`, `failedActionId=cloud-run-collaboration`,
+  `executedActionIds=[]`, `mutationCommands=[]`
+
+실패 revision의 read-only describe에서는 Cloud Run service YAML이 요구하는
+`FIREBASE_STORAGE_BUCKET`과 Secret Manager 기반 `INTERNAL_API_TOKEN` 환경변수가 관찰되지
+않았습니다. 로컬 `scripts/staging_deployment_executor.py`의 `_fixed_argv()`도 image·runtime·
+service account만 `gcloud run deploy`에 전달하고 env/secret 플래그를 전달하지 않습니다.
+`services/collaboration-server`는 이 두 값을 필수로 검증하므로, 컨테이너가 시작 단계에서
+종료하여 8080 포트를 열지 못한 것이 현재 확인 가능한 직접 원인입니다.
+
+따라서 이번 실패는 self-review, public invoker, WIF 인증 문제가 아닙니다. 이미 부분 Cloud
+Run 변경이 있으므로 재실행·삭제·재배포·IAM/secret 변경은 즉시 중단했습니다. 다음 작업은
+컨테이너 startup 원인과 env/secret 전달 diff를 read-only로 검토하고, 별도의 recovery
+승인을 받은 뒤에만 새로운 source-bound packet과 workflow 실행을 준비하는 것입니다.

@@ -2,7 +2,7 @@
 
 작성일: 2026-08-02 (Asia/Seoul)
 대상 브랜치: `feat/firebase-collaboration-mvp-v1`
-상태: 로컬 구현·WIF/IAM/Environment 준비 완료, 최신 `execute_mutation=true` dispatch는 첫 사전관찰 오류에서 fail-closed 중단
+상태: 로컬 구현·WIF/IAM/Environment 준비 완료, 최신 `execute_mutation=true` dispatch는 첫 Cloud Run write 후 startup health check 오류로 fail-closed 중단
 
 ## 목적
 
@@ -34,7 +34,7 @@
 | WIF pool | `projects/598693744358/locations/global/workloadIdentityPools/rhwp-github-actions` | 기존 pool 유지 |
 | WIF provider | `rhwp-staging-deployment` | OIDC provider 신규 생성 완료, mapping·condition·ACTIVE 상태 read-back 완료 |
 | provider mapping | `google.subject=assertion.sub`, `attribute.repository=assertion.repository`, `attribute.repository_id=assertion.repository_id`, `attribute.repository_owner_id=assertion.repository_owner_id`, `attribute.ref=assertion.ref`, `attribute.workflow_ref=assertion.workflow_ref`, `attribute.workflow_sha=assertion.workflow_sha` | mapping·condition read-back이 정확히 일치해야 함 |
-| provider condition | `repository`, repository/owner IDs, `refs/heads/feat/firebase-collaboration-mvp-v1`, `WBmaker2/rhwp/.github/workflows/staging-deployment.yml@refs/heads/feat/firebase-collaboration-mvp-v1`, 현재 `f29c0fcb8997bbd8915e6bf202d2501afb5c4743` | 최신 원격 workflow SHA와 일치하도록 갱신·read-back했고 run `30745179965`에서 WIF 인증이 성공했다. 로컬 수정 push 후에는 새 원격 SHA로 다시 갱신해야 함 |
+| provider condition | `repository`, repository/owner IDs, `refs/heads/feat/firebase-collaboration-mvp-v1`, `WBmaker2/rhwp/.github/workflows/staging-deployment.yml@refs/heads/feat/firebase-collaboration-mvp-v1`, 현재 `23cfc84eda9ce6ebb68c7b43225651bdd13acfbd` | commit `23cfc84`로 push한 뒤 갱신·read-back했고 run `30745736401`에서 WIF 인증이 성공했다 |
 | executor service account | `rhwp-staging-deploy-executor@rhwp-collaboration-staging-001.iam.gserviceaccount.com` | 생성 완료, custom role 및 WIF 사용자 바인딩 read-back 완료 |
 | GitHub Environment secret | `GCP_DEPLOY_WORKLOAD_IDENTITY_PROVIDER` | provider resource name만 저장, token/key 원문 금지, 등록 완료 |
 | GitHub Environment secret | `GCP_DEPLOY_SERVICE_ACCOUNT` | service-account email만 저장, key 원문 금지, 등록 완료 |
@@ -82,9 +82,9 @@ raw secret read, Firebase API key read는 허용하지 않는다. 실제 permiss
    출력하지 않는다. **완료**
 5. 새 same-run packet/approval artifact로 `execute_mutation=false` workflow를 먼저 실행한다. **run 30744264388 성공**
 6. 사용자가 실제 mutation과 deployment를 별도로 승인한 경우에만 `execute_mutation=true`를
-   실행한다. 최신 dispatch `30745179965`는 WIF 인증에는 성공했지만 첫 Cloud Run
-   사전관찰에서 중단되었으므로, 원인 reconcile과 observer 수정 후 새 workflow commit으로
-   다시 source binding을 갱신해야 한다.
+   실행한다. 최신 dispatch `30745736401`은 WIF 인증과 첫 사전관찰을 통과했지만,
+   `cloud-run-collaboration` write 뒤 컨테이너 startup health check에서 실패했다.
+   따라서 재실행하지 않고 read-only 원인 reconcile 후 별도 recovery 승인으로 되돌린다.
 7. Cloud Run revision, Tasks queue, IAM before/after, acceptance/rollback evidence를 생성하고
    실패 시 즉시 중단한다.
 
@@ -99,9 +99,34 @@ raw secret read, Firebase API key read는 허용하지 않는다. 실제 permiss
 - gcloud 리소스 미존재 오류(`Cannot find service`)를 오류로 잘못 처리함
 - postcondition 또는 acceptance evidence가 없음
 
-이 기준을 만족하지 못하면 cloud credential, mutation, deployment를 실행하지 않고 보고서와
-다음 승인 지점만 남긴다. 최신 run은 WIF 인증 후 첫 사전관찰에서 fail-closed 중단되었고,
-read-only reconcile 결과 write가 없었다. 로컬 observer와 실패 evidence 보존 수정은 253개
-회귀 테스트를 통과했다. 다음 외부 단계는 수정 commit·push, 새 원격 workflow SHA에 맞춘
-WIF `attribute.workflow_sha` 갱신·read-back, 그리고 그 이후 새 mutation dispatch이며,
-각 단계 전 명시 승인을 요구한다.
+이 기준을 만족하지 못하면 추가 cloud credential, mutation, deployment를 실행하지 않고
+보고서와 다음 승인 지점만 남긴다. 최신 run `30745736401`에서는 WIF 인증과 보호 환경 승인은
+성공했지만 첫 Cloud Run write가 부분적으로 적용되어 실패한 상태이다. 후속 리소스·IAM
+binding·Tasks queue는 실행되지 않았다. 로컬 observer와 실패 evidence 보존 수정은 253개
+회귀 테스트를 통과했으며, 다음 단계는 컨테이너 startup 원인의 read-only 진단과 recovery
+diff 검토뿐이다. 삭제·재배포·IAM/secret 변경·새 dispatch는 별도 명시 승인을 요구한다.
+
+## 최신 실제 실행의 부분 변경과 중단 상태
+
+commit `23cfc84eda9ce6ebb68c7b43225651bdd13acfbd`를 원격에 push하고 WIF condition을 같은
+`workflow_sha`로 read-back한 뒤, 승인된 packet으로 [run 30745736401](https://github.com/WBmaker2/rhwp/actions/runs/30745736401)을
+실행했다. prepare, protected Environment 승인, same-run binding, dry-run plan, WIF 인증,
+gcloud setup은 모두 성공했다.
+
+executor는 첫 action `cloud-run-collaboration`에서 `gcloud run deploy`를 호출했고, 명령은
+비정상 종료했지만 Cloud Run 서비스 객체와 실패 revision이 남았다. read-only 확인 결과:
+
+- service: `rhwp-collaboration-staging`
+- revision: `rhwp-collaboration-staging-00001-z6l`
+- image digest: `sha256:45ccfbbe83ab5b35e561420d9e5e691403e7f9bb53da942623a1e5cf4201d1bf`
+- 상태: `HealthCheckContainerError`, `PORT=8080`에 listen하지 못함
+- revision describe에서 `FIREBASE_STORAGE_BUCKET` 및 `INTERNAL_API_TOKEN` env 항목이 관찰되지 않음
+- `rhwp-document-api-staging`은 여전히 없음, Cloud Tasks queue도 없음
+- apply evidence: `failed-first-error`, `failedActionId=cloud-run-collaboration`,
+  `executedActionIds=[]`, `mutationCommands=[]`
+
+소스상 `_fixed_argv()`는 image·runtime·service account만 전달하고, Cloud Run service YAML에
+있는 `FIREBASE_STORAGE_BUCKET`과 Secret Manager `INTERNAL_API_TOKEN` 설정을 전달하지 않는다.
+따라서 애플리케이션의 필수 환경 검증을 통과하지 못해 컨테이너가 포트를 열지 못한 것이
+현재 가장 직접적인 원인이다. 이는 self-review, public invoker, WIF attribute condition
+문제가 아니다. 현재 경계에서는 failed service/revision을 삭제하거나 재배포하지 않는다.
