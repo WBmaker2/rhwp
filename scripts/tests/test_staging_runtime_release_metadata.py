@@ -14,16 +14,66 @@ from scripts.staging_runtime_release_metadata import (
 )
 
 
-ROOT = Path(__file__).resolve().parents[2]
-RELEASE_PATH = ROOT / "artifacts/actual-release-candidate/run-30728891585-attempt-1/staging-release-candidate-evidence.json"
-WORKER_PATH = ROOT / "artifacts/actual-worker-bootstrap/run-30729199234-attempt-2/staging-worker-bootstrap-evidence.json"
 SOURCE = "71f084d9fad18bf3514da9dcd50d5d833b79b739"
+
+
+def _fixture_pair() -> tuple[dict, dict, bytes, bytes]:
+    """Build self-contained evidence fixtures; never depend on local artifacts."""
+    release = {
+        "schemaVersion": "rhwp.staging-release-candidate/v1",
+        "sourceCommitSha": SOURCE,
+        "workflowRunId": "30728891585",
+        "workflowRunAttempt": 1,
+        "deploymentStage": "initial",
+        "project": {"number": "598693744358"},
+        "firebase": {
+            "webAppId": "1:598693744358:web:ef670ba1365f30a8117527",
+            "apiKeyReference": "firebase-web-config/staging",
+        },
+        "cloudRun": {
+            name: {
+                "image": f"asia-northeast3-docker.pkg.dev/rhwp-collaboration-staging-001/rhwp-staging/{name}",
+                "digest": digest,
+            }
+            for name, digest in {
+                "collaboration": "1" * 64,
+                "documentApi": "2" * 64,
+                "documentWorker": "3" * 64,
+            }.items()
+        },
+        "rollbackRevisionIds": [None, None, None],
+    }
+    release_raw = (json.dumps(release, ensure_ascii=False, indent=2) + "\n").encode()
+    worker = {
+        "schemaVersion": "rhwp.staging-worker-bootstrap/v1",
+        "sourceCommitSha": SOURCE,
+        "releaseWorkflowRunId": "30728891585",
+        "releaseWorkflowRunAttempt": 1,
+        "releaseArtifactDigest": "sha256:" + "4" * 64,
+        "releaseEvidenceSha256": hashlib.sha256(release_raw).hexdigest(),
+        "bootstrapWorkflowRunId": "30729199234",
+        "bootstrapWorkflowRunAttempt": 2,
+        "project": {"number": "598693744358"},
+        "firebase": {"webAppId": "1:598693744358:web:ef670ba1365f30a8117527"},
+        "worker": {
+            "service": "rhwp-document-worker-staging",
+            "image": release["cloudRun"]["documentWorker"]["image"],
+            "digest": "3" * 64,
+            "storageBucket": "rhwp-collaboration-staging-001.firebasestorage.app",
+            "serviceAccount": "rhwp-document-worker-staging@rhwp-collaboration-staging-001.iam.gserviceaccount.com",
+            "url": "https://rhwp-document-worker-staging-zfwxigwhha-du.a.run.app",
+            "revision": "rhwp-document-worker-staging-00002-4p2",
+        },
+        "deploymentStage": "initial",
+        "rollbackRevisionId": None,
+    }
+    worker_raw = (json.dumps(worker, ensure_ascii=False, indent=2) + "\n").encode()
+    return release, worker, release_raw, worker_raw
 
 
 class RuntimeReleaseMetadataTest(unittest.TestCase):
     def setUp(self) -> None:
-        self.release = json.loads(RELEASE_PATH.read_text())
-        self.worker = json.loads(WORKER_PATH.read_text())
+        self.release, self.worker, self.release_raw, self.worker_raw = _fixture_pair()
 
     def test_derives_task_targets_from_observed_worker_url(self) -> None:
         metadata = build_release_metadata(self.release, self.worker, expected_source_commit=SOURCE)
@@ -46,18 +96,20 @@ class RuntimeReleaseMetadataTest(unittest.TestCase):
             build_release_metadata(self.release, worker, expected_source_commit=SOURCE)
 
     def test_cli_checks_exact_input_bytes_and_reports_output_digest(self) -> None:
-        release_raw = RELEASE_PATH.read_bytes()
-        worker_raw = WORKER_PATH.read_bytes()
         with tempfile.TemporaryDirectory() as directory:
+            release_path = Path(directory) / "release-evidence.json"
+            worker_path = Path(directory) / "worker-evidence.json"
+            release_path.write_bytes(self.release_raw)
+            worker_path.write_bytes(self.worker_raw)
             output = Path(directory) / "release-metadata.json"
             result = main([
-                "--release-evidence", str(RELEASE_PATH),
-                "--worker-evidence", str(WORKER_PATH),
+                "--release-evidence", str(release_path),
+                "--worker-evidence", str(worker_path),
                 "--expected-source-commit", SOURCE,
-                "--expected-release-evidence-sha256", hashlib.sha256(release_raw).hexdigest(),
-                "--expected-worker-evidence-sha256", hashlib.sha256(worker_raw).hexdigest(),
+                "--expected-release-evidence-sha256", hashlib.sha256(self.release_raw).hexdigest(),
+                "--expected-worker-evidence-sha256", hashlib.sha256(self.worker_raw).hexdigest(),
                 "--expected-release-artifact-digest",
-                "sha256:6dbb723eb367f5304747259ce85c551c9eebe5cb55e7263b7160c7f7053b25df",
+                "sha256:" + "4" * 64,
                 "--output", str(output),
             ])
             self.assertEqual(result, 0)
