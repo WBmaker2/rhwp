@@ -2,7 +2,7 @@
 
 작성일: 2026-08-02 (Asia/Seoul)
 대상 브랜치: `feat/firebase-collaboration-mvp-v1`
-상태: 로컬 구현·회귀 검증 완료, 외부 WIF/IAM/Environment 적용 전
+상태: 로컬 구현·회귀 검증 완료, 제한된 WIF 준비 완료, executor 권한 부여 대기
 
 ## 이번 단계에서 구현한 것
 
@@ -37,8 +37,8 @@ same-run artifact 검증
 ```
 
 `execute_mutation=false`가 기본값이며, `verify` job은 실제 acceptance/rollback evidence가
-같은 실행에 존재하지 않으면 fail-closed합니다. 따라서 이번 단계에서는 cloud mutation이나
-deployment를 실행하지 않았습니다.
+같은 실행에 존재하지 않으면 fail-closed합니다. 따라서 이번 단계에서는 Cloud Run·Cloud
+Tasks·Firebase·Secret Manager 리소스 mutation이나 deployment를 실행하지 않았습니다.
 
 ## 검증 결과
 
@@ -88,11 +88,22 @@ git diff --check
 
 ## 현재 차단 지점
 
-아직 다음 외부 변경은 하지 않았습니다.
+이번 외부 준비에서 다음 항목을 적용했습니다.
 
-- deployment 전용 WIF provider 생성/변경
-- executor service account 생성
-- custom role 또는 project/resource IAM binding
+- deployment 전용 WIF provider `rhwp-staging-deployment`를 생성했습니다.
+- provider 상태·mapping·condition을 read-back했으며 `ACTIVE`이고 다음 workflow SHA에
+  고정되어 있습니다: `408e806818bbd9d58a08d8b2fa587e7eb91039ef`
+- executor 서비스 계정
+  `rhwp-staging-deploy-executor@rhwp-collaboration-staging-001.iam.gserviceaccount.com`를
+  생성했습니다.
+- 해당 서비스 계정에는 지정된 repository ID principalSet에만
+  `roles/iam.workloadIdentityUser`를 바인딩했습니다.
+
+다음 외부 변경은 아직 하지 않았습니다.
+
+- `stagingDeploymentExecutor` custom role 생성
+- executor service account에 custom role 부여
+- packet의 project/resource IAM binding
 - `staging-deployment` Environment secret 등록
 - `execute_mutation=true` workflow dispatch
 - Cloud Run, Cloud Tasks, Firebase, Secret Manager mutation
@@ -102,6 +113,52 @@ workflow 파일이 새 commit으로 바뀌면 provider condition의 workflow SHA
 의도한 파일의 커밋·push 후 새 workflow SHA를 read-back하고, 그 SHA를 포함한 WIF/IAM/
 Environment diff를 별도로 승인받는 것입니다.
 
+## 권한 부여 차단 기록
+
+`stagingDeploymentExecutor` custom role 생성을 다음 최소 후보 권한으로 시도했지만,
+보안 검토기가 프로젝트·서비스·Secret·Storage·Cloud Run·Cloud Tasks 전반의
+`setIamPolicy`를 포함한 지속 권한 경계 확대이므로 정확한 목록의 별도 명시 승인이
+필요하다고 차단했습니다. 역할이나 더 넓은 predefined role로 우회하지 않았습니다.
+
+후보 permission 목록:
+
+```text
+run.locations.get
+run.operations.get
+run.revisions.get
+run.services.create
+run.services.get
+run.services.update
+run.services.getIamPolicy
+run.services.setIamPolicy
+cloudtasks.locations.get
+cloudtasks.queues.create
+cloudtasks.queues.get
+cloudtasks.queues.getIamPolicy
+cloudtasks.queues.setIamPolicy
+resourcemanager.projects.get
+resourcemanager.projects.getIamPolicy
+resourcemanager.projects.setIamPolicy
+storage.buckets.getIamPolicy
+storage.buckets.setIamPolicy
+secretmanager.secrets.getIamPolicy
+secretmanager.secrets.setIamPolicy
+iam.serviceAccounts.get
+iam.serviceAccounts.getIamPolicy
+iam.serviceAccounts.setIamPolicy
+iam.serviceAccounts.actAs
+artifactregistry.repositories.get
+artifactregistry.repositories.downloadArtifacts
+serviceusage.services.get
+serviceusage.services.use
+```
+
+read-back 결과 custom role은 생성되지 않았고, executor 서비스 계정에는 WIF 사용자
+바인딩만 있습니다. 따라서 현재 workflow가 이 계정으로 실제 mutation을 수행할 권한은
+없습니다. 이 목록을 그대로 허용할지, project/resource IAM 변경을 별도 수동 단계로
+분리할지 결정하기 전에는 Environment secret 등록과 `execute_mutation=true` dispatch를
+진행하지 않습니다.
+
 ## 추적 상태 및 안전성
 
 - PR #1은 Draft/open/unmerged 상태를 유지해야 합니다.
@@ -110,7 +167,10 @@ Environment diff를 별도로 승인받는 것입니다.
   service-account key, Firebase API key 원문, internal flush token 원문을 파일·로그에
   저장하지 않았습니다.
 - 기존 사용자가 만든 dirty/untracked 파일은 staging 대상에서 제외합니다.
-- cloud mutation, deployment, secret 변경은 이번 단계에 없었습니다.
+- Cloud Run·Cloud Tasks·Firebase·Secret Manager 리소스 mutation과 deployment는 없었습니다.
+- 다만 승인된 외부 준비의 일환으로 WIF provider, executor service account와 해당 계정의
+  `roles/iam.workloadIdentityUser` 바인딩은 적용되었습니다.
+- GitHub Environment secret, executor custom role, packet IAM binding은 적용되지 않았습니다.
 
 ## 다음 승인 필요
 
