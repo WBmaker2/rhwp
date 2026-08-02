@@ -92,7 +92,7 @@ git diff --check
 
 - deployment 전용 WIF provider `rhwp-staging-deployment`를 생성했습니다.
 - provider 상태·mapping·condition을 read-back했으며 `ACTIVE`이고 다음 workflow SHA에
-  고정되어 있습니다: `408e806818bbd9d58a08d8b2fa587e7eb91039ef`
+  고정되어 있습니다: `90ddf598f6e0f63cfe850eb92c3dd5d27efc40d5`
 - executor 서비스 계정
   `rhwp-staging-deploy-executor@rhwp-collaboration-staging-001.iam.gserviceaccount.com`를
   생성했습니다.
@@ -111,6 +111,17 @@ git diff --check
 
 - `execute_mutation=true` workflow dispatch
 - Cloud Run, Cloud Tasks, Firebase, Secret Manager mutation
+
+## 보호 dry-run 첫 시도와 수정
+
+첫 보호 dry-run [run 30744046298](https://github.com/WBmaker2/rhwp/actions/runs/30744046298)은
+prepare 단계와 Environment 승인까지 통과했지만, deploy job이 executor Python 모듈을
+읽을 `actions/checkout`을 누락하여 `ModuleNotFoundError: No module named 'scripts'`로
+fail-closed 중단되었습니다. credential 발급과 Cloud mutation 단계는 실행되지 않았습니다.
+
+deploy job에 보호 executor source checkout과 계약 테스트를 추가해 커밋
+`90ddf598f6e0f63cfe850eb92c3dd5d27efc40d5`로 push했고, 그 결과 WIF provider condition도
+동일 SHA로 갱신·read-back했습니다. 다음 dispatch는 이 새 workflow SHA를 사용해야 합니다.
 
 workflow 파일이 새 commit으로 바뀌면 provider condition의 workflow SHA도 바뀌므로, 현재
 제안값을 바로 외부에 적용하면 fail-closed가 깨질 수 있습니다. 따라서 다음 순서는
