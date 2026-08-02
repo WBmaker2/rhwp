@@ -19,7 +19,12 @@ def _read_json(argv: tuple[str, ...], *, not_found_ok: bool = True) -> Any:
     completed = subprocess.run(list(argv), shell=False, check=False, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     if completed.returncode != 0:
         stderr = completed.stderr.lower()
-        if not_found_ok and ("not found" in stderr or "not_found" in stderr or "does not exist" in stderr):
+        if not_found_ok and (
+            "not found" in stderr
+            or "not_found" in stderr
+            or "does not exist" in stderr
+            or "cannot find service" in stderr
+        ):
             return None
         raise DeploymentObserverError("read-only cloud observation failed")
     try:

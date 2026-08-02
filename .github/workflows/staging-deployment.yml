@@ -256,11 +256,12 @@ jobs:
             --apply
 
       - name: Upload deployment execution evidence
+        if: always()
         uses: actions/upload-artifact@v7
         with:
           name: staging-deployment-execution-evidence
           path: artifacts/staging-deployment-execution/*.json
-          if-no-files-found: error
+          if-no-files-found: warn
           retention-days: 30
 
       - name: Report protected dry-run boundary

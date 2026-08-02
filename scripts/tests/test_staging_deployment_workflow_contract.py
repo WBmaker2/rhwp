@@ -47,6 +47,8 @@ class StagingDeploymentWorkflowContractTest(unittest.TestCase):
         self.assertIn("GCP_DEPLOY_WORKLOAD_IDENTITY_PROVIDER", deploy)
         self.assertIn("GCP_DEPLOY_SERVICE_ACCOUNT", deploy)
         self.assertIn("inputs.execute_mutation == true", deploy)
+        self.assertIn("if: always()", deploy)
+        self.assertIn("if-no-files-found: warn", deploy)
         self.assertLess(deploy.index("Validate same-run approval before any credential step"), deploy.index("google-github-actions/auth@v2"))
         self.assertLess(deploy.index("google-github-actions/auth@v2"), deploy.index("--apply"))
         self.assertNotIn("service-account-key", deploy)

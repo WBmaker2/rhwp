@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import copy
 import json
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
 from typing import Any
+from unittest.mock import patch
 
 from scripts.staging_deployment_approval_record import build_approval_record, canonical_sha256, packet_sha256
 from scripts.staging_deployment_executor import (
@@ -15,6 +17,7 @@ from scripts.staging_deployment_executor import (
     validate_prepared_bundle,
 )
 from scripts.staging_deployment_prepare import prepare_bundle
+from scripts.staging_deployment_observer import _read_json
 from scripts.tests.test_staging_deployment_approval_record import evidence, packet, review
 
 
@@ -190,6 +193,16 @@ class StagingDeploymentExecutorTest(unittest.TestCase):
         value = json.loads(post.read_text())
         self.assertEqual(value["status"], "failed-first-error")
         self.assertEqual(value["mutationCommands"], [])
+
+    def test_observer_treats_gcloud_cannot_find_service_as_missing(self) -> None:
+        completed = subprocess.CompletedProcess(
+            args=("gcloud", "run", "services", "describe"),
+            returncode=1,
+            stdout="",
+            stderr="ERROR: (gcloud.run.services.describe) Cannot find service [rhwp-collaboration-staging].",
+        )
+        with patch("scripts.staging_deployment_observer.subprocess.run", return_value=completed):
+            self.assertIsNone(_read_json(("gcloud", "run", "services", "describe")))
 
 
 if __name__ == "__main__":

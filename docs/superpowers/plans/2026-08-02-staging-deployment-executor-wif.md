@@ -2,7 +2,7 @@
 
 작성일: 2026-08-02 (Asia/Seoul)
 대상 브랜치: `feat/firebase-collaboration-mvp-v1`
-상태: 로컬 구현·WIF/IAM/Environment 준비 완료, `execute_mutation=true` dispatch는 WIF 조건 불일치로 인증 전에 중단
+상태: 로컬 구현·WIF/IAM/Environment 준비 완료, 최신 `execute_mutation=true` dispatch는 첫 사전관찰 오류에서 fail-closed 중단
 
 ## 목적
 
@@ -34,7 +34,7 @@
 | WIF pool | `projects/598693744358/locations/global/workloadIdentityPools/rhwp-github-actions` | 기존 pool 유지 |
 | WIF provider | `rhwp-staging-deployment` | OIDC provider 신규 생성 완료, mapping·condition·ACTIVE 상태 read-back 완료 |
 | provider mapping | `google.subject=assertion.sub`, `attribute.repository=assertion.repository`, `attribute.repository_id=assertion.repository_id`, `attribute.repository_owner_id=assertion.repository_owner_id`, `attribute.ref=assertion.ref`, `attribute.workflow_ref=assertion.workflow_ref`, `attribute.workflow_sha=assertion.workflow_sha` | mapping·condition read-back이 정확히 일치해야 함 |
-| provider condition | `repository`, repository/owner IDs, `refs/heads/feat/firebase-collaboration-mvp-v1`, `WBmaker2/rhwp/.github/workflows/staging-deployment.yml@refs/heads/feat/firebase-collaboration-mvp-v1`, 현재 `90ddf598ff3b1f0fc100cfde17cdcbde9a6a3043` | 실제 dispatch head `f29c0fcb8997bbd8915e6bf202d2501afb5c4743`와 불일치가 OIDC 인증 거부로 확인됨. 별도 승인 후 `attribute.workflow_sha`만 갱신·read-back 필요 |
+| provider condition | `repository`, repository/owner IDs, `refs/heads/feat/firebase-collaboration-mvp-v1`, `WBmaker2/rhwp/.github/workflows/staging-deployment.yml@refs/heads/feat/firebase-collaboration-mvp-v1`, 현재 `f29c0fcb8997bbd8915e6bf202d2501afb5c4743` | 최신 원격 workflow SHA와 일치하도록 갱신·read-back했고 run `30745179965`에서 WIF 인증이 성공했다. 로컬 수정 push 후에는 새 원격 SHA로 다시 갱신해야 함 |
 | executor service account | `rhwp-staging-deploy-executor@rhwp-collaboration-staging-001.iam.gserviceaccount.com` | 생성 완료, custom role 및 WIF 사용자 바인딩 read-back 완료 |
 | GitHub Environment secret | `GCP_DEPLOY_WORKLOAD_IDENTITY_PROVIDER` | provider resource name만 저장, token/key 원문 금지, 등록 완료 |
 | GitHub Environment secret | `GCP_DEPLOY_SERVICE_ACCOUNT` | service-account email만 저장, key 원문 금지, 등록 완료 |
@@ -82,7 +82,9 @@ raw secret read, Firebase API key read는 허용하지 않는다. 실제 permiss
    출력하지 않는다. **완료**
 5. 새 same-run packet/approval artifact로 `execute_mutation=false` workflow를 먼저 실행한다. **run 30744264388 성공**
 6. 사용자가 실제 mutation과 deployment를 별도로 승인한 경우에만 `execute_mutation=true`를
-   실행한다. 현재 dispatch는 WIF 조건 불일치로 인증 전에 중단되었으므로 재실행하지 않는다.
+   실행한다. 최신 dispatch `30745179965`는 WIF 인증에는 성공했지만 첫 Cloud Run
+   사전관찰에서 중단되었으므로, 원인 reconcile과 observer 수정 후 새 workflow commit으로
+   다시 source binding을 갱신해야 한다.
 7. Cloud Run revision, Tasks queue, IAM before/after, acceptance/rollback evidence를 생성하고
    실패 시 즉시 중단한다.
 
@@ -94,9 +96,12 @@ raw secret read, Firebase API key read는 허용하지 않는다. 실제 permiss
 - Environment secret에 raw credential이 있거나 이름/값 read-back이 불일치함
 - packet/approval/source/run/artifact SHA가 하나라도 불일치함
 - observer가 permission/API 오류를 missing으로 해석함
+- gcloud 리소스 미존재 오류(`Cannot find service`)를 오류로 잘못 처리함
 - postcondition 또는 acceptance evidence가 없음
 
 이 기준을 만족하지 못하면 cloud credential, mutation, deployment를 실행하지 않고 보고서와
-다음 승인 지점만 남긴다. 현재 identity 준비와 fresh same-run dry-run은 완료되었고,
-`execute_mutation=true` dispatch는 WIF 조건 불일치로 fail-closed 중단되었다. 다음 외부 단계는
-WIF SHA 단일 diff의 별도 승인·read-back이며, 그 전에는 재실행하지 않는다.
+다음 승인 지점만 남긴다. 최신 run은 WIF 인증 후 첫 사전관찰에서 fail-closed 중단되었고,
+read-only reconcile 결과 write가 없었다. 로컬 observer와 실패 evidence 보존 수정은 253개
+회귀 테스트를 통과했다. 다음 외부 단계는 수정 commit·push, 새 원격 workflow SHA에 맞춘
+WIF `attribute.workflow_sha` 갱신·read-back, 그리고 그 이후 새 mutation dispatch이며,
+각 단계 전 명시 승인을 요구한다.
