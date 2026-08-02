@@ -175,6 +175,16 @@
         "resource": "bucket:${FIREBASE_STORAGE_BUCKET}"
       },
       {
+        "principal": "allUsers",
+        "role": "roles/run.invoker",
+        "resource": "cloudRun:rhwp-collaboration-staging"
+      },
+      {
+        "principal": "allUsers",
+        "role": "roles/run.invoker",
+        "resource": "cloudRun:rhwp-document-api-staging"
+      },
+      {
         "principal": "serviceAccount:${TASKS_SERVICE_ACCOUNT_EMAIL}",
         "role": "roles/run.invoker",
         "resource": "cloudRun:rhwp-document-worker-staging"
