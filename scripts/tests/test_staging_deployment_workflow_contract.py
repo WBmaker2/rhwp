@@ -39,9 +39,15 @@ class StagingDeploymentWorkflowContractTest(unittest.TestCase):
         self.assertIn("environment: staging-deployment", deploy)
         self.assertIn("id-token: write", deploy)
         self.assertIn("Validate same-run approval before any credential step", deploy)
+        self.assertIn("scripts.staging_deployment_executor", deploy)
+        self.assertIn("Generate bounded deployment plan before authentication", deploy)
+        self.assertIn("google-github-actions/auth@v2", deploy)
+        self.assertIn("GCP_DEPLOY_WORKLOAD_IDENTITY_PROVIDER", deploy)
+        self.assertIn("GCP_DEPLOY_SERVICE_ACCOUNT", deploy)
         self.assertIn("inputs.execute_mutation == true", deploy)
-        self.assertIn("No OIDC credential action or cloud mutation command was executed.", deploy)
-        self.assertNotRegex(deploy, re.compile(r"google-github-actions/auth|gcloud\s+run|firebase\s+deploy"))
+        self.assertLess(deploy.index("Validate same-run approval before any credential step"), deploy.index("google-github-actions/auth@v2"))
+        self.assertLess(deploy.index("google-github-actions/auth@v2"), deploy.index("--apply"))
+        self.assertNotIn("service-account-key", deploy)
 
     def test_packet_and_record_mutation_commands_are_guarded(self) -> None:
         self.assertIn('prepared.get("mutationCommands") != []', self.workflow)

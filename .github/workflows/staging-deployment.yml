@@ -219,13 +219,43 @@ jobs:
               raise SystemExit("same-run artifact digest is missing")
           PY
 
-      - name: Refuse cloud mutation in the local implementation
+      - name: Generate bounded deployment plan before authentication
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/staging-deployment-execution
+          python3 -m scripts.staging_deployment_executor \
+            --input-dir artifacts/staging-deployment-approved-input \
+            --plan-evidence artifacts/staging-deployment-execution/plan-evidence.json \
+            --post-evidence artifacts/staging-deployment-execution/post-evidence.json
+
+      - name: Authenticate deployment executor with Workload Identity Federation
+        if: ${{ inputs.execute_mutation == true }}
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_DEPLOY_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_DEPLOY_SERVICE_ACCOUNT }}
+
+      - name: Set up gcloud for protected deployment
+        if: ${{ inputs.execute_mutation == true }}
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Execute bounded deployment actions with read-before-write-read-after
         if: ${{ inputs.execute_mutation == true }}
         run: |
           set -euo pipefail
-          echo "The protected deployment boundary is verified, but mutation executor implementation is not enabled in this local step." >&2
-          echo "No OIDC credential action or cloud mutation command was executed." >&2
-          exit 1
+          python3 -m scripts.staging_deployment_executor \
+            --input-dir artifacts/staging-deployment-approved-input \
+            --plan-evidence artifacts/staging-deployment-execution/apply-plan-evidence.json \
+            --post-evidence artifacts/staging-deployment-execution/apply-post-evidence.json \
+            --apply
+
+      - name: Upload deployment execution evidence
+        uses: actions/upload-artifact@v7
+        with:
+          name: staging-deployment-execution-evidence
+          path: artifacts/staging-deployment-execution/*.json
+          if-no-files-found: error
+          retention-days: 30
 
       - name: Report protected dry-run boundary
         if: ${{ inputs.execute_mutation == false }}
