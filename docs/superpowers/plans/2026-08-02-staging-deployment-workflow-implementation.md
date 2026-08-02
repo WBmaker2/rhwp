@@ -2,7 +2,7 @@
 
 작성일: 2026-08-02 (Asia/Seoul)
 대상 브랜치: `feat/firebase-collaboration-mvp-v1`
-상태: 로컬 구현·검증 단계; GitHub Environment 적용, push, dispatch, cloud mutation 미실행
+상태: 구현 push·protected Environment 적용·execute_mutation=false dry-run 검증 완료; cloud mutation 미실행
 
 ## 목표
 
@@ -63,12 +63,24 @@ workflow는 소스 재빌드가 아니라 packet의 immutable image digest만 �
 - 이 단계에서 GitHub Environment 생성·변경, secret/variable 등록, push, workflow dispatch,
   Cloud Run/Firebase/IAM/Tasks mutation을 실행하지 않음
 
+## 외부 적용 결과
+
+- PR #1 브랜치 구현 commit: `03d8079563a8681217d56da66559e4aba150778f`
+- workflow dispatch bootstrap main commit: `ce3abbedf6963e4aa01ff81cf6e750af9f441e16`
+- `staging-deployment` Environment: required reviewer `WBmaker2`, `prevent_self_review=false`,
+  custom branch policy `feat/firebase-collaboration-mvp-v1`
+- 비밀 없는 Environment 변수 12개: 이름·값 read-back 완료
+- WIF secret: 이름/값 미등록. deployment 전용 provider가 없고 기존 apply provider는 다른
+  workflow SHA에 고정되어 있으므로 추측·재사용하지 않음
+- protected dry-run: [run 30741198223](https://github.com/WBmaker2/rhwp/actions/runs/30741198223)
+  성공, prepare/deploy gate 통과, verify는 `execute_mutation=false`로 skip
+
 ## 외부 승인 경계
 
-로컬 구현이 통과한 뒤 사용자가 직접 별도 승인해야 하는 항목은 다음과 같다.
+현재 남은 외부 승인/구현 경계는 다음과 같다.
 
-1. [staging-deployment Environment 설정](https://github.com/WBmaker2/rhwp/settings/environments)
-   을 위 계획과 동일하게 적용하고 read-back한다.
-2. [GitHub Actions](https://github.com/WBmaker2/rhwp/actions)에서 source/run/artifact/packet
-   입력을 확인하고 workflow dispatch를 승인한다.
-3. `execute_mutation=true`를 포함하는 실제 cloud mutation 실행은 별도 명시 승인을 받는다.
+1. deployment 전용 WIF provider와 최소 권한 executor service account를 별도 설계·승인한다.
+2. 그 공개 식별자만 `GCP_DEPLOY_WORKLOAD_IDENTITY_PROVIDER`와
+   `GCP_DEPLOY_SERVICE_ACCOUNT` Environment secret에 등록한다. secret 원문은 기록하지 않는다.
+3. 실제 OIDC 인증, Cloud Run/IAM/Cloud Tasks mutation executor는 별도 구현·review 후
+   `execute_mutation=true`로 실행한다. 현재 workflow는 이를 의도적으로 거부한다.
