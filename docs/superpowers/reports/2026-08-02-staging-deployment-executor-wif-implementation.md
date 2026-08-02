@@ -2,7 +2,7 @@
 
 작성일: 2026-08-02 (Asia/Seoul)
 대상 브랜치: `feat/firebase-collaboration-mvp-v1`
-상태: 로컬 구현·회귀 검증 및 WIF/IAM/Environment 준비 완료, 실제 mutation 전
+상태: 로컬 구현·회귀 검증 및 WIF/IAM/Environment 준비 완료, `execute_mutation=true` dispatch는 WIF 조건 불일치로 인증 전에 fail-closed 중단
 
 ## 이번 단계에서 구현한 것
 
@@ -107,10 +107,9 @@ git diff --check
   - `GCP_DEPLOY_WORKLOAD_IDENTITY_PROVIDER`
   - `GCP_DEPLOY_SERVICE_ACCOUNT`
 
-아직 다음 외부 변경은 하지 않았습니다.
-
-- `execute_mutation=true` workflow dispatch
-- Cloud Run, Cloud Tasks, Firebase, Secret Manager mutation
+`execute_mutation=true` workflow dispatch는 승인 후 실행했지만, WIF attribute condition
+불일치로 Cloud 인증 전에 fail-closed 중단되었습니다. Cloud Run, Cloud Tasks, Firebase,
+Secret Manager mutation은 시작되지 않았습니다.
 
 ## 보호 dry-run 첫 시도와 수정
 
@@ -139,6 +138,46 @@ workflow 파일이 새 commit으로 바뀌면 provider condition의 workflow SHA
 제안값을 바로 외부에 적용하면 fail-closed가 깨질 수 있습니다. 따라서 다음 순서는
 의도한 파일의 커밋·push 후 새 workflow SHA를 read-back하고, 그 SHA를 포함한 WIF/IAM/
 Environment diff를 별도로 승인받는 것입니다.
+
+## 실제 `execute_mutation=true` dispatch 결과
+
+사용자가 실제 Cloud mutation dispatch를 승인한 뒤 [run 30744607226](https://github.com/WBmaker2/rhwp/actions/runs/30744607226)을
+실행했습니다. 결과는 다음과 같습니다.
+
+- `Prepare exact approved deployment input`: 성공
+- `staging-deployment` protected Environment: 사용자 승인 완료
+- same-run packet/artifact/approval/source binding: 성공
+- bounded plan 생성: 성공, `mode=dry-run`, `executedActionIds=[]`, `mutationCommands=[]`
+- `Authenticate deployment executor with Workload Identity Federation`: 실패
+- 오류: `unauthorized_client: The given credential is rejected by the attribute condition.`
+- gcloud 설정·executor apply·execution evidence upload: 실행 전 skip
+- run conclusion: `failure`
+
+실패 원인은 self-review 또는 public invoker가 아닙니다. read-only로 확인한 WIF provider
+조건은 다음 workflow SHA에 고정되어 있습니다.
+
+```text
+현재 WIF attribute.workflow_sha = 90ddf598ff3b1f0fc100cfde17cdcbde9a6a3043
+실제 dispatch head SHA           = f29c0fcb8997bbd8915e6bf202d2501afb5c4743
+```
+
+GitHub OIDC의 `workflow_sha`는 workflow provenance에 묶인 commit SHA이며, 이 저장소의
+앞선 WIF 차단·수정 사례와 같은 방식으로 실행 source commit과 비교해야 합니다. 이번
+run은 조건 불일치가 인증 응답으로 확인되었지만, OIDC token 원문은 로그에 남기지 않았습니다.
+따라서 다음 외부 변경은 provider의 `attribute.workflow_sha` 한 항목만 실제 dispatch
+source SHA로 갱신하고 read-back하는 것입니다. 이 변경과 재실행은 별도 승인이 없으면
+수행하지 않습니다.
+
+제안 diff:
+
+```diff
+- attribute.workflow_sha == '90ddf598ff3b1f0fc100cfde17cdcbde9a6a3043'
++ attribute.workflow_sha == 'f29c0fcb8997bbd8915e6bf202d2501afb5c4743'
+```
+
+이번 실패는 OIDC 인증 단계에서 발생했으므로 Cloud credential 발급, Cloud Run/Tasks/IAM
+write, Firebase/Secret Manager mutation, deployment는 없었습니다. 동일 run 재시도는 하지
+않으며, WIF diff 승인 전에는 새 dispatch도 하지 않습니다.
 
 ## 권한 부여 차단 기록
 
@@ -203,8 +242,13 @@ Environment에는 secret 이름 2개가 존재하고 secret 원문은 출력하�
 분리되어야 합니다.
 
 1. **완료:** fresh packet/preflight artifact로 `execute_mutation=false` 보호 workflow를 실행했습니다.
-2. acceptance/rollback evidence가 준비되고 별도 명시 승인된 경우에만
-   `execute_mutation=true`를 실행합니다.
+2. **중단:** `execute_mutation=true` dispatch는 WIF 조건 불일치로 인증 전에 중단되었습니다.
+3. 다음 작업은 WIF provider의 `attribute.workflow_sha`를
+   `f29c0fcb8997bbd8915e6bf202d2501afb5c4743`로 바꾸는 외부 설정입니다. 사용자의 별도
+   명시 승인을 받은 뒤에만 적용·read-back합니다.
+4. WIF read-back이 exact 일치한 뒤에만 새 `execute_mutation=true` dispatch를 요청합니다.
+5. 실제 mutation 성공 후에도 acceptance/rollback evidence가 없으면 verify job은
+   fail-closed이며, 다음 배포 단계로 진행하지 않습니다.
 
 그 전까지는 `execute_mutation=false` 검증만 허용하며, Cloud Run·Cloud Tasks·Firebase·
 Secret Manager mutation은 실행하지 않습니다.
