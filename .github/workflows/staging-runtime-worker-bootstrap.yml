@@ -1,0 +1,346 @@
+name: Staging runtime worker bootstrap
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_ref:
+        description: Feature branch ref bound to the release candidate
+        required: true
+        type: string
+        default: feat/firebase-collaboration-mvp-v1
+      release_run_id:
+        description: Successful staging release candidate workflow run ID
+        required: true
+        type: string
+      release_run_attempt:
+        description: Release candidate run attempt
+        required: true
+        type: string
+        default: "1"
+      release_artifact_name:
+        description: Exact release candidate artifact name
+        required: true
+        type: string
+        default: staging-release-candidate-evidence
+      release_artifact_digest:
+        description: Exact GitHub artifact server digest (sha256:...)
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  prepare:
+    name: Prepare worker bootstrap evidence
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+      id-token: none
+    outputs:
+      source_sha: ${{ steps.binding.outputs.source_sha }}
+      evidence_sha256: ${{ steps.binding.outputs.evidence_sha256 }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.source_ref }}
+          fetch-depth: 1
+          show-progress: false
+
+      - name: Verify approved source ref
+        env:
+          SOURCE_REF: ${{ inputs.source_ref }}
+        run: |
+          set -euo pipefail
+          test "$SOURCE_REF" = "feat/firebase-collaboration-mvp-v1"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+
+      - name: Run worker bootstrap contract tests
+        run: python3 -m unittest scripts.tests.test_staging_worker_bootstrap -v
+
+      - name: Download and bind release candidate artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_RUN_ID: ${{ inputs.release_run_id }}
+          RELEASE_RUN_ATTEMPT: ${{ inputs.release_run_attempt }}
+          RELEASE_ARTIFACT_NAME: ${{ inputs.release_artifact_name }}
+          RELEASE_ARTIFACT_DIGEST: ${{ inputs.release_artifact_digest }}
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/release-evidence
+          python3 - <<'PY'
+          import json
+          import os
+          import re
+          from pathlib import Path
+
+          digest = os.environ["RELEASE_ARTIFACT_DIGEST"]
+          if not re.fullmatch(r"sha256:[a-f0-9]{64}", digest):
+              raise SystemExit("release artifact digest must be sha256:<64 lowercase hex>")
+          run_id = os.environ["RELEASE_RUN_ID"]
+          attempt = os.environ["RELEASE_RUN_ATTEMPT"]
+          if not run_id.isdecimal() or not attempt.isdecimal() or int(attempt) < 1:
+              raise SystemExit("release run ID and attempt must be positive decimal values")
+          Path("artifacts/release-evidence/run-inputs.json").write_text(json.dumps({
+              "runId": run_id,
+              "attempt": int(attempt),
+              "artifactName": os.environ["RELEASE_ARTIFACT_NAME"],
+              "artifactDigest": digest,
+          }, indent=2) + "\n")
+          PY
+          gh run view "$RELEASE_RUN_ID" \
+            --repo "$GITHUB_REPOSITORY" \
+            --attempt "$RELEASE_RUN_ATTEMPT" \
+            --json databaseId,headSha,status,conclusion,attempt \
+            > artifacts/release-evidence/release-run.json
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          run = json.loads(Path("artifacts/release-evidence/release-run.json").read_text())
+          if str(run.get("databaseId")) != os.environ["RELEASE_RUN_ID"]:
+              raise SystemExit("release run database ID does not match")
+          if int(run.get("attempt", 0)) != int(os.environ["RELEASE_RUN_ATTEMPT"]):
+              raise SystemExit("release run attempt does not match")
+          if run.get("headSha") != os.environ["GITHUB_SHA"]:
+              raise SystemExit("release run head SHA does not match")
+          if run.get("status") != "completed" or run.get("conclusion") != "success":
+              raise SystemExit("release run is not a successful completed run")
+          PY
+          gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${RELEASE_RUN_ID}/artifacts" --paginate > artifacts/release-evidence/artifacts-index.json
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          data = json.loads(Path("artifacts/release-evidence/artifacts-index.json").read_text())
+          matches = [item for item in data.get("artifacts", [])
+                     if item.get("name") == os.environ["RELEASE_ARTIFACT_NAME"]
+                     and str(item.get("workflow_run", {}).get("id")) == os.environ["RELEASE_RUN_ID"]]
+          if len(matches) != 1:
+              raise SystemExit("exactly one release artifact bound to the requested run is required")
+          item = matches[0]
+          if item.get("digest") != os.environ["RELEASE_ARTIFACT_DIGEST"]:
+              raise SystemExit("release artifact server digest does not match the dispatch input")
+          if item.get("expired") is True:
+              raise SystemExit("release artifact is expired")
+          if item.get("workflow_run", {}).get("head_sha") != os.environ["GITHUB_SHA"]:
+              raise SystemExit("release artifact source commit does not match this workflow SHA")
+          PY
+          gh run download "$RELEASE_RUN_ID" \
+            --repo "$GITHUB_REPOSITORY" \
+            --name "$RELEASE_ARTIFACT_NAME" \
+            --dir artifacts/release-evidence/downloaded
+          test -f artifacts/release-evidence/downloaded/staging-release-candidate-evidence.json
+          test "$(find artifacts/release-evidence/downloaded -type f | wc -l | tr -d ' ')" = "1"
+
+      - name: Validate immutable release binding
+        id: binding
+        env:
+          RELEASE_RUN_ID: ${{ inputs.release_run_id }}
+          RELEASE_RUN_ATTEMPT: ${{ inputs.release_run_attempt }}
+          RELEASE_ARTIFACT_DIGEST: ${{ inputs.release_artifact_digest }}
+        run: |
+          set -euo pipefail
+          evidence="artifacts/release-evidence/downloaded/staging-release-candidate-evidence.json"
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          evidence = json.loads(Path("artifacts/release-evidence/downloaded/staging-release-candidate-evidence.json").read_text())
+          if evidence.get("schemaVersion") != "rhwp.staging-release-candidate/v1":
+              raise SystemExit("release evidence schema is invalid")
+          if evidence.get("sourceCommitSha") != os.environ["GITHUB_SHA"]:
+              raise SystemExit("release evidence source commit does not match checkout")
+          if str(evidence.get("workflowRunId")) != os.environ["RELEASE_RUN_ID"]:
+              raise SystemExit("release evidence workflow run ID does not match")
+          if int(evidence.get("workflowRunAttempt", 0)) != int(os.environ["RELEASE_RUN_ATTEMPT"]):
+              raise SystemExit("release evidence workflow run attempt does not match")
+          if evidence.get("deploymentStage") != "initial":
+              raise SystemExit("worker bootstrap requires initial deployment stage")
+          if evidence.get("rollbackRevisionIds") != [None, None, None]:
+              raise SystemExit("initial worker bootstrap requires three null rollback revisions")
+          PY
+          evidence_sha256="$(shasum -a 256 "$evidence" | awk '{print $1}')"
+          echo "source_sha=$GITHUB_SHA" >> "$GITHUB_OUTPUT"
+          echo "evidence_sha256=$evidence_sha256" >> "$GITHUB_OUTPUT"
+          EVIDENCE_SHA256="$evidence_sha256" python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          binding = {
+              "schemaVersion": "rhwp.staging-worker-bootstrap-binding/v1",
+              "sourceCommitSha": os.environ["GITHUB_SHA"],
+              "releaseWorkflowRunId": os.environ["RELEASE_RUN_ID"],
+              "releaseWorkflowRunAttempt": int(os.environ["RELEASE_RUN_ATTEMPT"]),
+              "releaseArtifactDigest": os.environ["RELEASE_ARTIFACT_DIGEST"],
+              "releaseEvidenceSha256": os.environ["EVIDENCE_SHA256"],
+          }
+          Path("artifacts/release-evidence/release-binding.json").write_text(json.dumps(binding, indent=2) + "\n")
+          PY
+
+      - name: Upload same-run worker bootstrap input
+        uses: actions/upload-artifact@v7
+        with:
+          name: staging-worker-bootstrap-input
+          path: |
+            artifacts/release-evidence/downloaded/staging-release-candidate-evidence.json
+            artifacts/release-evidence/release-binding.json
+          if-no-files-found: error
+          retention-days: 14
+
+  bootstrap:
+    name: Bootstrap document worker
+    needs: prepare
+    runs-on: ubuntu-latest
+    environment: staging-runtime-bootstrap
+    permissions:
+      contents: read
+      actions: read
+      id-token: write
+    env:
+      STAGING_PROJECT_ID: ${{ vars.STAGING_PROJECT_ID }}
+      STAGING_PROJECT_NUMBER: ${{ vars.STAGING_PROJECT_NUMBER }}
+      STAGING_REGION: ${{ vars.STAGING_REGION }}
+      STAGING_STORAGE_BUCKET: ${{ vars.STAGING_STORAGE_BUCKET }}
+      DOCUMENT_WORKER_SERVICE_ACCOUNT: ${{ vars.DOCUMENT_WORKER_SERVICE_ACCOUNT }}
+      GCP_RUNTIME_WORKLOAD_IDENTITY_PROVIDER: ${{ secrets.GCP_RUNTIME_WORKLOAD_IDENTITY_PROVIDER }}
+      GCP_RUNTIME_SERVICE_ACCOUNT: ${{ secrets.GCP_RUNTIME_SERVICE_ACCOUNT }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.source_ref }}
+          fetch-depth: 1
+          show-progress: false
+
+      - name: Download same-run worker bootstrap input
+        uses: actions/download-artifact@v7
+        with:
+          name: staging-worker-bootstrap-input
+          path: artifacts/worker-bootstrap-input
+
+      - name: Verify same-run input before authentication
+        env:
+          RELEASE_RUN_ID: ${{ inputs.release_run_id }}
+          RELEASE_RUN_ATTEMPT: ${{ inputs.release_run_attempt }}
+          RELEASE_ARTIFACT_DIGEST: ${{ inputs.release_artifact_digest }}
+          EXPECTED_EVIDENCE_SHA256: ${{ needs.prepare.outputs.evidence_sha256 }}
+        run: |
+          set -euo pipefail
+          evidence="artifacts/worker-bootstrap-input/staging-release-candidate-evidence.json"
+          binding="artifacts/worker-bootstrap-input/release-binding.json"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          python3 - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+
+          evidence_path = Path("artifacts/worker-bootstrap-input/staging-release-candidate-evidence.json")
+          binding = json.loads(Path("artifacts/worker-bootstrap-input/release-binding.json").read_text())
+          if binding.get("sourceCommitSha") != os.environ["GITHUB_SHA"]:
+              raise SystemExit("same-run binding source commit mismatch")
+          if binding.get("releaseWorkflowRunId") != os.environ["RELEASE_RUN_ID"]:
+              raise SystemExit("same-run binding release run mismatch")
+          if int(binding.get("releaseWorkflowRunAttempt", 0)) != int(os.environ["RELEASE_RUN_ATTEMPT"]):
+              raise SystemExit("same-run binding release attempt mismatch")
+          if binding.get("releaseArtifactDigest") != os.environ["RELEASE_ARTIFACT_DIGEST"]:
+              raise SystemExit("same-run binding artifact digest mismatch")
+          observed = hashlib.sha256(evidence_path.read_bytes()).hexdigest()
+          if observed != os.environ["EXPECTED_EVIDENCE_SHA256"] or binding.get("releaseEvidenceSha256") != observed:
+              raise SystemExit("same-run binding evidence SHA-256 mismatch")
+          PY
+
+      - name: Render digest-pinned worker manifest before authentication
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/worker-bootstrap
+          python3 scripts/staging_worker_bootstrap.py \
+            --release-evidence artifacts/worker-bootstrap-input/staging-release-candidate-evidence.json \
+            --expected-source-commit "$GITHUB_SHA" \
+            --expected-release-run-id "${{ inputs.release_run_id }}" \
+            --expected-release-run-attempt "${{ inputs.release_run_attempt }}" \
+            --expected-project-number "$STAGING_PROJECT_NUMBER" \
+            --project-id "$STAGING_PROJECT_ID" \
+            --region "$STAGING_REGION" \
+            --storage-bucket "$STAGING_STORAGE_BUCKET" \
+            --service-account "$DOCUMENT_WORKER_SERVICE_ACCOUNT" \
+            --release-artifact-digest "${{ inputs.release_artifact_digest }}" \
+            --manifest-output artifacts/worker-bootstrap/document-worker.service.yaml \
+            --summary-output artifacts/worker-bootstrap/worker-bootstrap-input.json
+
+      - name: Authenticate with Workload Identity Federation
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ secrets.GCP_RUNTIME_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_RUNTIME_SERVICE_ACCOUNT }}
+
+      - name: Set up Google Cloud CLI
+        uses: google-github-actions/setup-gcloud@v3
+
+      - name: Replace document worker service
+        run: |
+          set -euo pipefail
+          gcloud run services replace artifacts/worker-bootstrap/document-worker.service.yaml \
+            --project="$STAGING_PROJECT_ID" \
+            --region="$STAGING_REGION"
+
+      - name: Observe worker URL and ready revision
+        run: |
+          set -euo pipefail
+          gcloud run services describe rhwp-document-worker-staging \
+            --project="$STAGING_PROJECT_ID" \
+            --region="$STAGING_REGION" \
+            --format='json(metadata.name,status.url,status.latestReadyRevisionName,spec.template.spec.containers[0].image)' \
+            > artifacts/worker-bootstrap/worker-service-observation.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          observation = json.loads(Path("artifacts/worker-bootstrap/worker-service-observation.json").read_text())
+          status = observation.get("status", {})
+          url = status.get("url")
+          revision = status.get("latestReadyRevisionName")
+          if not isinstance(url, str) or not url.startswith("https://") or not url.endswith(".run.app"):
+              raise SystemExit("worker URL is not a concrete run.app URL")
+          if not isinstance(revision, str) or not revision.strip():
+              raise SystemExit("worker ready revision is missing")
+          summary = json.loads(Path("artifacts/worker-bootstrap/worker-bootstrap-input.json").read_text())
+          container = observation.get("spec", {}).get("template", {}).get("spec", {}).get("containers", [{}])[0]
+          if container.get("image") != summary["worker"]["image"] + "@sha256:" + summary["worker"]["digest"]:
+              raise SystemExit("observed worker image does not match approved digest")
+          evidence = {
+              "schemaVersion": "rhwp.staging-worker-bootstrap/v1",
+              "sourceCommitSha": summary["sourceCommitSha"],
+              "releaseWorkflowRunId": summary["releaseWorkflowRunId"],
+              "releaseWorkflowRunAttempt": summary["releaseWorkflowRunAttempt"],
+              "releaseArtifactDigest": summary["releaseArtifactDigest"],
+              "releaseEvidenceSha256": summary["releaseEvidenceSha256"],
+              "bootstrapWorkflowRunId": __import__("os").environ["GITHUB_RUN_ID"],
+              "bootstrapWorkflowRunAttempt": int(__import__("os").environ["GITHUB_RUN_ATTEMPT"]),
+              "project": summary["project"],
+              "firebase": summary["firebase"],
+              "worker": {
+                  **summary["worker"],
+                  "url": url,
+                  "revision": revision,
+              },
+              "deploymentStage": "initial",
+              "rollbackRevisionId": None,
+          }
+          Path("artifacts/worker-bootstrap/staging-worker-bootstrap-evidence.json").write_text(json.dumps(evidence, indent=2) + "\n")
+          PY
+
+      - name: Upload worker bootstrap evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: staging-worker-bootstrap-evidence
+          path: artifacts/worker-bootstrap/**
+          if-no-files-found: warn
+          retention-days: 14
