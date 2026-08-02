@@ -168,6 +168,7 @@ def prepare_bundle(
             "apiKeyReference": packet["firebase"]["apiKeyReference"],
             "storageBucket": packet["firebase"]["storageBucket"],
         },
+        "secretName": packet["secrets"]["collaborationInternal"]["name"],
         "iamDiff": packet["iamDiff"],
         "rollback": packet["rollback"],
         "approval": {

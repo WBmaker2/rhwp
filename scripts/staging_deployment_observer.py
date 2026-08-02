@@ -7,6 +7,11 @@ import re
 import subprocess
 from typing import Any
 
+from scripts.staging_deployment_runtime_contract import (
+    RuntimeContractError,
+    cloud_run_runtime_configuration,
+)
+
 
 class DeploymentObserverError(RuntimeError):
     """Raised when a cloud observation is unavailable or ambiguous."""
@@ -52,10 +57,18 @@ def _seconds(value: Any) -> int | None:
     return None
 
 
-def _observe_cloud_run(project_id: str, resource: dict[str, Any]) -> dict[str, Any]:
+def _observe_cloud_run(
+    project_id: str,
+    resource: dict[str, Any],
+    *,
+    prepared: dict[str, Any] | None = None,
+    observed_urls: dict[str, str] | None = None,
+) -> dict[str, Any]:
     value = _read_json(("gcloud", "run", "services", "describe", resource["name"], f"--region={REGION}", f"--project={project_id}", "--format=json"))
     if value is None:
         return {"state": "missing", "resourceKind": "cloud-run-service", "matchesDesired": False}
+    url = _deep(value, "status", "url")
+    ready = next((item for item in (_deep(value, "status", "conditions") or []) if isinstance(item, dict) and item.get("type") == "Ready"), None)
     template = _deep(value, "spec", "template") or {}
     template_spec = _deep(template, "spec") or template
     containers = template_spec.get("containers")
@@ -81,11 +94,54 @@ def _observe_cloud_run(project_id: str, resource: dict[str, Any]) -> dict[str, A
     for key in ("containerConcurrency", "timeoutSeconds", "minScale", "maxScale"):
         if isinstance(normal_runtime[key], str) and normal_runtime[key].isdigit():
             normal_runtime[key] = int(normal_runtime[key])
-    matches = (
+    identity_matches = (
         value.get("metadata", {}).get("name") == resource["name"] and image == expected_image and service_account == resource["serviceAccount"]
         and ingress == resource["ingress"] and normal_runtime == runtime
     )
-    return {"state": "present" if matches else "incompatible", "resourceKind": "cloud-run-service", "matchesDesired": matches}
+    if not isinstance(ready, dict) or (ready.get("status") is not True and ready.get("status") != "True"):
+        result = {"state": "missing" if identity_matches else "incompatible", "resourceKind": "cloud-run-service", "matchesDesired": False}
+        if isinstance(url, str) and url:
+            result["url"] = url
+        return result
+    matches = identity_matches
+    if matches and prepared is not None:
+        try:
+            expected = cloud_run_runtime_configuration(project_id, resource, prepared, observed_urls or {})
+        except RuntimeContractError as error:
+            raise DeploymentObserverError("Cloud Run runtime configuration is not yet observable") from error
+        matches = _environment_matches(container.get("env"), expected)
+    result = {"state": "present" if matches else "incompatible", "resourceKind": "cloud-run-service", "matchesDesired": matches}
+    if isinstance(url, str) and url:
+        result["url"] = url
+    return result
+
+
+def _environment_matches(value: Any, expected: dict[str, dict[str, str]]) -> bool:
+    if not isinstance(value, list):
+        return False
+    plain: dict[str, str] = {}
+    secrets: dict[str, str] = {}
+    for item in value:
+        if not isinstance(item, dict) or not isinstance(item.get("name"), str):
+            return False
+        name = item["name"]
+        if isinstance(item.get("value"), str):
+            plain[name] = item["value"]
+            continue
+        source = item.get("valueFrom") or item.get("valueSource")
+        if not isinstance(source, dict):
+            return False
+        reference = source.get("secretKeyRef")
+        if not isinstance(reference, dict):
+            return False
+        secret = reference.get("name") or reference.get("secret")
+        version = reference.get("key") or reference.get("version")
+        if not isinstance(secret, str) or not isinstance(version, str):
+            return False
+        secrets[name] = f"{secret}:{version}"
+    return all(plain.get(key) == value for key, value in expected["env"].items()) and all(
+        secrets.get(key) == value for key, value in expected["secrets"].items()
+    )
 
 
 def _observe_queue(project_id: str, resource: dict[str, Any]) -> dict[str, Any]:
@@ -132,9 +188,15 @@ def _observe_iam(project_id: str, resource: dict[str, str]) -> dict[str, Any]:
     return {"state": "present" if present else "missing", "resourceKind": "iam-binding", "matchesDesired": present}
 
 
-def observe_fixed(project_id: str, action: dict[str, Any]) -> dict[str, Any]:
+def observe_fixed(
+    project_id: str,
+    action: dict[str, Any],
+    *,
+    prepared: dict[str, Any] | None = None,
+    observed_urls: dict[str, str] | None = None,
+) -> dict[str, Any]:
     if action["resourceKind"] == "cloud-run-service":
-        return _observe_cloud_run(project_id, action["resource"])
+        return _observe_cloud_run(project_id, action["resource"], prepared=prepared, observed_urls=observed_urls)
     if action["resourceKind"] == "cloud-tasks-queue":
         return _observe_queue(project_id, action["resource"])
     if action["resourceKind"] == "iam-binding":

@@ -23,6 +23,10 @@ from typing import Any, Callable
 
 from scripts.staging_deployment_approval_record import load_json_with_bytes
 from scripts.staging_deployment_prepare import prepare_bundle
+from scripts.staging_deployment_runtime_contract import (
+    RuntimeContractError,
+    cloud_run_deploy_argv,
+)
 
 
 class DeploymentExecutionError(RuntimeError):
@@ -236,6 +240,10 @@ def validate_prepared_bundle(root: Path) -> tuple[dict[str, Any], list[dict[str,
     _validate_run(prepared, project_id)
     _validate_tasks(prepared, project_id)
     iam = _validate_iam(prepared, packet, project_id)
+    packet_secret = _mapping(packet.get("secrets"), "packet secrets").get("collaborationInternal")
+    packet_secret_name = _string(_mapping(packet_secret, "collaborationInternal secret").get("name"), "packet secret name")
+    if prepared.get("secretName") != packet_secret_name:
+        raise DeploymentExecutionError("prepared Secret Manager name does not match the packet")
     if prepared.get("mutationCommands") != [] or record.get("mutationCommands") != []:
         raise DeploymentExecutionError("deployment approval contains mutation commands")
     if prepared.get("approval", {}).get("deploymentApproved") is not True or prepared.get("approval", {}).get("cloudMutationApproved") is not True:
@@ -281,33 +289,41 @@ def validate_prepared_bundle(root: Path) -> tuple[dict[str, Any], list[dict[str,
     return prepared, actions
 
 
-def _validate_observation(action: dict[str, Any], value: Any) -> str:
-    if not isinstance(value, dict) or set(value) != {"state", "resourceKind", "matchesDesired"}:
+def _validate_observation(action: dict[str, Any], value: Any) -> tuple[str, str | None]:
+    required = {"state", "resourceKind", "matchesDesired"}
+    allowed = required | ({"url"} if action["resourceKind"] == "cloud-run-service" else set())
+    if not isinstance(value, dict) or not required.issubset(value) or not set(value).issubset(allowed):
         raise DeploymentExecutionError("observer result must use the exact structured contract")
     if value["resourceKind"] != action["resourceKind"] or value["state"] not in {"missing", "present", "incompatible"} or not isinstance(value["matchesDesired"], bool):
         raise DeploymentExecutionError("observer result is incompatible with the action")
+    url = value.get("url")
+    if url is not None and (not isinstance(url, str) or not url.startswith("https://") or any(char in url for char in ("\n", "\r", " "))):
+        raise DeploymentExecutionError("observer result contains an invalid service URL")
     if value["state"] == "present" and value["matchesDesired"] is not True:
-        return "incompatible"
+        return "incompatible", url
     if value["state"] == "missing" and value["matchesDesired"] is not False:
         raise DeploymentExecutionError("missing observer result cannot assert desired state")
-    return value["state"]
+    return value["state"], url
 
 
-def _fixed_argv(project_id: str, action: dict[str, Any]) -> tuple[str, ...]:
+def _fixed_argv(
+    project_id: str,
+    action: dict[str, Any],
+    prepared: dict[str, Any] | None = None,
+    observed_urls: dict[str, str] | None = None,
+) -> tuple[str, ...]:
     """Build an allowlisted argv tuple; never use a shell or free-form command."""
     if not PROJECT_RE.fullmatch(project_id):
         raise DeploymentExecutionError("invalid project id for executor argv")
     kind = action["resourceKind"]
     resource = _mapping(action.get("resource"), f"{action.get('actionId')}.resource")
     if kind == "cloud-run-service":
-        runtime = resource["runtime"]
-        return (
-            "gcloud", "run", "deploy", resource["name"],
-            f"--image={resource['image']}@sha256:{resource['digest']}", f"--region={REGION}", f"--project={project_id}",
-            f"--service-account={resource['serviceAccount']}", f"--ingress={resource['ingress']}", f"--cpu={runtime['cpu']}",
-            f"--memory={runtime['memory']}", f"--concurrency={runtime['containerConcurrency']}", f"--timeout={runtime['timeoutSeconds']}s",
-            f"--min={runtime['minScale']}", f"--max={runtime['maxScale']}", "--no-allow-unauthenticated", "--quiet",
-        )
+        if prepared is None:
+            raise DeploymentExecutionError("Cloud Run argv requires the prepared runtime contract")
+        try:
+            return cloud_run_deploy_argv(project_id, resource, prepared, observed_urls or {}, region=REGION)
+        except RuntimeContractError as error:
+            raise DeploymentExecutionError(str(error)) from error
     if kind == "cloud-tasks-queue":
         return (
             "gcloud", "tasks", "queues", "create", resource["name"], f"--location={REGION}", f"--project={project_id}",
@@ -356,6 +372,7 @@ def execute_deployment(
     prepared: dict[str, Any], actions: list[dict[str, Any]], plan_output: Path, post_output: Path, *,
     apply: bool = False, observer: Callable[[dict[str, Any]], dict[str, Any]] | None = None,
     runner: Callable[[tuple[str, ...]], str] | None = None,
+    observer_context: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     if plan_output.resolve(strict=False) == post_output.resolve(strict=False):
         raise DeploymentExecutionError("plan and post evidence must be separate files")
@@ -382,11 +399,14 @@ def execute_deployment(
     if observer is None:
         raise DeploymentExecutionError("apply requires a fixed read-only observer")
     invoke = runner or _run_fixed_argv
+    observed_urls = observer_context if observer_context is not None else {}
     _atomic_json(plan_output, plan)
     observed: list[dict[str, str]] = []
     for action in actions:
         try:
-            before = _validate_observation(action, observer(action))
+            before, before_url = _validate_observation(action, observer(action))
+            if before_url:
+                observed_urls[action["actionId"]] = before_url
         except Exception as error:
             _failure(post_output, observed, action, "precondition-observation")
             raise DeploymentExecutionError(f"precondition observation failed for {action['actionId']}") from error
@@ -397,12 +417,14 @@ def execute_deployment(
             observed.append({"actionId": action["actionId"], "status": "already-present-noop"})
             continue
         try:
-            invoke(_fixed_argv(project_id, action))
+            invoke(_fixed_argv(project_id, action, prepared, observed_urls))
         except Exception as error:
             _failure(post_output, observed, action, "write")
             raise DeploymentExecutionError(f"approved command failed for {action['actionId']}") from error
         try:
-            after = _validate_observation(action, observer(action))
+            after, after_url = _validate_observation(action, observer(action))
+            if after_url:
+                observed_urls[action["actionId"]] = after_url
         except Exception as error:
             _failure(post_output, observed, action, "postcondition-observation", write_returned_success=True)
             raise DeploymentExecutionError(f"postcondition observation failed for {action['actionId']}") from error
@@ -446,8 +468,9 @@ def main(argv: list[str] | None = None) -> int:
     try:
         prepared, actions = validate_prepared_bundle(args.input_dir)
         from scripts.staging_deployment_observer import observe_fixed
-        observer = (lambda action: observe_fixed(_validate_project(prepared), action)) if args.apply else None
-        result = execute_deployment(prepared, actions, args.plan_evidence, args.post_evidence, apply=args.apply, observer=observer)
+        observed_urls: dict[str, str] = {}
+        observer = (lambda action: observe_fixed(_validate_project(prepared), action, prepared=prepared, observed_urls=observed_urls)) if args.apply else None
+        result = execute_deployment(prepared, actions, args.plan_evidence, args.post_evidence, apply=args.apply, observer=observer, observer_context=observed_urls)
     except (DeploymentExecutionError, OSError) as error:
         print(f"staging deployment executor failed: {error}", file=sys.stderr)
         return 1

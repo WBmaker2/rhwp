@@ -28,6 +28,9 @@ def deployment_fixture() -> tuple[dict[str, Any], bytes, dict[str, Any], dict[st
         "apiKeyReference": "firebase-web-config/staging",
         "storageBucket": "rhwp-collaboration-staging-001.firebasestorage.app",
     }
+    value["secrets"] = {
+        "collaborationInternal": {"name": "rhwp-collaboration-internal-token-staging"},
+    }
     value["cloudTasks"] = {
         "callerServiceAccount": "rhwp-document-api-staging@rhwp-collaboration-staging-001.iam.gserviceaccount.com",
         "parse": {"name": "rhwp-parse-staging", "targetUrl": "https://worker.example/run/parse"},

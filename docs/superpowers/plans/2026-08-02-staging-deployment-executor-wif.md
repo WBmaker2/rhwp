@@ -130,3 +130,52 @@ executor는 첫 action `cloud-run-collaboration`에서 `gcloud run deploy`를 �
 따라서 애플리케이션의 필수 환경 검증을 통과하지 못해 컨테이너가 포트를 열지 못한 것이
 현재 가장 직접적인 원인이다. 이는 self-review, public invoker, WIF attribute condition
 문제가 아니다. 현재 경계에서는 failed service/revision을 삭제하거나 재배포하지 않는다.
+
+## recovery 구현 결과 (2026-08-02)
+
+최신 부분 변경 상태를 삭제하거나 재배포하지 않고, 다음 로컬 recovery 계약을 추가했다.
+
+- `scripts/staging_deployment_runtime_contract.py`
+  - Cloud Run 서비스별 승인된 평문 환경변수와 Secret Manager 참조만 도출한다.
+  - collaboration은 `FIREBASE_STORAGE_BUCKET`과
+    `INTERNAL_API_TOKEN=<secret>:latest`만 전달한다.
+  - document worker는 bucket, worker binary path, `ALLOW_EMULATOR_TASKS=false`를 전달한다.
+  - document API는 packet의 관찰된 worker target URL과 read-after-deploy로 관찰된
+    collaboration `run.app` URL을 사용하며, secret 값은 읽지 않는다.
+  - 모든 배포 인자는 `shell=False` 고정 argv로 만들고 raw token·key·secret value를 허용하지 않는다.
+- `scripts/staging_deployment_prepare.py`
+  - prepared artifact에 secret 이름만 추가하고 packet 원문은 변경하지 않는다.
+- `scripts/staging_deployment_executor.py`
+  - prepared secret 이름과 packet secret 이름을 exact 비교한다.
+  - Cloud Run action은 runtime contract 없이는 argv를 만들 수 없다.
+  - observer가 반환한 서비스 URL을 후속 document API action에 명시적으로 전달한다.
+- `scripts/staging_deployment_observer.py`
+  - 서비스 객체가 존재하지만 `Ready=False`인 경우 삭제하지 않고 `missing`으로 분류해
+    단, 승인된 image digest·service account·ingress·runtime이 먼저 일치할 때만
+    동일 서비스의 bounded repair를 허용한다.
+  - `Ready=True` 서비스는 image, runtime, service account, ingress 및 승인된 env/secret
+    reference가 모두 일치해야 present로 인정한다.
+
+## recovery 로컬 검증과 외부 경계
+
+실행한 명령:
+
+```bash
+python3 -m unittest discover -s scripts/tests -p 'test_*.py' -v
+python3 -m py_compile scripts/staging_deployment_runtime_contract.py scripts/staging_deployment_executor.py scripts/staging_deployment_observer.py scripts/staging_deployment_prepare.py
+git diff --check
+```
+
+결과:
+
+- 전체 회귀 테스트: **255 passed**
+- Cloud Run argv에 평문 secret value가 포함되지 않음을 테스트
+- `Ready=False` 기존 service가 승인된 identity와 일치할 때만 삭제 없이 repair 대상이 됨을 테스트
+- 다른 image identity의 `Ready=False` service는 incompatible로 차단됨을 테스트
+- workflow YAML 계약과 packet prepare 계약 통과
+- 아직 commit·push·WIF condition 갱신·새 workflow dispatch·Cloud mutation은 하지 않음
+
+다음 순서는 이 로컬 변경을 별도 commit으로 검토한 뒤, 사용자가 명시적으로 승인할 때만
+push하고 새 원격 workflow SHA를 WIF `attribute.workflow_sha`에 read-back하는 것이다. 그
+후에도 새 packet/source/run binding과 fresh `execute_mutation=false` 확인을 먼저 거치며,
+실제 mutation은 별도 승인 없이는 실행하지 않는다.

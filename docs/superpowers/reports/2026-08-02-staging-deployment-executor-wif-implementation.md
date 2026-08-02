@@ -329,3 +329,55 @@ service account만 `gcloud run deploy`에 전달하고 env/secret 플래그를 �
 Run 변경이 있으므로 재실행·삭제·재배포·IAM/secret 변경은 즉시 중단했습니다. 다음 작업은
 컨테이너 startup 원인과 env/secret 전달 diff를 read-only로 검토하고, 별도의 recovery
 승인을 받은 뒤에만 새로운 source-bound packet과 workflow 실행을 준비하는 것입니다.
+
+## 승인된 recovery 수정 결과 (2026-08-02)
+
+사용자가 다음 단계 진행을 승인한 뒤, 부분 Cloud Run 변경을 지우지 않고 startup 실패의
+직접 원인을 고치는 로컬 구현을 추가했다.
+
+### 원인과 수정
+
+기존 `_fixed_argv()`는 image, runtime, service account만 `gcloud run deploy`에 전달했다.
+따라서 collaboration 컨테이너에 필요한 `FIREBASE_STORAGE_BUCKET`과
+Secret Manager의 `INTERNAL_API_TOKEN` 참조가 빠져 `HealthCheckContainerError`가 발생했다.
+이번 수정은 다음 파일에 한정된다.
+
+- `scripts/staging_deployment_runtime_contract.py` 신규
+  - 서비스별 환경변수와 Secret Manager `:latest` reference를 안전하게 도출
+  - document API의 collaboration URL은 이전 action의 read-after URL만 사용
+  - worker target은 packet의 HTTPS `*.a.run.app` 관찰값만 허용
+- `scripts/staging_deployment_executor.py`
+  - packet/prepared secret 이름 exact binding 검증
+  - Cloud Run fixed argv에 `--set-env-vars`/`--set-secrets`를 포함
+  - 관찰된 service URL을 후속 action으로 전달
+- `scripts/staging_deployment_observer.py`
+  - 기존 service가 있으나 `Ready=False`이면 승인된 image digest·runtime·service account·ingress가
+    일치할 때만 삭제하지 않고 repair 대상 `missing`으로 분류
+  - `Ready=True`일 때 승인된 env/secret reference까지 비교
+- `scripts/staging_deployment_prepare.py`
+  - prepared bundle에 secret 이름만 기록
+- 관련 executor/prepare 테스트
+  - synthetic task URL을 관찰된 Cloud Run URL 형식으로 고정
+  - 평문 secret이 argv에 들어가지 않는지 검증
+  - failed service repair 및 다른 identity 차단 관찰 계약 검증
+
+### 검증 결과
+
+```text
+python3 -m unittest discover -s scripts/tests -p 'test_*.py' -v  -> 255 passed
+python3 -m py_compile ...                                         -> passed
+git diff --check                                                   -> passed
+```
+
+검증 범위는 로컬 코드와 synthetic/read-only observer 계약이다. raw packet JSON은 재저장·
+pretty-print하지 않았고, token·ID token·Authorization header·password·private key·service
+account key·Firebase API key·internal flush token 원문은 만들거나 출력하지 않았다.
+
+### 현재 외부 경계
+
+- 현재 실패 service/revision은 삭제·재배포하지 않았다.
+- 새 commit·push, WIF `attribute.workflow_sha` 갱신, Environment 변경, workflow dispatch,
+  Cloud Run/Tasks/IAM/Firebase/Secret Manager mutation은 아직 하지 않았다.
+- 다음 외부 단계는 이 diff의 commit/push와 새 workflow SHA에 대한 WIF read-back이다.
+  이후 fresh packet 및 `execute_mutation=false`를 먼저 확인하고, 실제 mutation은 별도
+  명시 승인 후에만 진행한다.

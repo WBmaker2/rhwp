@@ -61,8 +61,8 @@ def _deployment_packet() -> dict[str, Any]:
     }
     value["cloudTasks"] = {
         "callerServiceAccount": f"rhwp-tasks-staging@{project}.iam.gserviceaccount.com",
-        "parse": {"dispatchDeadlineSeconds": 900, "location": "asia-northeast3", "name": "rhwp-parse-staging", "rateLimits": {"maxConcurrentDispatches": 1, "maxDispatchesPerSecond": 1}, "retry": {"maxAttempts": 5, "maxBackoffSeconds": 300, "maxDoublings": 5, "minBackoffSeconds": 10}, "targetUrl": "https://worker.example/run/parse"},
-        "export": {"dispatchDeadlineSeconds": 900, "location": "asia-northeast3", "name": "rhwp-export-staging", "rateLimits": {"maxConcurrentDispatches": 1, "maxDispatchesPerSecond": 1}, "retry": {"maxAttempts": 5, "maxBackoffSeconds": 300, "maxDoublings": 5, "minBackoffSeconds": 10}, "targetUrl": "https://worker.example/run/export"},
+        "parse": {"dispatchDeadlineSeconds": 900, "location": "asia-northeast3", "name": "rhwp-parse-staging", "rateLimits": {"maxConcurrentDispatches": 1, "maxDispatchesPerSecond": 1}, "retry": {"maxAttempts": 5, "maxBackoffSeconds": 300, "maxDoublings": 5, "minBackoffSeconds": 10}, "targetUrl": "https://rhwp-document-worker-staging-abc123-uc.a.run.app/run/parse"},
+        "export": {"dispatchDeadlineSeconds": 900, "location": "asia-northeast3", "name": "rhwp-export-staging", "rateLimits": {"maxConcurrentDispatches": 1, "maxDispatchesPerSecond": 1}, "retry": {"maxAttempts": 5, "maxBackoffSeconds": 300, "maxDoublings": 5, "minBackoffSeconds": 10}, "targetUrl": "https://rhwp-document-worker-staging-abc123-uc.a.run.app/run/export"},
     }
     s = value["cloudRun"]
     t = value["cloudTasks"]
@@ -142,6 +142,23 @@ class StagingDeploymentExecutorTest(unittest.TestCase):
         self.assertIn("--project=rhwp-collaboration-staging-001", command)
         self.assertNotIn("--project={project_id}", command)
 
+    def test_cloud_run_argv_contains_only_runtime_references(self) -> None:
+        prepared, actions = validate_prepared_bundle(self.root)
+        collaboration = _fixed_argv(prepared["project"]["id"], actions[0], prepared, {})
+        self.assertIn("--set-env-vars=FIREBASE_STORAGE_BUCKET=rhwp-collaboration-staging-001.firebasestorage.app", collaboration)
+        self.assertIn("--set-secrets=INTERNAL_API_TOKEN=rhwp-collaboration-internal-token-staging:latest", collaboration)
+        self.assertNotIn("do-not-print-this", json.dumps(collaboration))
+
+        document_api = _fixed_argv(
+            prepared["project"]["id"],
+            actions[1],
+            prepared,
+            {"cloud-run-collaboration": "https://rhwp-collaboration-staging-abc123-uc.a.run.app"},
+        )
+        self.assertIn("PARSE_WORKER_URL=https://rhwp-document-worker-staging-abc123-uc.a.run.app/run/parse", json.dumps(document_api))
+        self.assertIn("COLLABORATION_FLUSH_URL=https://rhwp-collaboration-staging-abc123-uc.a.run.app", json.dumps(document_api))
+        self.assertIn("--set-secrets=COLLABORATION_INTERNAL_TOKEN=rhwp-collaboration-internal-token-staging:latest", document_api)
+
     def test_apply_requires_observer_and_records_each_write(self) -> None:
         prepared, actions = validate_prepared_bundle(self.root)
         with self.assertRaisesRegex(DeploymentExecutionError, "observer"):
@@ -150,9 +167,16 @@ class StagingDeploymentExecutorTest(unittest.TestCase):
         argv: list[tuple[str, ...]] = []
 
         def observer(action: dict[str, Any]) -> dict[str, Any]:
+            service_url = None
+            if action["resourceKind"] == "cloud-run-service":
+                service_url = f"https://{action['resource']['name']}-abc123-uc.a.run.app"
             if states.get(action["actionId"], False):
-                return {"state": "present", "resourceKind": action["resourceKind"], "matchesDesired": True}
-            return {"state": "missing", "resourceKind": action["resourceKind"], "matchesDesired": False}
+                result = {"state": "present", "resourceKind": action["resourceKind"], "matchesDesired": True}
+            else:
+                result = {"state": "missing", "resourceKind": action["resourceKind"], "matchesDesired": False}
+            if service_url:
+                result["url"] = service_url
+            return result
 
         def runner(command: tuple[str, ...]) -> str:
             argv.append(command)
@@ -203,6 +227,59 @@ class StagingDeploymentExecutorTest(unittest.TestCase):
         )
         with patch("scripts.staging_deployment_observer.subprocess.run", return_value=completed):
             self.assertIsNone(_read_json(("gcloud", "run", "services", "describe")))
+
+    def test_observer_allows_failed_cloud_run_service_to_be_repaired(self) -> None:
+        prepared, actions = validate_prepared_bundle(self.root)
+        collaboration = actions[0]["resource"]
+        failed_service = {
+            "metadata": {"name": collaboration["name"]},
+            "spec": {
+                "ingress": collaboration["ingress"],
+                "template": {
+                    "metadata": {"annotations": {"autoscaling.knative.dev/minScale": "0", "autoscaling.knative.dev/maxScale": "10"}},
+                    "spec": {
+                        "serviceAccountName": collaboration["serviceAccount"],
+                        "containerConcurrency": 80,
+                        "timeoutSeconds": 3600,
+                        "containers": [{
+                            "image": f"{collaboration['image']}@sha256:{collaboration['digest']}",
+                            "resources": {"limits": {"cpu": "1", "memory": "1Gi"}},
+                            "env": [],
+                        }],
+                    },
+                },
+            },
+            "status": {
+                "url": "https://rhwp-collaboration-staging-abc123-uc.a.run.app",
+                "conditions": [{"type": "Ready", "status": "False", "reason": "HealthCheckContainerError"}],
+            }
+        }
+        with patch("scripts.staging_deployment_observer._read_json", return_value=failed_service):
+            from scripts.staging_deployment_observer import _observe_cloud_run
+
+            result = _observe_cloud_run(
+                prepared["project"]["id"],
+                collaboration,
+                prepared=prepared,
+                observed_urls={},
+            )
+        self.assertEqual(result["state"], "missing")
+        self.assertFalse(result["matchesDesired"])
+        self.assertEqual(result["url"], "https://rhwp-collaboration-staging-abc123-uc.a.run.app")
+
+    def test_observer_keeps_failed_service_with_wrong_identity_incompatible(self) -> None:
+        prepared, actions = validate_prepared_bundle(self.root)
+        wrong_service = {
+            "metadata": {"name": actions[0]["resource"]["name"]},
+            "spec": {"template": {"spec": {"containers": [{"image": "wrong.example/image@sha256:" + "f" * 64}]}}},
+            "status": {"conditions": [{"type": "Ready", "status": "False"}]},
+        }
+        with patch("scripts.staging_deployment_observer._read_json", return_value=wrong_service):
+            from scripts.staging_deployment_observer import _observe_cloud_run
+
+            result = _observe_cloud_run(prepared["project"]["id"], actions[0]["resource"], prepared=prepared, observed_urls={})
+        self.assertEqual(result["state"], "incompatible")
+        self.assertFalse(result["matchesDesired"])
 
 
 if __name__ == "__main__":
