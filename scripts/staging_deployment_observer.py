@@ -94,23 +94,33 @@ def _observe_cloud_run(
     for key in ("containerConcurrency", "timeoutSeconds", "minScale", "maxScale"):
         if isinstance(normal_runtime[key], str) and normal_runtime[key].isdigit():
             normal_runtime[key] = int(normal_runtime[key])
+    # The service identity is the safety boundary for a repair.  Runtime
+    # configuration is deliberately kept outside this comparison because a
+    # failed first deployment can leave the approved service with a correct
+    # image/account but an incomplete template (for example, no env/secrets or
+    # startup settings).  Such a service is repairable by the already bounded
+    # deploy argv; a different identity must remain incompatible.
     identity_matches = (
-        value.get("metadata", {}).get("name") == resource["name"] and image == expected_image and service_account == resource["serviceAccount"]
-        and ingress == resource["ingress"] and normal_runtime == runtime
+        value.get("metadata", {}).get("name") == resource["name"]
+        and image == expected_image
+        and service_account == resource["serviceAccount"]
+        and ingress == resource["ingress"]
     )
+    runtime_matches = normal_runtime == runtime
     if not isinstance(ready, dict) or (ready.get("status") is not True and ready.get("status") != "True"):
         result = {"state": "missing" if identity_matches else "incompatible", "resourceKind": "cloud-run-service", "matchesDesired": False}
         if isinstance(url, str) and url:
             result["url"] = url
         return result
-    matches = identity_matches
+    matches = identity_matches and runtime_matches
     if matches and prepared is not None:
         try:
             expected = cloud_run_runtime_configuration(project_id, resource, prepared, observed_urls or {})
         except RuntimeContractError as error:
             raise DeploymentObserverError("Cloud Run runtime configuration is not yet observable") from error
         matches = _environment_matches(container.get("env"), expected)
-    result = {"state": "present" if matches else "incompatible", "resourceKind": "cloud-run-service", "matchesDesired": matches}
+    state = "present" if matches else "missing" if identity_matches else "incompatible"
+    result = {"state": state, "resourceKind": "cloud-run-service", "matchesDesired": matches}
     if isinstance(url, str) and url:
         result["url"] = url
     return result

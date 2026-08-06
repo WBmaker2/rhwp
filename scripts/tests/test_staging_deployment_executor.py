@@ -267,19 +267,109 @@ class StagingDeploymentExecutorTest(unittest.TestCase):
         self.assertFalse(result["matchesDesired"])
         self.assertEqual(result["url"], "https://rhwp-collaboration-staging-abc123-uc.a.run.app")
 
-    def test_observer_keeps_failed_service_with_wrong_identity_incompatible(self) -> None:
+    def test_observer_allows_partial_identity_match_without_runtime_to_be_repaired(self) -> None:
         prepared, actions = validate_prepared_bundle(self.root)
-        wrong_service = {
-            "metadata": {"name": actions[0]["resource"]["name"]},
-            "spec": {"template": {"spec": {"containers": [{"image": "wrong.example/image@sha256:" + "f" * 64}]}}},
-            "status": {"conditions": [{"type": "Ready", "status": "False"}]},
+        collaboration = actions[0]["resource"]
+        partial_service = {
+            "metadata": {"name": collaboration["name"]},
+            "spec": {
+                "ingress": collaboration["ingress"],
+                "template": {
+                    "spec": {
+                        "serviceAccountName": collaboration["serviceAccount"],
+                        "containers": [{
+                            "image": f"{collaboration['image']}@sha256:{collaboration['digest']}",
+                        }],
+                    },
+                },
+            },
+            "status": {
+                "conditions": [{"type": "Ready", "status": "False", "reason": "HealthCheckContainerError"}],
+            },
         }
-        with patch("scripts.staging_deployment_observer._read_json", return_value=wrong_service):
+        with patch("scripts.staging_deployment_observer._read_json", return_value=partial_service):
             from scripts.staging_deployment_observer import _observe_cloud_run
 
-            result = _observe_cloud_run(prepared["project"]["id"], actions[0]["resource"], prepared=prepared, observed_urls={})
-        self.assertEqual(result["state"], "incompatible")
+            result = _observe_cloud_run(
+                prepared["project"]["id"],
+                collaboration,
+                prepared=prepared,
+                observed_urls={},
+            )
+        self.assertEqual(result["state"], "missing")
         self.assertFalse(result["matchesDesired"])
+
+    def test_observer_allows_ready_identity_match_with_runtime_gap_to_be_repaired(self) -> None:
+        prepared, actions = validate_prepared_bundle(self.root)
+        collaboration = actions[0]["resource"]
+        ready_but_incomplete_service = {
+            "metadata": {"name": collaboration["name"]},
+            "spec": {
+                "ingress": collaboration["ingress"],
+                "template": {
+                    "spec": {
+                        "serviceAccountName": collaboration["serviceAccount"],
+                        "containers": [{
+                            "image": f"{collaboration['image']}@sha256:{collaboration['digest']}",
+                        }],
+                    },
+                },
+            },
+            "status": {
+                "url": "https://rhwp-collaboration-staging-abc123-uc.a.run.app",
+                "conditions": [{"type": "Ready", "status": "True"}],
+            },
+        }
+        with patch("scripts.staging_deployment_observer._read_json", return_value=ready_but_incomplete_service):
+            from scripts.staging_deployment_observer import _observe_cloud_run
+
+            result = _observe_cloud_run(
+                prepared["project"]["id"],
+                collaboration,
+                prepared=prepared,
+                observed_urls={},
+            )
+        self.assertEqual(result["state"], "missing")
+        self.assertFalse(result["matchesDesired"])
+        self.assertEqual(result["url"], "https://rhwp-collaboration-staging-abc123-uc.a.run.app")
+
+    def test_observer_keeps_failed_service_with_wrong_identity_incompatible(self) -> None:
+        prepared, actions = validate_prepared_bundle(self.root)
+        collaboration = actions[0]["resource"]
+        identity = {
+            "metadata": {"name": collaboration["name"]},
+            "spec": {
+                "ingress": collaboration["ingress"],
+                "template": {
+                    "spec": {
+                        "serviceAccountName": collaboration["serviceAccount"],
+                        "containers": [{
+                            "image": f"{collaboration['image']}@sha256:{collaboration['digest']}",
+                        }],
+                    },
+                },
+            },
+            "status": {"conditions": [{"type": "Ready", "status": "False"}]},
+        }
+        variants = (
+            ("image", "wrong.example/image@sha256:" + "f" * 64),
+            ("serviceAccountName", "wrong-service-account@example.invalid"),
+            ("ingress", "internal"),
+        )
+        for field, wrong_value in variants:
+            wrong_service = copy.deepcopy(identity)
+            if field == "image":
+                wrong_service["spec"]["template"]["spec"]["containers"][0]["image"] = wrong_value
+            elif field == "serviceAccountName":
+                wrong_service["spec"]["template"]["spec"][field] = wrong_value
+            else:
+                wrong_service["spec"][field] = wrong_value
+            with self.subTest(field=field), patch("scripts.staging_deployment_observer._read_json", return_value=wrong_service):
+                from scripts.staging_deployment_observer import _observe_cloud_run
+
+                result = _observe_cloud_run(prepared["project"]["id"], collaboration, prepared=prepared, observed_urls={})
+            self.assertEqual(result["state"], "incompatible")
+            self.assertFalse(result["matchesDesired"])
 
 
 if __name__ == "__main__":
