@@ -196,6 +196,17 @@ class StagingWorkflowTest(unittest.TestCase):
         )
         self.assertIsNone(mutation.search(workflow))
 
+    def test_live_auth_step_does_not_inherit_operational_environment_variables(self) -> None:
+        workflow = WORKFLOW_PATH.read_text()
+        live_section = workflow.split("\n  live:\n", 1)[1]
+        live_job_header, live_steps = live_section.split("\n    steps:\n", 1)
+
+        self.assertNotIn("STAGING_INTERNAL_FLUSH_DECISION:", live_job_header)
+        auth_step = live_steps.split(
+            "\n      - name: Authenticate with Workload Identity Federation\n", 1
+        )[1].split("\n      - name:", 1)[0]
+        self.assertNotIn("STAGING_INTERNAL_FLUSH_DECISION", auth_step)
+
 
 if __name__ == "__main__":
     unittest.main()
