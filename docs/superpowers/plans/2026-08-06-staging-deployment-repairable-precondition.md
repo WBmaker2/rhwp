@@ -1,6 +1,6 @@
 ---
 kind: plan
-status: active
+status: completed
 canonical: docs/superpowers/plans/2026-08-06-staging-deployment-repairable-precondition.md
 last_verified: 2026-08-06
 ---
@@ -42,6 +42,9 @@ identity(image digest, service account, ingress)는 맞지만 runtime/env가 아
 
 ## 다음 경계
 
-로컬 구현·테스트 결과를 검토한 뒤에만 commit/push를 별도로 승인받는다. push 후에는
-새 HEAD에 맞춘 WIF `workflow_sha` diff를 다시 제시하고, 별도 workflow dispatch와
-protected Environment 승인을 거친다.
+로컬 구현·테스트 결과를 검토한 뒤 commit/push를 완료했다. 현재 PR branch HEAD는
+`54578c27c7f4ada841802338c520ffffeb6b752e`이며, WIF provider의 기존
+`workflow_sha=50e8ad787956754e0a9b8e8e57d1d1e64e9413ba`와 새 HEAD가 다르다. 따라서
+다음 단계는 WIF `attributeCondition`의 단일 SHA diff를 별도 승인받고 read-back하는
+것이며, 그 뒤에만 새 packet/run-bound dispatch와 protected Environment 승인을
+검토한다.

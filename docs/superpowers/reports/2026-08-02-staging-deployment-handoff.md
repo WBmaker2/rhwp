@@ -420,7 +420,30 @@ config:  python3 scripts/validate_staging_config.py
          staging manifest and configuration templates are valid; no deployment was performed
 ```
 
-현재 로컬 HEAD는 아직 `50e8ad787956754e0a9b8e8e57d1d1e64e9413ba`이며, 이번 보정은
-아직 commit/push하지 않았다. 다음 외부 경계는 새 commit/push 승인, 새 HEAD에 맞춘
-WIF workflow SHA read-back, 새 packet/run-bound dispatch와 protected Environment 승인이다.
-그 경계를 통과하기 전에는 같은 packet 재실행이나 Cloud mutation을 하지 않는다.
+로컬 보정 커밋 `54578c27c7f4ada841802338c520ffffeb6b752e`를 생성하고 PR branch에
+push했다. PR #1은 계속 Draft·Open·미병합이다. 다음 외부 경계는 새 HEAD에 맞춘 WIF
+`workflow_sha` 단일 diff의 별도 승인과 read-back, 새 packet/run-bound dispatch 및
+protected Environment 승인이다. 그 경계를 통과하기 전에는 같은 packet 재실행이나
+Cloud mutation을 하지 않는다.
+
+## 14. 2026-08-06 보정 커밋 push 및 WIF 재확인
+
+### Git 상태
+
+- branch: `feat/firebase-collaboration-mvp-v1`
+- pushed HEAD: `54578c27c7f4ada841802338c520ffffeb6b752e`
+- PR: https://github.com/WBmaker2/rhwp/pull/1
+- PR 상태: Draft·Open·미병합
+
+### WIF read-only 결과
+
+provider `rhwp-staging-deployment`는 `ACTIVE`이고 issuer/mapping/repository/ref/
+workflow ref는 유지되고 있다. 현재 read-back에서 확인된 차이는 다음 한 항목뿐이다.
+
+```diff
+- attribute.workflow_sha == '50e8ad787956754e0a9b8e8e57d1d1e64e9413ba'
++ attribute.workflow_sha == '54578c27c7f4ada841802338c520ffffeb6b752e'
+```
+
+이 diff는 아직 적용하지 않았다. WIF 변경, 새 workflow dispatch, protected
+Environment 승인, Cloud Run/IAM/Firebase/Cloud Tasks mutation은 수행하지 않았다.
