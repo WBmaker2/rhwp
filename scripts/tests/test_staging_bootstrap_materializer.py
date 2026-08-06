@@ -8,6 +8,7 @@ import tempfile
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
+from unittest.mock import patch
 
 from scripts.staging_approval_packet import (
     BOOTSTRAP_DEFERRED_PATHS,
@@ -346,6 +347,27 @@ class BootstrapMaterializerCliAndIntegrationTest(unittest.TestCase):
             self.assertFalse(output_path.with_name(output_path.name + ".tmp").exists())
             self.assertIn("STAGING_BILLING_ACCOUNT", stderr.getvalue())
 
+    def test_cli_json_stdin_mode_materializes_without_environment_log_surface(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            output_path = Path(directory) / "bootstrap-manifest.json"
+            stdout = io.StringIO()
+            stderr = io.StringIO()
+            with patch("sys.stdin", io.StringIO(json.dumps(valid_environment()))):
+                with redirect_stdout(stdout), redirect_stderr(stderr):
+                    result = main([
+                        "--manifest", str(MANIFEST_PATH),
+                        "--from-json-stdin",
+                        "--output", str(output_path),
+                    ])
+
+            self.assertEqual(result, 0, stderr.getvalue())
+            self.assertEqual(
+                json.loads(output_path.read_text())["project"]["id"],
+                valid_environment()["STAGING_PROJECT_ID"],
+            )
+            self.assertNotIn(valid_environment()["STAGING_INTERNAL_FLUSH_DECISION"], stdout.getvalue())
+            self.assertNotIn(valid_environment()["STAGING_INTERNAL_FLUSH_DECISION"], stderr.getvalue())
+
     def test_materialized_manifest_generates_static_preflight_and_bootstrap_packet(self) -> None:
         manifest = materialize_bootstrap_manifest(repository_manifest(), valid_values())
         with tempfile.TemporaryDirectory() as directory:
@@ -428,22 +450,17 @@ class BootstrapWorkflowContractTest(unittest.TestCase):
         for marker in (
             "environment: staging-preflight",
             "id-token: write",
-            "STAGING_PROJECT_ID: ${{ vars.STAGING_PROJECT_ID }}",
-            "STAGING_BILLING_ACCOUNT: ${{ vars.STAGING_BILLING_ACCOUNT }}",
-            "STAGING_FORBIDDEN_PROJECT_IDS_JSON: ${{ vars.STAGING_FORBIDDEN_PROJECT_IDS_JSON }}",
-            "STAGING_STORAGE_BUCKET: ${{ vars.STAGING_STORAGE_BUCKET }}",
-            "STAGING_MONTHLY_BUDGET_KRW: ${{ vars.STAGING_MONTHLY_BUDGET_KRW }}",
-            "STAGING_BUDGET_NOTIFICATION_CHANNELS_JSON: ${{ vars.STAGING_BUDGET_NOTIFICATION_CHANNELS_JSON }}",
-            "STAGING_DATA_RETENTION_DAYS: ${{ vars.STAGING_DATA_RETENTION_DAYS }}",
-            "STAGING_APPROVAL_REFERENCE: ${{ vars.STAGING_APPROVAL_REFERENCE }}",
-            "STAGING_INTERNAL_FLUSH_DECISION: ${{ vars.STAGING_INTERNAL_FLUSH_DECISION }}",
+            "environments/staging-preflight/variables?per_page=100",
+            "--jq 'reduce .variables[] as $v ({}; .[$v.name] = $v.value)'",
             "python3 scripts/staging_bootstrap_materializer.py",
-            "--from-environment",
+            "--from-json-stdin",
             "--output artifacts/staging-manifest-deployment-preflight.json",
             "--manifest artifacts/staging-manifest-deployment-preflight.json",
             "artifacts/staging-manifest-deployment-preflight.json",
         ):
             self.assertIn(marker, live_section)
+
+        self.assertNotIn("STAGING_INTERNAL_FLUSH_DECISION: ${{ vars.STAGING_INTERNAL_FLUSH_DECISION }}", live_section)
 
         self.assertLess(
             live_section.index("Materialize approved deployment preflight manifest"),

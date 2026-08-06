@@ -129,6 +129,18 @@ def load_values_from_environment(environ: Mapping[str, str]) -> dict[str, Any]:
     return result
 
 
+def load_values_from_json_stream(stream: Any) -> dict[str, Any]:
+    try:
+        environ = json.load(stream)
+    except (json.JSONDecodeError, TypeError) as error:
+        raise BootstrapMaterializerError(
+            "environment JSON stdin is not valid JSON"
+        ) from error
+    if not isinstance(environ, Mapping):
+        raise BootstrapMaterializerError("environment JSON stdin must be an object")
+    return load_values_from_environment(environ)
+
+
 def validate_bootstrap_values(values: dict[str, Any]) -> None:
     sensitive_paths = _find_sensitive_key_paths(values, "values")
     if sensitive_paths:
@@ -323,6 +335,7 @@ def main(
     source = parser.add_mutually_exclusive_group(required=True)
     source.add_argument("--values", type=Path)
     source.add_argument("--from-environment", action="store_true")
+    source.add_argument("--from-json-stdin", action="store_true")
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args(argv)
 
@@ -333,6 +346,8 @@ def main(
             values = load_values_from_environment(
                 os.environ if environ is None else environ
             )
+        elif args.from_json_stdin:
+            values = load_values_from_json_stream(sys.stdin)
         else:
             assert args.values is not None
             values = load_json_object(args.values, "staging bootstrap values")
