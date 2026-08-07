@@ -121,7 +121,8 @@
       "rhwp-infra-deployer-staging@${FIREBASE_STAGING_PROJECT_ID}.iam.gserviceaccount.com",
       "rhwp-staging-preflight-reader@${FIREBASE_STAGING_PROJECT_ID}.iam.gserviceaccount.com",
       "rhwp-staging-release-pusher@${FIREBASE_STAGING_PROJECT_ID}.iam.gserviceaccount.com",
-      "rhwp-staging-runtime-bootstrap@${FIREBASE_STAGING_PROJECT_ID}.iam.gserviceaccount.com"
+      "rhwp-staging-runtime-bootstrap@${FIREBASE_STAGING_PROJECT_ID}.iam.gserviceaccount.com",
+      "rhwp-staging-deploy-executor@${FIREBASE_STAGING_PROJECT_ID}.iam.gserviceaccount.com"
     ],
     "bindings": [
       {

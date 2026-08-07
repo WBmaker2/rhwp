@@ -156,7 +156,7 @@ class ReadOnlyPreflightTest(unittest.TestCase):
         manifest = load_manifest(MANIFEST_PATH)
         expected = _expected_resource_names(manifest)
 
-        self.assertEqual(len(manifest["iam"]["platformServiceAccounts"]), 5)
+        self.assertEqual(len(manifest["iam"]["platformServiceAccounts"]), 6)
         self.assertTrue(
             set(manifest["iam"]["platformServiceAccounts"]).issubset(
                 expected["serviceAccounts"]
