@@ -1,0 +1,21 @@
+{
+  "schemaVersion": "rhwp.staging-deployment-evidence/v1",
+  "evidenceKind": "rollback",
+  "status": "not-applicable-initial",
+  "sourceCommitSha": "29c4c037b2a307a056f4801e248558311337b979",
+  "workflowRunId": 30738684540,
+  "workflowRunAttempt": 1,
+  "packetSha256": "54a54e80b49d6c5693ed08cc34cf7a6c6f75a005afe4779004620575c7de0858",
+  "observedAt": "2026-08-02T08:04:53Z",
+  "data": {
+    "deploymentStage": "initial",
+    "revisionIds": [null, null, null],
+    "readOnlyObservation": {
+      "initialDeploymentNoPreviousRevision": true,
+      "workerServiceObserved": "rhwp-document-worker-staging",
+      "workerReadyRevision": "rhwp-document-worker-staging-00004-vpl"
+    }
+  },
+  "mutationCommands": [],
+  "redactionApplied": true
+}

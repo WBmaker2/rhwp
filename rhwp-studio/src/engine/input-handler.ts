@@ -659,6 +659,17 @@ export class InputHandler {
     });
   }
 
+  /** 공동 편집 Awareness에 노출할 현재 커서와 선택의 불변 스냅샷. */
+  getCollaborationSelectionSnapshot(): {
+    position: DocumentPosition;
+    selection: { anchor: DocumentPosition; focus: DocumentPosition } | null;
+  } {
+    return {
+      position: this.cursor.getPosition(),
+      selection: this.cursor.getSelection(),
+    };
+  }
+
   /** 클릭 이벤트 처리 — hitTest로 커서 배치 */
   private onClick(e: MouseEvent): void {
     _mouse.onClick.call(this, e);
@@ -2380,6 +2391,29 @@ export class InputHandler {
     this.textarea.focus();
   }
 
+  /** 현재 커서 위치를 협업 가능한 텍스트 변경 위치로 발행한다. */
+  private emitCollaborationEditableChange(): void {
+    if (this.isComposing) return;
+    const pos = this.cursor.getPosition();
+    if (typeof pos.parentParaIndex === 'number' && typeof pos.controlIndex === 'number' && typeof pos.cellIndex === 'number') {
+      this.eventBus.emit('collaboration-editable-changed', {
+        kind: 'cell',
+        sectionIndex: pos.sectionIndex,
+        hostParagraphIndex: pos.parentParaIndex,
+        controlIndex: pos.controlIndex,
+        cellIndex: pos.cellIndex,
+      });
+      return;
+    }
+    if (!pos.isTextBox) {
+      this.eventBus.emit('collaboration-editable-changed', {
+        kind: 'paragraph',
+        sectionIndex: pos.sectionIndex,
+        paragraphIndex: pos.paragraphIndex,
+      });
+    }
+  }
+
   /** 편집 후 처리: 재렌더링 + 캐럿 갱신 */
   private afterEdit(flushDeferredPagination = true): void {
     if (flushDeferredPagination) {
@@ -2399,6 +2433,7 @@ export class InputHandler {
     this.clearTableResizeRuntimeCache();
     this.eventBus.emit('document-mutated', 'input-handler-edit');
     this.eventBus.emit('document-changed');
+    this.emitCollaborationEditableChange();
     this.updateCaret();
   }
 
@@ -2418,6 +2453,7 @@ export class InputHandler {
     if (this.deferredPaginationPending) {
       this.scheduleDeferredPaginationFlush();
     }
+    this.emitCollaborationEditableChange();
     this.updateCaret();
   }
 

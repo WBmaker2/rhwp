@@ -227,6 +227,108 @@ impl HwpDocument {
         DocumentCore::find_column_def_for_paragraph(paragraphs, para_idx)
     }
 
+    pub fn get_collaboration_manifest_native(
+        &self,
+        source_fingerprint: &str,
+    ) -> Result<String, crate::collaboration::CollaborationError> {
+        let manifest = crate::collaboration::build_collaboration_manifest(
+            self.document(),
+            source_fingerprint,
+        )?;
+        crate::collaboration::validate_collaboration_manifest(&manifest)?;
+        serde_json::to_string(&manifest).map_err(|error| {
+            crate::collaboration::CollaborationError::SerializationFailed {
+                message: error.to_string(),
+            }
+        })
+    }
+
+    pub fn get_collaboration_paragraph_text_native(
+        &self,
+        source_fingerprint: &str,
+        section_index: u32,
+        paragraph_index: u32,
+        stable_id: &str,
+    ) -> Result<String, crate::collaboration::CollaborationError> {
+        crate::collaboration::get_collaboration_paragraph_text(
+            self.document(),
+            source_fingerprint,
+            section_index,
+            paragraph_index,
+            stable_id,
+        )
+    }
+
+    pub fn get_collaboration_cell_text_native(
+        &self,
+        source_fingerprint: &str,
+        section_index: u32,
+        host_paragraph_index: u32,
+        control_index: u32,
+        cell_index: u32,
+        stable_id: &str,
+    ) -> Result<String, crate::collaboration::CollaborationError> {
+        crate::collaboration::get_collaboration_cell_text(
+            self.document(),
+            source_fingerprint,
+            section_index,
+            host_paragraph_index,
+            control_index,
+            cell_index,
+            stable_id,
+        )
+    }
+
+    pub fn apply_collaboration_paragraph_text_native(
+        &mut self,
+        source_fingerprint: &str,
+        section_index: u32,
+        paragraph_index: u32,
+        stable_id: &str,
+        text: &str,
+    ) -> Result<String, crate::collaboration::CollaborationError> {
+        let report = crate::collaboration::apply_collaboration_paragraph_text(
+            self.document_mut(),
+            source_fingerprint,
+            section_index,
+            paragraph_index,
+            stable_id,
+            text,
+        )?;
+        serde_json::to_string(&report).map_err(|error| {
+            crate::collaboration::CollaborationError::SerializationFailed {
+                message: error.to_string(),
+            }
+        })
+    }
+
+    pub fn apply_collaboration_cell_text_native(
+        &mut self,
+        source_fingerprint: &str,
+        section_index: u32,
+        host_paragraph_index: u32,
+        control_index: u32,
+        cell_index: u32,
+        stable_id: &str,
+        text: &str,
+    ) -> Result<String, crate::collaboration::CollaborationError> {
+        let report = crate::collaboration::apply_collaboration_cell_text(
+            self.document_mut(),
+            source_fingerprint,
+            section_index,
+            host_paragraph_index,
+            control_index,
+            cell_index,
+            stable_id,
+            text,
+        )?;
+        serde_json::to_string(&report).map_err(|error| {
+            crate::collaboration::CollaborationError::SerializationFailed {
+                message: error.to_string(),
+            }
+        })
+    }
+
     fn inject_external_image_by_bin_data_id(
         &mut self,
         bin_data_id: u16,
@@ -640,6 +742,86 @@ impl HwpDocument {
         renderer.set_scale(scale);
         renderer.render_tree(&tree);
         Ok(())
+    }
+
+    #[wasm_bindgen(js_name = getCollaborationParagraphText)]
+    pub fn get_collaboration_paragraph_text(
+        &self,
+        source_fingerprint: &str,
+        section_index: u32,
+        paragraph_index: u32,
+        stable_id: &str,
+    ) -> Result<String, JsValue> {
+        self.get_collaboration_paragraph_text_native(
+            source_fingerprint,
+            section_index,
+            paragraph_index,
+            stable_id,
+        )
+        .map_err(|error| JsValue::from_str(&error.to_string()))
+    }
+
+    #[wasm_bindgen(js_name = getCollaborationCellText)]
+    pub fn get_collaboration_cell_text(
+        &self,
+        source_fingerprint: &str,
+        section_index: u32,
+        host_paragraph_index: u32,
+        control_index: u32,
+        cell_index: u32,
+        stable_id: &str,
+    ) -> Result<String, JsValue> {
+        self.get_collaboration_cell_text_native(
+            source_fingerprint,
+            section_index,
+            host_paragraph_index,
+            control_index,
+            cell_index,
+            stable_id,
+        )
+        .map_err(|error| JsValue::from_str(&error.to_string()))
+    }
+
+    #[wasm_bindgen(js_name = applyCollaborationParagraphText)]
+    pub fn apply_collaboration_paragraph_text(
+        &mut self,
+        source_fingerprint: &str,
+        section_index: u32,
+        paragraph_index: u32,
+        stable_id: &str,
+        text: &str,
+    ) -> Result<String, JsValue> {
+        self.apply_collaboration_paragraph_text_native(
+            source_fingerprint,
+            section_index,
+            paragraph_index,
+            stable_id,
+            text,
+        )
+        .map_err(|error| JsValue::from_str(&error.to_string()))
+    }
+
+    #[wasm_bindgen(js_name = applyCollaborationCellText)]
+    pub fn apply_collaboration_cell_text(
+        &mut self,
+        source_fingerprint: &str,
+        section_index: u32,
+        host_paragraph_index: u32,
+        control_index: u32,
+        cell_index: u32,
+        stable_id: &str,
+        text: &str,
+    ) -> Result<String, JsValue> {
+        self.apply_collaboration_cell_text_native(
+            source_fingerprint,
+            section_index,
+            host_paragraph_index,
+            control_index,
+            cell_index,
+            stable_id,
+            text,
+        )
+        .map_err(|error| JsValue::from_str(&error.to_string()))
     }
 
     /// 페이지 렌더 트리를 JSON 문자열로 반환한다.

@@ -17,6 +17,16 @@ path = "src/main.rs"
 name = "font-metric-gen"
 path = "src/tools/font_metric_gen.rs"
 
+[[bin]]
+name = "rhwp-collaboration-worker"
+path = "src/bin/rhwp-collaboration-worker.rs"
+required-features = ["collaboration-worker"]
+
+[[test]]
+name = "collaboration_worker_cli"
+path = "tests/collaboration_worker_cli.rs"
+required-features = ["collaboration-worker"]
+
 [dependencies]
 wasm-bindgen = "0.2"
 cfb = "0.14"
@@ -46,6 +56,7 @@ console_error_panic_hook = { version = "0.1", optional = true }
 [features]
 default = ["console_error_panic_hook"]
 native-skia = ["dep:resvg", "dep:skia-safe"]
+collaboration-worker = []
 
 # PDF 내보내기 (네이티브 전용, Task #21)
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]

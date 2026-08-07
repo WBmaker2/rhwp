@@ -1,0 +1,19 @@
+{
+  "schemaVersion": "rhwp.staging-deployment-packet-review-result/v1",
+  "status": "ready-for-deployment-workflow",
+  "approvalReference": "staging-bootstrap-approval-2026-07-27-001",
+  "deploymentPacketSha256": "54a54e80b49d6c5693ed08cc34cf7a6c6f75a005afe4779004620575c7de0858",
+  "sourceCommitSha": "29c4c037b2a307a056f4801e248558311337b979",
+  "workflowRunId": 30738684540,
+  "workflowRunAttempt": 1,
+  "decision": "approved",
+  "deploymentApproved": true,
+  "cloudMutationApproved": true,
+  "mutationCommands": [],
+  "notes": [
+    "User explicitly approved the exact deployment packet SHA-256.",
+    "Acceptance evidence remains pending until post-deployment verification.",
+    "Initial rollback evidence is not-applicable-initial with null prior revisions.",
+    "Mutation commands remain empty in this record; protected deployment workflow is still required."
+  ]
+}

@@ -1,0 +1,89 @@
+name: Document worker
+
+on:
+  pull_request:
+    branches: [devel]
+    paths:
+      - 'Cargo.toml'
+      - 'src/bin/rhwp-collaboration-worker.rs'
+      - 'tests/collaboration_worker_cli.rs'
+      - 'services/document-worker/**'
+      - '.github/workflows/document-worker.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: document-worker-${{ github.head_ref || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  native:
+    name: Native worker
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          show-progress: false
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.93.1
+          components: rustfmt
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: document-worker
+
+      - name: Check Rust formatting
+        run: cargo fmt --all -- --check
+
+      - name: Test native collaboration worker
+        run: |
+          set -o pipefail
+          cargo test --no-default-features --features collaboration-worker --test collaboration_worker_cli 2>&1 | tee native-worker.log
+
+      - name: Upload native diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: document-worker-native-${{ github.run_id }}
+          path: native-worker.log
+          retention-days: 1
+          if-no-files-found: error
+
+  node:
+    name: Node worker
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          show-progress: false
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: services/collaboration-server/package-lock.json
+
+      - name: Install worker dependencies
+        working-directory: services/document-worker
+        run: npm install --ignore-scripts --no-audit --no-fund
+
+      - name: Test and build Node worker
+        working-directory: services/document-worker
+        run: |
+          set -o pipefail
+          npm run check 2>&1 | tee document-worker.log
+
+      - name: Upload Node diagnostics and generated lockfile
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: document-worker-node-${{ github.run_id }}
+          path: |
+            services/document-worker/document-worker.log
+            services/document-worker/package-lock.json
+          retention-days: 1
+          if-no-files-found: error

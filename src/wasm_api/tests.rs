@@ -25872,3 +25872,44 @@ fn style_json_survives_backslash_and_control_chars() {
     serde_json::from_str::<Value>(&at)
         .expect("getStyleAt 도 유효한 JSON 이어야 함(커서 이동마다 호출됨)");
 }
+
+#[test]
+fn collaboration_manifest_json_api_returns_current_document() {
+    use crate::collaboration::{CollaborationManifest, COLLABORATION_SCHEMA_VERSION};
+
+    let doc = HwpDocument::create_empty();
+    let json = doc
+        .get_collaboration_manifest_native("sha256:wasm-fixture")
+        .expect("collaboration manifest JSON");
+    let manifest: CollaborationManifest =
+        serde_json::from_str(&json).expect("parse collaboration manifest JSON");
+
+    assert_eq!(manifest.schema_version, COLLABORATION_SCHEMA_VERSION);
+    assert_eq!(manifest.source_fingerprint, "sha256:wasm-fixture");
+    assert_eq!(manifest.sections.len(), 1);
+    assert!(!manifest.sections[0].paragraphs.is_empty());
+}
+
+#[test]
+fn collaboration_manifest_json_api_is_deterministic() {
+    let doc = HwpDocument::create_empty();
+    let first = doc
+        .get_collaboration_manifest_native("sha256:wasm-fixture")
+        .expect("first collaboration manifest JSON");
+    let second = doc
+        .get_collaboration_manifest_native("sha256:wasm-fixture")
+        .expect("second collaboration manifest JSON");
+
+    assert_eq!(first, second);
+}
+
+#[test]
+fn collaboration_manifest_json_api_rejects_invalid_fingerprint() {
+    use crate::collaboration::CollaborationError;
+
+    let doc = HwpDocument::create_empty();
+    assert!(matches!(
+        doc.get_collaboration_manifest_native("invalid"),
+        Err(CollaborationError::InvalidSourceFingerprint { .. })
+    ));
+}

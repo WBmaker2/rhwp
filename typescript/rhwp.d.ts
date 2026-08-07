@@ -31,6 +31,13 @@ export class HwpDocument {
   /** 문서 정보를 JSON 문자열로 반환한다. */
   getDocumentInfo(): string;
 
+  /** 현재 문서를 schema version 1 협업 manifest JSON 문자열로 반환한다. */
+  getCollaborationManifest(sourceFingerprint: string): string;
+  getCollaborationParagraphText(sourceFingerprint: string, sectionIndex: number, paragraphIndex: number, stableId: string): string;
+  getCollaborationCellText(sourceFingerprint: string, sectionIndex: number, hostParagraphIndex: number, controlIndex: number, cellIndex: number, stableId: string): string;
+  applyCollaborationParagraphText(sourceFingerprint: string, sectionIndex: number, paragraphIndex: number, stableId: string, text: string): string;
+  applyCollaborationCellText(sourceFingerprint: string, sectionIndex: number, hostParagraphIndex: number, controlIndex: number, cellIndex: number, stableId: string, text: string): string;
+
   /** DPI를 설정한다. */
   setDpi(dpi: number): void;
 

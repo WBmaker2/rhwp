@@ -1,0 +1,287 @@
+name: Staging deployment
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_commit_sha:
+        description: "Approved packet source commit SHA-1"
+        required: true
+        type: string
+      packet_run_id:
+        description: "Successful deployment-preflight workflow run ID"
+        required: true
+        type: string
+      packet_run_attempt:
+        description: "Packet workflow run attempt"
+        required: true
+        type: string
+      packet_artifact_name:
+        description: "Deployment packet artifact name"
+        required: true
+        default: staging-approval-packet-deployment
+        type: string
+      packet_artifact_digest:
+        description: "GitHub artifact server digest (sha256:<64 lowercase hex>)"
+        required: true
+        type: string
+      packet_sha256:
+        description: "Deployment packet JSON exact-byte SHA-256"
+        required: true
+        type: string
+      approval_directory:
+        description: "Tracked deployment review/approval record directory"
+        required: true
+        default: docs/approvals/records/staging-bootstrap-approval-2026-07-27-001
+        type: string
+      execute_mutation:
+        description: "Reserved protected mutation switch; false is the only local implementation mode"
+        required: true
+        default: false
+        type: boolean
+
+concurrency:
+  group: staging-deployment-${{ inputs.source_commit_sha }}
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    name: Prepare exact approved deployment input
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+      id-token: none
+    outputs:
+      source_commit_sha: ${{ steps.bindings.outputs.source_commit_sha }}
+      packet_sha256: ${{ steps.bindings.outputs.packet_sha256 }}
+      approval_reference: ${{ steps.bindings.outputs.approval_reference }}
+    steps:
+      - name: Checkout workflow source
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 1
+          show-progress: false
+
+      - name: Validate packet run and artifact metadata
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED_SOURCE_COMMIT: ${{ inputs.source_commit_sha }}
+          PACKET_RUN_ID: ${{ inputs.packet_run_id }}
+          PACKET_RUN_ATTEMPT: ${{ inputs.packet_run_attempt }}
+          PACKET_ARTIFACT_NAME: ${{ inputs.packet_artifact_name }}
+          PACKET_ARTIFACT_DIGEST: ${{ inputs.packet_artifact_digest }}
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF_NAME" = "feat/firebase-collaboration-mvp-v1"
+          [[ "$PACKET_RUN_ID" =~ ^[1-9][0-9]*$ ]]
+          [[ "$PACKET_RUN_ATTEMPT" =~ ^[1-9][0-9]*$ ]]
+          [[ "$PACKET_ARTIFACT_NAME" == "staging-approval-packet-deployment" ]]
+          mkdir -p artifacts/staging-deployment-metadata
+          gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${PACKET_RUN_ID}" > artifacts/staging-deployment-metadata/run.json
+          gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${PACKET_RUN_ID}/artifacts?per_page=100" > artifacts/staging-deployment-metadata/artifacts.json
+          python3 - <<'PY'
+          import json
+          import os
+          import re
+          from pathlib import Path
+
+          run = json.loads(Path("artifacts/staging-deployment-metadata/run.json").read_text())
+          artifacts = json.loads(Path("artifacts/staging-deployment-metadata/artifacts.json").read_text()).get("artifacts", [])
+          expected_source = os.environ["EXPECTED_SOURCE_COMMIT"]
+          expected_run_id = int(os.environ["PACKET_RUN_ID"])
+          expected_attempt = int(os.environ["PACKET_RUN_ATTEMPT"])
+          expected_name = os.environ["PACKET_ARTIFACT_NAME"]
+          expected_digest = os.environ["PACKET_ARTIFACT_DIGEST"]
+          if not re.fullmatch(r"[0-9a-f]{40}", expected_source):
+              raise SystemExit("source commit must be a lowercase 40-character SHA")
+          if run.get("id") != expected_run_id or run.get("head_sha") != expected_source:
+              raise SystemExit("packet workflow run is not bound to the approved source commit")
+          if run.get("run_attempt") != expected_attempt or run.get("conclusion") != "success":
+              raise SystemExit("packet workflow run attempt/conclusion is not approved")
+          matches = [item for item in artifacts if item.get("name") == expected_name]
+          if len(matches) != 1:
+              raise SystemExit("packet artifact name is not unique in the packet run")
+          artifact = matches[0]
+          if artifact.get("expired") is True or artifact.get("workflow_run", {}).get("id") != expected_run_id:
+              raise SystemExit("packet artifact is expired or from a different workflow run")
+          if artifact.get("digest") != expected_digest:
+              raise SystemExit("packet artifact server digest does not match dispatch input")
+          if not re.fullmatch(r"sha256:[0-9a-f]{64}", expected_digest):
+              raise SystemExit("packet artifact digest must be sha256:<64 lowercase hex>")
+          PY
+
+      - name: Download packet from the approved run
+        uses: actions/download-artifact@v8
+        with:
+          name: ${{ inputs.packet_artifact_name }}
+          path: artifacts/staging-deployment-packet
+          repository: ${{ github.repository }}
+          run-id: ${{ inputs.packet_run_id }}
+          github-token: ${{ github.token }}
+
+      - name: Prepare exact same-run approval bundle
+        env:
+          SOURCE_COMMIT_SHA: ${{ inputs.source_commit_sha }}
+          PACKET_RUN_ID: ${{ inputs.packet_run_id }}
+          PACKET_RUN_ATTEMPT: ${{ inputs.packet_run_attempt }}
+          PACKET_ARTIFACT_NAME: ${{ inputs.packet_artifact_name }}
+          PACKET_ARTIFACT_DIGEST: ${{ inputs.packet_artifact_digest }}
+          PACKET_SHA256: ${{ inputs.packet_sha256 }}
+          APPROVAL_DIRECTORY: ${{ inputs.approval_directory }}
+        run: |
+          set -euo pipefail
+          case "$APPROVAL_DIRECTORY" in
+            /*|*..*) echo "approval_directory must be a relative repository path" >&2; exit 1 ;;
+          esac
+          mapfile -t packet_files < <(find artifacts/staging-deployment-packet -type f -name 'staging-approval-packet.json' -print)
+          test "${#packet_files[@]}" -eq 1
+          python3 scripts/staging_deployment_prepare.py \
+            --packet "${packet_files[0]}" \
+            --review "$APPROVAL_DIRECTORY/staging-deployment-packet-review.json" \
+            --acceptance-evidence "$APPROVAL_DIRECTORY/staging-deployment-acceptance-evidence.json" \
+            --rollback-evidence "$APPROVAL_DIRECTORY/staging-deployment-rollback-evidence.json" \
+            --approval-record "$APPROVAL_DIRECTORY/staging-deployment-approval-record.json" \
+            --expected-source-commit "$SOURCE_COMMIT_SHA" \
+            --expected-workflow-run-id "$PACKET_RUN_ID" \
+            --expected-workflow-run-attempt "$PACKET_RUN_ATTEMPT" \
+            --expected-artifact-name "$PACKET_ARTIFACT_NAME" \
+            --expected-artifact-digest "$PACKET_ARTIFACT_DIGEST" \
+            --expected-packet-sha256 "$PACKET_SHA256" \
+            --output-dir artifacts/staging-deployment-approved-input
+
+      - name: Record verified bindings
+        id: bindings
+        run: |
+          set -euo pipefail
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import json
+          from pathlib import Path
+          value = json.loads(Path("artifacts/staging-deployment-approved-input/deployment-input.json").read_text())
+          print(f"source_commit_sha={value['sourceCommitSha']}")
+          print(f"packet_sha256={value['packetSha256']}")
+          print(f"approval_reference={value['approvalReference']}")
+          PY
+
+      - name: Upload same-run approved input
+        uses: actions/upload-artifact@v7
+        with:
+          name: staging-deployment-approved-input
+          path: artifacts/staging-deployment-approved-input/*
+          if-no-files-found: error
+          retention-days: 30
+
+  deploy:
+    name: Protected deployment gate (mutation reserved)
+    needs: prepare
+    if: needs.prepare.result == 'success'
+    runs-on: ubuntu-latest
+    environment: staging-deployment
+    permissions:
+      contents: read
+      actions: read
+      id-token: write
+    steps:
+      - name: Checkout protected executor source
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 1
+          show-progress: false
+
+      - name: Download only the same-run approved input
+        uses: actions/download-artifact@v8
+        with:
+          name: staging-deployment-approved-input
+          path: artifacts/staging-deployment-approved-input
+          github-token: ${{ github.token }}
+
+      - name: Validate same-run approval before any credential step
+        env:
+          EXPECTED_SOURCE_COMMIT: ${{ needs.prepare.outputs.source_commit_sha }}
+          EXPECTED_PACKET_SHA256: ${{ needs.prepare.outputs.packet_sha256 }}
+          EXPECTED_APPROVAL_REFERENCE: ${{ needs.prepare.outputs.approval_reference }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+
+          root = Path("artifacts/staging-deployment-approved-input")
+          prepared = json.loads((root / "deployment-input.json").read_text())
+          packet_raw = (root / "staging-approval-packet.json").read_bytes()
+          record = json.loads((root / "staging-deployment-approval-record.json").read_text())
+          if hashlib.sha256(packet_raw).hexdigest() != os.environ["EXPECTED_PACKET_SHA256"]:
+              raise SystemExit("same-run packet bytes do not match the approved packet SHA-256")
+          if prepared.get("sourceCommitSha") != os.environ["EXPECTED_SOURCE_COMMIT"]:
+              raise SystemExit("same-run source commit binding is invalid")
+          if prepared.get("approvalReference") != os.environ["EXPECTED_APPROVAL_REFERENCE"]:
+              raise SystemExit("same-run approval reference is invalid")
+          if record.get("deploymentApproved") is not True or record.get("cloudMutationApproved") is not True:
+              raise SystemExit("same-run approval record is not deployment-authorized")
+          if prepared.get("mutationCommands") != [] or record.get("mutationCommands") != []:
+              raise SystemExit("same-run approval contains mutation commands")
+          if prepared.get("packetArtifactDigest", "").startswith("sha256:") is not True:
+              raise SystemExit("same-run artifact digest is missing")
+          PY
+
+      - name: Generate bounded deployment plan before authentication
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/staging-deployment-execution
+          python3 -m scripts.staging_deployment_executor \
+            --input-dir artifacts/staging-deployment-approved-input \
+            --plan-evidence artifacts/staging-deployment-execution/plan-evidence.json \
+            --post-evidence artifacts/staging-deployment-execution/post-evidence.json
+
+      - name: Authenticate deployment executor with Workload Identity Federation
+        if: ${{ inputs.execute_mutation == true }}
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_DEPLOY_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_DEPLOY_SERVICE_ACCOUNT }}
+
+      - name: Set up gcloud for protected deployment
+        if: ${{ inputs.execute_mutation == true }}
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Execute bounded deployment actions with read-before-write-read-after
+        if: ${{ inputs.execute_mutation == true }}
+        run: |
+          set -euo pipefail
+          python3 -m scripts.staging_deployment_executor \
+            --input-dir artifacts/staging-deployment-approved-input \
+            --plan-evidence artifacts/staging-deployment-execution/apply-plan-evidence.json \
+            --post-evidence artifacts/staging-deployment-execution/apply-post-evidence.json \
+            --apply
+
+      - name: Upload deployment execution evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: staging-deployment-execution-evidence
+          path: artifacts/staging-deployment-execution/*.json
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Report protected dry-run boundary
+        if: ${{ inputs.execute_mutation == false }}
+        run: |
+          set -euo pipefail
+          echo "Approved same-run input verified. execute_mutation=false; no credential or cloud mutation is permitted."
+
+  verify:
+    name: Post-deployment evidence guard
+    needs: deploy
+    if: needs.deploy.result == 'success' && inputs.execute_mutation == true
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+      id-token: none
+    steps:
+      - name: Stop until real acceptance evidence exists
+        run: |
+          set -euo pipefail
+          echo "Post-deployment verify requires same-run acceptance/rollback evidence; no evidence is fabricated." >&2
+          exit 1

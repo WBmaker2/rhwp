@@ -1,0 +1,15 @@
+{
+  "schemaVersion": "rhwp.staging-deployment-approval/v1",
+  "decision": "pending",
+  "approvedAt": null,
+  "approvedBy": [],
+  "commitSha": "0000000000000000000000000000000000000000",
+  "deploymentPacketSha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "projectId": "rhwp-collaboration-staging-123",
+  "approvedImageDigests": [],
+  "acceptedIamDiffSha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "acceptanceTestsReviewed": false,
+  "rollbackRevisionIdsReviewed": false,
+  "deploymentApproved": false,
+  "cloudMutationApproved": false
+}

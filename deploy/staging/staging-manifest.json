@@ -1,0 +1,218 @@
+{
+  "schemaVersion": "rhwp.staging/v1",
+  "environment": "staging",
+  "project": {
+    "id": "${FIREBASE_STAGING_PROJECT_ID}",
+    "number": "${GCP_PROJECT_NUMBER}",
+    "billingAccount": "${GCP_BILLING_ACCOUNT_ID}",
+    "region": "asia-northeast3",
+    "forbiddenProjectIds": [
+      "${PRODUCTION_PROJECT_ID}"
+    ]
+  },
+  "firebase": {
+    "webAppId": "${FIREBASE_WEB_APP_ID}",
+    "apiKeyReference": "${FIREBASE_WEB_API_KEY_REFERENCE}",
+    "authDomain": "${FIREBASE_STAGING_PROJECT_ID}.firebaseapp.com",
+    "authorizedDomains": [
+      "${FIREBASE_STAGING_PROJECT_ID}.firebaseapp.com",
+      "${FIREBASE_HOSTING_DOMAIN}"
+    ],
+    "firestoreLocation": "asia-northeast3",
+    "storageBucket": "${FIREBASE_STORAGE_BUCKET}",
+    "storageLocation": "asia-northeast3",
+    "hostingSite": "${FIREBASE_HOSTING_SITE}"
+  },
+  "artifactRegistry": {
+    "repository": "rhwp-staging",
+    "location": "asia-northeast3"
+  },
+  "cloudRun": {
+    "collaboration": {
+      "name": "rhwp-collaboration-staging",
+      "image": "${COLLABORATION_IMAGE}",
+      "digest": "${COLLABORATION_IMAGE_DIGEST}",
+      "serviceAccount": "${COLLABORATION_SERVICE_ACCOUNT}",
+      "ingress": "all",
+      "runtime": {
+        "containerConcurrency": 80,
+        "timeoutSeconds": 3600,
+        "cpu": "1",
+        "memory": "1Gi",
+        "minScale": 0,
+        "maxScale": 10
+      }
+    },
+    "documentApi": {
+      "name": "rhwp-document-api-staging",
+      "image": "${DOCUMENT_API_IMAGE}",
+      "digest": "${DOCUMENT_API_IMAGE_DIGEST}",
+      "serviceAccount": "${DOCUMENT_API_SERVICE_ACCOUNT}",
+      "ingress": "all",
+      "runtime": {
+        "containerConcurrency": 80,
+        "timeoutSeconds": 300,
+        "cpu": "1",
+        "memory": "512Mi",
+        "minScale": 0,
+        "maxScale": 20
+      }
+    },
+    "documentWorker": {
+      "name": "rhwp-document-worker-staging",
+      "image": "${DOCUMENT_WORKER_IMAGE}",
+      "digest": "${DOCUMENT_WORKER_IMAGE_DIGEST}",
+      "serviceAccount": "${DOCUMENT_WORKER_SERVICE_ACCOUNT}",
+      "ingress": "internal",
+      "runtime": {
+        "containerConcurrency": 1,
+        "timeoutSeconds": 900,
+        "cpu": "2",
+        "memory": "2Gi",
+        "minScale": 0,
+        "maxScale": 10
+      }
+    }
+  },
+  "tasks": {
+    "callerServiceAccount": "${TASKS_SERVICE_ACCOUNT_EMAIL}",
+    "parse": {
+      "name": "rhwp-parse-staging",
+      "location": "asia-northeast3",
+      "targetUrl": "https://${DOCUMENT_WORKER_HOST}/run/parse",
+      "dispatchDeadlineSeconds": 900,
+      "retry": {
+        "maxAttempts": 5,
+        "minBackoffSeconds": 10,
+        "maxBackoffSeconds": 300,
+        "maxDoublings": 5
+      },
+      "rateLimits": {
+        "maxConcurrentDispatches": 1,
+        "maxDispatchesPerSecond": 1
+      }
+    },
+    "export": {
+      "name": "rhwp-export-staging",
+      "location": "asia-northeast3",
+      "targetUrl": "https://${DOCUMENT_WORKER_HOST}/run/export",
+      "dispatchDeadlineSeconds": 900,
+      "retry": {
+        "maxAttempts": 5,
+        "minBackoffSeconds": 10,
+        "maxBackoffSeconds": 300,
+        "maxDoublings": 5
+      },
+      "rateLimits": {
+        "maxConcurrentDispatches": 1,
+        "maxDispatchesPerSecond": 1
+      }
+    }
+  },
+  "secrets": {
+    "collaborationInternal": {
+      "name": "rhwp-collaboration-internal-token-staging",
+      "version": "latest"
+    }
+  },
+  "iam": {
+    "platformServiceAccounts": [
+      "firebase-adminsdk-fbsvc@${FIREBASE_STAGING_PROJECT_ID}.iam.gserviceaccount.com",
+      "rhwp-infra-deployer-staging@${FIREBASE_STAGING_PROJECT_ID}.iam.gserviceaccount.com",
+      "rhwp-staging-preflight-reader@${FIREBASE_STAGING_PROJECT_ID}.iam.gserviceaccount.com",
+      "rhwp-staging-release-pusher@${FIREBASE_STAGING_PROJECT_ID}.iam.gserviceaccount.com",
+      "rhwp-staging-runtime-bootstrap@${FIREBASE_STAGING_PROJECT_ID}.iam.gserviceaccount.com",
+      "rhwp-staging-deploy-executor@${FIREBASE_STAGING_PROJECT_ID}.iam.gserviceaccount.com"
+    ],
+    "bindings": [
+      {
+        "principal": "serviceAccount:${COLLABORATION_SERVICE_ACCOUNT}",
+        "role": "roles/datastore.user",
+        "resource": "project"
+      },
+      {
+        "principal": "serviceAccount:${COLLABORATION_SERVICE_ACCOUNT}",
+        "role": "roles/storage.objectAdmin",
+        "resource": "bucket:${FIREBASE_STORAGE_BUCKET}"
+      },
+      {
+        "principal": "serviceAccount:${COLLABORATION_SERVICE_ACCOUNT}",
+        "role": "roles/secretmanager.secretAccessor",
+        "resource": "secret:rhwp-collaboration-internal-token-staging"
+      },
+      {
+        "principal": "serviceAccount:${DOCUMENT_API_SERVICE_ACCOUNT}",
+        "role": "roles/datastore.user",
+        "resource": "project"
+      },
+      {
+        "principal": "serviceAccount:${DOCUMENT_API_SERVICE_ACCOUNT}",
+        "role": "roles/storage.objectViewer",
+        "resource": "bucket:${FIREBASE_STORAGE_BUCKET}"
+      },
+      {
+        "principal": "serviceAccount:${DOCUMENT_API_SERVICE_ACCOUNT}",
+        "role": "roles/cloudtasks.enqueuer",
+        "resource": "queues:rhwp-parse-staging,rhwp-export-staging"
+      },
+      {
+        "principal": "serviceAccount:${DOCUMENT_API_SERVICE_ACCOUNT}",
+        "role": "roles/iam.serviceAccountUser",
+        "resource": "serviceAccount:${TASKS_SERVICE_ACCOUNT_EMAIL}"
+      },
+      {
+        "principal": "serviceAccount:${DOCUMENT_API_SERVICE_ACCOUNT}",
+        "role": "roles/secretmanager.secretAccessor",
+        "resource": "secret:rhwp-collaboration-internal-token-staging"
+      },
+      {
+        "principal": "serviceAccount:${DOCUMENT_WORKER_SERVICE_ACCOUNT}",
+        "role": "roles/datastore.user",
+        "resource": "project"
+      },
+      {
+        "principal": "serviceAccount:${DOCUMENT_WORKER_SERVICE_ACCOUNT}",
+        "role": "roles/storage.objectAdmin",
+        "resource": "bucket:${FIREBASE_STORAGE_BUCKET}"
+      },
+      {
+        "principal": "allUsers",
+        "role": "roles/run.invoker",
+        "resource": "cloudRun:rhwp-collaboration-staging"
+      },
+      {
+        "principal": "allUsers",
+        "role": "roles/run.invoker",
+        "resource": "cloudRun:rhwp-document-api-staging"
+      },
+      {
+        "principal": "serviceAccount:${TASKS_SERVICE_ACCOUNT_EMAIL}",
+        "role": "roles/run.invoker",
+        "resource": "cloudRun:rhwp-document-worker-staging"
+      }
+    ]
+  },
+  "budget": {
+    "currency": "KRW",
+    "amount": "${STAGING_MONTHLY_BUDGET_KRW}",
+    "thresholds": [
+      0.5,
+      0.8,
+      1.0
+    ],
+    "notificationChannels": [
+      "${STAGING_BUDGET_NOTIFICATION_CHANNEL}"
+    ]
+  },
+  "operations": {
+    "dataRetentionDays": "${STAGING_DATA_RETENTION_DAYS}",
+    "approvalReference": "${APPROVAL_REFERENCE}",
+    "rollbackRevisionIds": [
+      "${COLLABORATION_ROLLBACK_REVISION}",
+      "${DOCUMENT_API_ROLLBACK_REVISION}",
+      "${DOCUMENT_WORKER_ROLLBACK_REVISION}"
+    ],
+    "internalFlushSecurityDecision": "mvp-staging-internal-token",
+    "cloudMutationApproved": false
+  }
+}

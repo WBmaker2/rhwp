@@ -1,0 +1,20 @@
+{
+  "schemaVersion": "rhwp.staging-bootstrap-packet-review/v1",
+  "decision": "pending",
+  "approvedAt": null,
+  "approvedBy": [],
+  "commitSha": "0000000000000000000000000000000000000000",
+  "workflowRunId": 0,
+  "artifactName": "staging-approval-packet-bootstrap",
+  "expectedPacketSha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "expectedApprovalReference": "staging-bootstrap-approval-YYYY-MM-DD-NNN",
+  "acknowledgements": {
+    "packetReviewed": false,
+    "deferredPathsAccepted": false,
+    "billingAndBudgetReviewed": false,
+    "internalFlushExceptionAccepted": false,
+    "cloudMutationNotApproved": false,
+    "deploymentNotApproved": false
+  },
+  "notes": []
+}

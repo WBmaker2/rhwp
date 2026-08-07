@@ -1,0 +1,84 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function membershipPath(documentId) {
+      return /databases/(default)/documents/documents/$(documentId)/members/$(request.auth.uid);
+    }
+
+    function isMember(documentId) {
+      return signedIn() && firestore.exists(membershipPath(documentId));
+    }
+
+    function memberRole(documentId) {
+      return firestore.get(membershipPath(documentId)).data.role;
+    }
+
+    function isOwner(documentId) {
+      return isMember(documentId) && memberRole(documentId) == 'owner';
+    }
+
+    function canEdit(documentId) {
+      return isMember(documentId)
+        && memberRole(documentId) in ['owner', 'editor'];
+    }
+
+    function isValidSourceUpload() {
+      return resource == null
+        && request.resource != null
+        && request.resource.size > 0
+        && request.resource.size <= 200 * 1024 * 1024
+        && request.resource.contentType in [
+          'application/x-hwp',
+          'application/haansofthwp',
+          'application/vnd.hancom.hwp'
+        ];
+    }
+
+    function isValidUserImageUpload() {
+      return resource == null
+        && request.resource != null
+        && request.resource.size > 0
+        && request.resource.size <= 20 * 1024 * 1024
+        && request.resource.contentType.matches('image/(png|jpeg|webp)')
+        && request.resource.metadata.uploaderId == request.auth.uid;
+    }
+
+    match /documents/{documentId}/source/original.hwp {
+      allow read: if isOwner(documentId);
+      allow write: if isOwner(documentId) && isValidSourceUpload();
+    }
+
+    match /documents/{documentId}/derived/{path=**} {
+      allow read: if isMember(documentId);
+      allow write: if false;
+    }
+
+    match /documents/{documentId}/assets/imported/{path=**} {
+      allow read: if isMember(documentId);
+      allow write: if false;
+    }
+
+    match /documents/{documentId}/assets/user/{imageId}/{fileName} {
+      allow read: if isMember(documentId);
+      allow write: if canEdit(documentId) && isValidUserImageUpload();
+    }
+
+    match /documents/{documentId}/collaboration/snapshots/{path=**} {
+      allow read, write: if false;
+    }
+
+    match /documents/{documentId}/exports/{fileName} {
+      allow read: if isMember(documentId);
+      allow write: if false;
+    }
+
+    match /{path=**} {
+      allow read, write: if false;
+    }
+  }
+}

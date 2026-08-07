@@ -1,0 +1,120 @@
+name: Collaboration Emulator E2E
+
+on:
+  pull_request:
+    branches: [devel]
+    paths:
+      - 'Cargo.toml'
+      - 'src/bin/rhwp-collaboration-worker.rs'
+      - 'examples/collaboration_e2e_fixture.rs'
+      - 'services/collaboration-server/**'
+      - 'services/document-api/**'
+      - 'services/document-worker/**'
+      - 'services/e2e/**'
+      - 'firebase/**'
+      - 'firestore.rules'
+      - 'storage.rules'
+      - '.github/workflows/collaboration-emulator-e2e.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: collaboration-emulator-e2e-${{ github.head_ref || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  emulator-flow:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          show-progress: false
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.93.1
+          components: rustfmt
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: collaboration-emulator-e2e
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            firebase/package-lock.json
+            services/collaboration-server/package-lock.json
+            services/document-api/package-lock.json
+            services/document-worker/package-lock.json
+            services/e2e/package-lock.json
+
+      - name: Install Firebase emulator dependencies
+        working-directory: firebase
+        run: npm ci
+
+      - name: Install collaboration server dependencies
+        working-directory: services/collaboration-server
+        run: npm ci
+
+      - name: Install document API dependencies
+        working-directory: services/document-api
+        run: npm ci
+
+      - name: Install document worker dependencies
+        working-directory: services/document-worker
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Install E2E dependencies
+        working-directory: services/e2e
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Check Rust formatting
+        run: cargo fmt --all -- --check
+
+      - name: Build native collaboration worker
+        run: >-
+          cargo build
+          --no-default-features
+          --features collaboration-worker
+          --bin rhwp-collaboration-worker
+
+      - name: Generate deterministic HWPX source fixture
+        run: >-
+          cargo run
+          --quiet
+          --no-default-features
+          --features collaboration-worker
+          --example collaboration_e2e_fixture
+          -- output/emulator/source.hwpx
+
+      - name: Run real Emulator multi-process flow
+        working-directory: firebase
+        env:
+          E2E_SOURCE_PATH: ${{ github.workspace }}/output/emulator/source.hwpx
+          E2E_RHWP_WORKER_BIN: ${{ github.workspace }}/target/debug/rhwp-collaboration-worker
+        run: |
+          set -o pipefail
+          npx firebase-tools emulators:exec \
+            --project demo-rhwp-collaboration \
+            --only auth,firestore,storage \
+            "cd ../services/e2e && npm run test:emulator" \
+            2>&1 | tee collaboration-emulator-e2e.log
+
+      - name: Upload Emulator diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: collaboration-emulator-e2e-${{ github.run_id }}
+          path: firebase/collaboration-emulator-e2e.log
+          retention-days: 1
+          if-no-files-found: error

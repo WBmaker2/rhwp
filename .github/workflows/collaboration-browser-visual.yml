@@ -1,0 +1,117 @@
+name: Collaboration browser visual
+
+on:
+  pull_request:
+    branches: [devel]
+    paths:
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'src/**'
+      - 'examples/collaboration_e2e_fixture.rs'
+      - 'rhwp-studio/**'
+      - 'services/collaboration-server/**'
+      - 'services/e2e/**'
+      - 'firebase/**'
+      - '.github/workflows/collaboration-browser-visual.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: collaboration-browser-visual-${{ github.head_ref || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  two-browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          show-progress: false
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.93.1
+          targets: wasm32-unknown-unknown
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: collaboration-browser-visual
+
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: wasm-pack
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            firebase/package-lock.json
+            rhwp-studio/package-lock.json
+            services/collaboration-server/package-lock.json
+            services/e2e/package-lock.json
+
+      - name: Verify Chrome availability
+        run: |
+          which google-chrome || which google-chrome-stable || which chromium
+          google-chrome --version || google-chrome-stable --version || chromium --version
+
+      - name: Install Firebase emulator dependencies
+        working-directory: firebase
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Install Studio dependencies
+        working-directory: rhwp-studio
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Install collaboration server dependencies
+        working-directory: services/collaboration-server
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Install browser E2E dependencies
+        working-directory: services/e2e
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Build real WebAssembly package
+        run: wasm-pack build --target web --out-dir pkg
+
+      - name: Generate deterministic HWPX source fixture
+        run: >-
+          cargo run
+          --quiet
+          --no-default-features
+          --features collaboration-worker
+          --example collaboration_e2e_fixture
+          -- output/browser-visual/source.hwpx
+
+      - name: Run two real Studio browser contexts
+        working-directory: firebase
+        env:
+          E2E_SOURCE_PATH: ${{ github.workspace }}/output/browser-visual/source.hwpx
+          CHROME_PATH: /usr/bin/google-chrome
+        run: |
+          set -o pipefail
+          npx firebase-tools emulators:exec \
+            --project demo-rhwp-collaboration \
+            --only auth,firestore,storage \
+            "cd ../services/e2e && npm run test:browser-visual" \
+            2>&1 | tee collaboration-browser-visual.log
+
+      - name: Upload browser screenshots and diagnostics
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: collaboration-browser-visual-${{ github.run_id }}
+          path: |
+            output/collaboration-browser-visual/**
+            firebase/collaboration-browser-visual.log
+          retention-days: 3
+          if-no-files-found: warn

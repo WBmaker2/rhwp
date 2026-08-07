@@ -1,0 +1,65 @@
+name: rhwp-studio collaboration
+
+on:
+  pull_request:
+    branches: [devel]
+    paths:
+      - 'rhwp-studio/src/collaboration/**'
+      - 'rhwp-studio/src/collaboration-entry.ts'
+      - 'rhwp-studio/src/engine/input-handler.ts'
+      - 'rhwp-studio/src/main.ts'
+      - 'rhwp-studio/index.html'
+      - 'rhwp-studio/tests/collaboration-*.test.ts'
+      - 'rhwp-studio/package.json'
+      - 'rhwp-studio/package-lock.json'
+      - '.github/workflows/rhwp-studio-collaboration.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          show-progress: false
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: rhwp-studio/package-lock.json
+      - name: Install dependencies
+        working-directory: rhwp-studio
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Prepare generated WASM type boundary
+        run: |
+          mkdir -p pkg
+          cat > pkg/rhwp.d.ts <<'EOF'
+          export default function init(...args: any[]): Promise<void>;
+          export function version(): string;
+          export class HwpDocument {
+            constructor(data: Uint8Array);
+            static createEmpty(): HwpDocument;
+            [key: string]: any;
+          }
+          EOF
+          cat > pkg/rhwp.js <<'EOF'
+          export default async function init() {}
+          export function version() { return 'focused-ci'; }
+          export class HwpDocument {}
+          EOF
+      - name: Test and typecheck collaboration
+        working-directory: rhwp-studio
+        run: |
+          set -o pipefail
+          npm run test:collaboration 2>&1 | tee studio-collaboration.log
+          npx tsc --noEmit 2>&1 | tee -a studio-collaboration.log
+      - name: Upload diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: studio-collaboration-${{ github.run_id }}
+          path: rhwp-studio/studio-collaboration.log
+          retention-days: 1
+          if-no-files-found: error

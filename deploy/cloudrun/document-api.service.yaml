@@ -1,0 +1,63 @@
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: rhwp-document-api-staging
+  annotations:
+    run.googleapis.com/ingress: all
+spec:
+  template:
+    metadata:
+      annotations:
+        autoscaling.knative.dev/minScale: "0"
+        autoscaling.knative.dev/maxScale: "20"
+    spec:
+      serviceAccountName: ${DOCUMENT_API_SERVICE_ACCOUNT}
+      containerConcurrency: 80
+      timeoutSeconds: 300
+      containers:
+        - image: ${DOCUMENT_API_IMAGE}@sha256:${DOCUMENT_API_IMAGE_DIGEST}
+          ports:
+            - name: http1
+              containerPort: 8080
+          resources:
+            limits:
+              cpu: "1"
+              memory: 512Mi
+          env:
+            - name: GCP_PROJECT_ID
+              value: ${GCP_PROJECT_ID}
+            - name: GCP_LOCATION
+              value: asia-northeast3
+            - name: FIREBASE_STORAGE_BUCKET
+              value: ${FIREBASE_STORAGE_BUCKET}
+            - name: PARSE_QUEUE
+              value: rhwp-parse-staging
+            - name: PARSE_WORKER_URL
+              value: ${PARSE_WORKER_URL}
+            - name: EXPORT_QUEUE
+              value: rhwp-export-staging
+            - name: EXPORT_WORKER_URL
+              value: ${EXPORT_WORKER_URL}
+            - name: TASKS_SERVICE_ACCOUNT_EMAIL
+              value: ${TASKS_SERVICE_ACCOUNT_EMAIL}
+            - name: TASK_DISPATCH_DEADLINE_SECONDS
+              value: "900"
+            - name: COLLABORATION_FLUSH_URL
+              value: ${COLLABORATION_FLUSH_URL}
+            - name: COLLABORATION_INTERNAL_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: rhwp-collaboration-internal-token-staging
+                  key: latest
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 2
+            periodSeconds: 3
+            failureThreshold: 30
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            periodSeconds: 30
