@@ -8,11 +8,11 @@
 
 ## 설계
 
-1. live job의 materializer step에서 9개 `vars.*`를 직접 `env:`로 선언하지 않습니다.
-2. `gh api`로 현재 보호 Environment의 변수 객체를 읽어 표준출력으로 노출하지 않고 Python stdin으로 전달합니다.
+1. live job의 materializer step은 `GITHUB_TOKEN`으로 보호 Environment 변수 REST API를 조회하지 않습니다.
+2. 보호 Environment 변수는 step-level `env`로 runner에 주입하되, inline Python이 값을 JSON stdin으로만 materializer에 전달합니다. JSON은 로그 표준출력으로 내보내지 않습니다.
 3. materializer에 JSON stdin 입력 모드를 추가합니다. 입력은 기존 9개 `STAGING_*` 키를 가진 객체이며, 기존 schema/승인 decision 검증을 그대로 적용합니다.
 4. `gh api` 응답이나 decision 값을 로그·artifact·report에 출력하지 않습니다.
-5. API 접근 실패, 누락 변수, schema 오류, 승인 decision 불일치 시 즉시 fail-closed합니다.
+5. 누락 변수, schema 오류, 승인 decision 불일치 시 즉시 fail-closed합니다. Environment 변수 API를 `GITHUB_TOKEN`으로 조회하는 우회는 사용하지 않습니다.
 6. 기존 `staging-bootstrap`의 9개 Environment Variable 계약과 `--from-environment` 경로는 유지합니다.
 
 ## 검증

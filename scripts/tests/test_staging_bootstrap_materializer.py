@@ -450,8 +450,9 @@ class BootstrapWorkflowContractTest(unittest.TestCase):
         for marker in (
             "environment: staging-preflight",
             "id-token: write",
-            "environments/staging-preflight/variables?per_page=100",
-            "--jq 'reduce .variables[] as $v ({}; .[$v.name] = $v.value)'",
+            "STAGING_PROJECT_ID: ${{ vars.STAGING_PROJECT_ID }}",
+            "STAGING_INTERNAL_FLUSH_DECISION: ${{ vars.STAGING_INTERNAL_FLUSH_DECISION }}",
+            "python3 - <<'PY'",
             "python3 scripts/staging_bootstrap_materializer.py",
             "--from-json-stdin",
             "--output artifacts/staging-manifest-deployment-preflight.json",
@@ -460,7 +461,8 @@ class BootstrapWorkflowContractTest(unittest.TestCase):
         ):
             self.assertIn(marker, live_section)
 
-        self.assertNotIn("STAGING_INTERNAL_FLUSH_DECISION: ${{ vars.STAGING_INTERNAL_FLUSH_DECISION }}", live_section)
+        self.assertNotIn("environments/staging-preflight/variables?per_page=100", live_section)
+        self.assertNotIn("gh api", live_section.split("Materialize approved deployment preflight manifest", 1)[1].split("Resolve immutable deployment manifest", 1)[0])
 
         self.assertLess(
             live_section.index("Materialize approved deployment preflight manifest"),

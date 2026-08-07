@@ -655,18 +655,54 @@ jobs:
           PY
       - name: Materialize approved deployment preflight manifest
         env:
-          GH_TOKEN: ${{ github.token }}
-          GITHUB_REPOSITORY: ${{ github.repository }}
+          STAGING_PROJECT_ID: ${{ vars.STAGING_PROJECT_ID }}
+          STAGING_BILLING_ACCOUNT: ${{ vars.STAGING_BILLING_ACCOUNT }}
+          STAGING_FORBIDDEN_PROJECT_IDS_JSON: ${{ vars.STAGING_FORBIDDEN_PROJECT_IDS_JSON }}
+          STAGING_STORAGE_BUCKET: ${{ vars.STAGING_STORAGE_BUCKET }}
+          STAGING_MONTHLY_BUDGET_KRW: ${{ vars.STAGING_MONTHLY_BUDGET_KRW }}
+          STAGING_BUDGET_NOTIFICATION_CHANNELS_JSON: ${{ vars.STAGING_BUDGET_NOTIFICATION_CHANNELS_JSON }}
+          STAGING_DATA_RETENTION_DAYS: ${{ vars.STAGING_DATA_RETENTION_DAYS }}
+          STAGING_APPROVAL_REFERENCE: ${{ vars.STAGING_APPROVAL_REFERENCE }}
+          STAGING_INTERNAL_FLUSH_DECISION: ${{ vars.STAGING_INTERNAL_FLUSH_DECISION }}
         run: |
           set -euo pipefail
+          set +x
           mkdir -p artifacts
-          gh api \
-            "repos/${GITHUB_REPOSITORY}/environments/staging-preflight/variables?per_page=100" \
-            --jq 'reduce .variables[] as $v ({}; .[$v.name] = $v.value)' \
+          python3 - <<'PY' \
           | python3 scripts/staging_bootstrap_materializer.py \
               --manifest "${{ inputs.manifest_path }}" \
               --from-json-stdin \
               --output artifacts/staging-manifest-deployment-preflight-bootstrap.json
+          import json
+          import os
+          import sys
+
+          keys = (
+              "STAGING_PROJECT_ID",
+              "STAGING_BILLING_ACCOUNT",
+              "STAGING_FORBIDDEN_PROJECT_IDS_JSON",
+              "STAGING_STORAGE_BUCKET",
+              "STAGING_MONTHLY_BUDGET_KRW",
+              "STAGING_BUDGET_NOTIFICATION_CHANNELS_JSON",
+              "STAGING_DATA_RETENTION_DAYS",
+              "STAGING_APPROVAL_REFERENCE",
+              "STAGING_INTERNAL_FLUSH_DECISION",
+          )
+          values = {}
+          missing = []
+          for key in keys:
+              value = os.environ.get(key)
+              if not isinstance(value, str) or not value.strip():
+                  missing.append(key)
+              else:
+                  values[key] = value
+          if missing:
+              raise SystemExit(
+                  "required environment variable is missing: " + ", ".join(missing)
+              )
+          json.dump(values, sys.stdout, ensure_ascii=False, separators=(",", ":"))
+          sys.stdout.write("\n")
+          PY
       - name: Resolve immutable deployment manifest from release metadata
         env:
           RELEASE_METADATA_PATH: artifacts/same-run/staging-release-metadata-derived.json
